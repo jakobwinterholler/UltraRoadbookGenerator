@@ -32,6 +32,8 @@ export interface StorageSummary {
 
 export interface AccountSettings {
   signed_in: boolean;
+  email: string | null;
+  display_name: string | null;
   cloud_sync_enabled: boolean;
   storage: StorageSummary;
 }

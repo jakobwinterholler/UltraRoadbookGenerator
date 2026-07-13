@@ -1,11 +1,11 @@
 import { useState } from "react";
 import type { RoadbookResult } from "../api";
+import AccountSection from "../components/account/AccountSection";
 import DeveloperDiagnostics from "../components/settings/DeveloperDiagnostics";
 import SettingsPlanningSection from "../components/settings/SettingsPlanningSection";
 import { sensitivityForClimbConfig } from "../planning/climbSensitivity";
 import { useRace } from "../races/RaceContext";
 import { analyzeRaceStream, recalculateRaceClimbs } from "../races/api";
-import { formatStorage } from "../settings/api";
 import { useSettings } from "../settings/SettingsContext";
 import { SETTINGS_SECTIONS, type SettingsSectionId } from "../settings/types";
 
@@ -43,7 +43,7 @@ export default function SettingsPage({ roadbook, onBack, onReanalysed }: Setting
     updatePlanning,
     updateAnalysis,
   } = useSettings();
-  const [section, setSection] = useState<SettingsSectionId>("planning");
+  const [section, setSection] = useState<SettingsSectionId>("account");
   const [recalculating, setRecalculating] = useState(false);
   const [reanalysing, setReanalysing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -151,25 +151,7 @@ export default function SettingsPage({ roadbook, onBack, onReanalysed }: Setting
         </nav>
 
         <div>
-          {section === "account" && settings && (
-            <SettingsPanel title="Account" description="Profile and storage for My Races.">
-              <div className="space-y-4 text-sm">
-                <div className="rounded-xl bg-canvas px-4 py-3">
-                  <p className="font-medium text-ink">Sign in</p>
-                  <p className="mt-1 text-muted">Coming soon — Google Sign-In and cloud sync.</p>
-                </div>
-                <div className="rounded-xl bg-canvas px-4 py-3">
-                  <p className="font-medium text-ink">My Races storage</p>
-                  <p className="mt-1 text-muted">
-                    {settings.account.storage.race_count} race
-                    {settings.account.storage.race_count === 1 ? "" : "s"} ·{" "}
-                    {formatStorage(settings.account.storage.storage_bytes)} local
-                  </p>
-                  <p className="mt-1 text-xs text-muted">{settings.account.storage.races_root}</p>
-                </div>
-              </div>
-            </SettingsPanel>
-          )}
+          {section === "account" && settings && <AccountSection account={settings.account} />}
 
           {section === "planning" && (
             <SettingsPanel

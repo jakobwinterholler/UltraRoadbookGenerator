@@ -1,5 +1,7 @@
 import type { RaceSummary } from "../../races/api";
 import { formatRaceDate } from "../../races/api";
+import type { SyncIndicator } from "@shared/ui/SyncStatusBadge";
+import { SyncStatusBadge } from "@shared/ui/SyncStatusBadge";
 import { formatKm } from "../routeInsights";
 
 interface PreparationProgressProps {
@@ -100,19 +102,21 @@ export function PreparationProgress({
 interface RaceCardProps {
   race: RaceSummary;
   onOpen: (raceId: string) => void;
+  syncStatus?: SyncIndicator | null;
 }
 
-export function RaceCard({ race, onOpen }: RaceCardProps) {
+export function RaceCard({ race, onOpen, syncStatus }: RaceCardProps) {
   return (
     <button
       type="button"
       onClick={() => onOpen(race.id)}
       className="group flex h-full w-full flex-col rounded-2xl border border-line bg-card p-5 text-left shadow-card transition hover:border-accent/30 hover:shadow-md"
     >
-      <div className="flex-1">
-        <h3 className="text-lg font-semibold tracking-tight text-ink group-hover:text-accent">
-          {race.name}
-        </h3>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <h3 className="text-lg font-semibold tracking-tight text-ink group-hover:text-accent">
+            {race.name}
+          </h3>
         {race.has_analysis && race.distance_km != null ? (
           <p className="mt-1 text-sm text-muted">
             {formatKm(race.distance_km)}
@@ -121,6 +125,8 @@ export function RaceCard({ race, onOpen }: RaceCardProps) {
         ) : (
           <p className="mt-1 text-sm text-muted">{race.gpx_original_name}</p>
         )}
+        </div>
+        {syncStatus ? <SyncStatusBadge status={syncStatus} className="shrink-0" /> : null}
       </div>
 
       <div className="mt-5 space-y-3 border-t border-line/70 pt-4">

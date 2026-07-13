@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRace } from "../races/RaceContext";
+import { useAuth } from "@shared/auth/AuthProvider";
 import {
   fetchAppSettings,
   fetchRaceSettings,
@@ -39,6 +40,7 @@ export function useSettings(): SettingsContextValue {
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const { activeRaceId } = useRace();
+  const { accessToken } = useAuth();
   const [settings, setSettings] = useState<SettingsSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +62,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, accessToken]);
 
   const updatePlanning = useCallback(
     async (partial: Partial<SettingsSnapshot["planning"]>) => {

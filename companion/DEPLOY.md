@@ -7,9 +7,7 @@ The Companion is a static Vite PWA. Vercel provides **HTTPS automatically** — 
 1. Push this repository to GitHub.
 2. Click the button below (or use [vercel.com/new](https://vercel.com/new)):
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_USER%2FYOUR_REPO&project-name=race-companion&root-directory=companion)
-
-Replace `YOUR_USER/YOUR_REPO` in the URL with your GitHub repository.
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjakobwinterholler%2FUltraRoadbookGenerator&project-name=companion&root-directory=companion)
 
 3. On the Vercel import screen, confirm:
    - **Root Directory:** `companion`
@@ -22,14 +20,21 @@ Every push to your default branch redeploys the app. The PWA uses **autoUpdate**
 
 ## Manual deploy (Vercel CLI)
 
+Run from the **repository root** (not `companion/`). The Vercel project Root Directory is `companion`, so deploying from inside `companion/` doubles the path and fails.
+
 ```bash
-cd companion
-npm install
-npx vercel login
-npx vercel --prod
+# one-time setup (already done locally)
+vercel login
+vercel link --project companion --scope road-book
+
+# preview deployment
+vercel deploy
+
+# production deployment
+vercel deploy --prod
 ```
 
-Follow prompts. Link the project once; later deploys are just `npx vercel --prod`.
+The repo includes `.vercelignore` so CLI uploads only the Companion app (~580 KB), not the full monorepo.
 
 ## Install on iPhone
 

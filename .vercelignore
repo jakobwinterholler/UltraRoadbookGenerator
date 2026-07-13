@@ -1,0 +1,16 @@
+# Monorepo deploy: Companion root + shared package (Vercel Root Directory = companion)
+/*
+!/companion
+!/shared
+
+# Companion build artifacts & local deps (Vercel installs fresh)
+companion/node_modules
+companion/dist
+companion/dev-dist
+companion/.vercel
+companion/.env*
+companion/tsconfig.tsbuildinfo
+
+# Shared local deps (bundled via companion; source only)
+shared/node_modules
+shared/tsconfig.tsbuildinfo

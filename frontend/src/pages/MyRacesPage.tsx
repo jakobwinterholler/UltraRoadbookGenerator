@@ -1,8 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { getDesktopRaceSyncStatus } from "@shared/ui/SyncStatusBadge";
+import { useAuth } from "@shared/auth/AuthProvider";
 import UploadZone from "../components/UploadZone";
 import { RaceCard } from "../components/races/RaceCard";
 import { useRace } from "../races/RaceContext";
 import { createRace } from "../races/api";
+import { useAccountSync } from "../sync/useAccountSync";
+import { useDesktopCloudRaces } from "../sync/useDesktopCloudRaces";
 
 interface MyRacesPageProps {
   onRaceCreated: (raceId: string) => void;
@@ -11,6 +15,9 @@ interface MyRacesPageProps {
 
 export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPageProps) {
   const { races, loadingRaces, error, refreshRaces } = useRace();
+  const { user } = useAuth();
+  const { syncing } = useAccountSync();
+  const { cloudById } = useDesktopCloudRaces();
   const [showCreate, setShowCreate] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [raceName, setRaceName] = useState("");
@@ -114,7 +121,17 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {races.map((race) => (
-            <RaceCard key={race.id} race={race} onOpen={onOpenRace} />
+            <RaceCard
+              key={race.id}
+              race={race}
+              onOpen={onOpenRace}
+              syncStatus={getDesktopRaceSyncStatus(
+                race,
+                cloudById,
+                syncing,
+                Boolean(user),
+              )}
+            />
           ))}
         </div>
       )}

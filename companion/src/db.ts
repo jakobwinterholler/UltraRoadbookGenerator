@@ -1,17 +1,30 @@
-import type { CompanionBundle } from "./types";
+import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
 
 const DB_NAME = "race-companion";
-const DB_VERSION = 1;
-const STORE = "races";
+const DB_VERSION = 2;
+const BUNDLE_STORE = "bundles";
+const LIST_STORE = "raceList";
+const META_STORE = "meta";
 const ACTIVE_KEY = "active-race-id";
+
+interface StoredRaceListItem extends SyncRaceSummary {
+  downloadedRevision: number | null;
+  offlineReady: boolean;
+}
 
 function openDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: "race.id" });
+      if (!db.objectStoreNames.contains(BUNDLE_STORE)) {
+        db.createObjectStore(BUNDLE_STORE, { keyPath: "race.id" });
+      }
+      if (!db.objectStoreNames.contains(LIST_STORE)) {
+        db.createObjectStore(LIST_STORE, { keyPath: "id" });
+      }
+      if (!db.objectStoreNames.contains(META_STORE)) {
+        db.createObjectStore(META_STORE);
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -19,11 +32,54 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 
+export async function saveRaceList(races: StoredRaceListItem[]): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(LIST_STORE, "readwrite");
+    const store = tx.objectStore(LIST_STORE);
+    store.clear();
+    for (const race of races) {
+      store.put(race);
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Failed to save race list."));
+  });
+  db.close();
+}
+
+export async function loadRaceList(): Promise<StoredRaceListItem[]> {
+  const db = await openDb();
+  const races = await new Promise<StoredRaceListItem[]>((resolve, reject) => {
+    const tx = db.transaction(LIST_STORE, "readonly");
+    const request = tx.objectStore(LIST_STORE).getAll();
+    request.onsuccess = () => resolve((request.result as StoredRaceListItem[]) ?? []);
+    request.onerror = () => reject(request.error ?? new Error("Failed to load race list."));
+  });
+  db.close();
+  return races.sort((left, right) =>
+    (right.updated_at ?? "").localeCompare(left.updated_at ?? ""),
+  );
+}
+
 export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).put(bundle);
+    const tx = db.transaction([BUNDLE_STORE, LIST_STORE], "readwrite");
+    tx.objectStore(BUNDLE_STORE).put(bundle);
+
+    const listStore = tx.objectStore(LIST_STORE);
+    const getRequest = listStore.get(bundle.race.id);
+    getRequest.onsuccess = () => {
+      const existing = getRequest.result as StoredRaceListItem | undefined;
+      if (existing) {
+        listStore.put({
+          ...existing,
+          downloadedRevision: bundle.revision ?? existing.companion_revision,
+          offlineReady: true,
+        });
+      }
+    };
+
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Failed to save race."));
   });
@@ -42,8 +98,8 @@ export async function loadActiveCompanionBundle(): Promise<CompanionBundle | nul
 export async function loadCompanionBundle(raceId: string): Promise<CompanionBundle | null> {
   const db = await openDb();
   const bundle = await new Promise<CompanionBundle | null>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readonly");
-    const request = tx.objectStore(STORE).get(raceId);
+    const tx = db.transaction(BUNDLE_STORE, "readonly");
+    const request = tx.objectStore(BUNDLE_STORE).get(raceId);
     request.onsuccess = () => resolve((request.result as CompanionBundle | undefined) ?? null);
     request.onerror = () => reject(request.error ?? new Error("Failed to load race."));
   });
@@ -55,10 +111,18 @@ export async function clearCompanionData(): Promise<void> {
   localStorage.removeItem(ACTIVE_KEY);
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE, "readwrite");
-    tx.objectStore(STORE).clear();
+    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, META_STORE], "readwrite");
+    tx.objectStore(BUNDLE_STORE).clear();
+    tx.objectStore(LIST_STORE).clear();
+    tx.objectStore(META_STORE).clear();
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Failed to clear data."));
   });
   db.close();
 }
+
+export async function setActiveRaceId(raceId: string): Promise<void> {
+  localStorage.setItem(ACTIVE_KEY, raceId);
+}
+
+export type { StoredRaceListItem };

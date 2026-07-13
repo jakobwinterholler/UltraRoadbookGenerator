@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.110.3",
     "@types/three": "^0.185.1",
     "leaflet": "^1.9.4",
     "maplibre-gl": "^5.24.0",

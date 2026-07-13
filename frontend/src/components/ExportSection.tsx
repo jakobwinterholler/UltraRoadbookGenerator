@@ -1,7 +1,6 @@
 import { useState } from "react";
 import type { RoadbookResult } from "../api";
 import { downloadExport } from "../api";
-import { buildCompanionBundle, downloadCompanionBundle } from "../companion/buildCompanionBundle";
 import type { VerifiedStopRecord } from "../planning/stopVerification/types";
 import { raceExportEndpoint } from "../races/api";
 
@@ -14,26 +13,10 @@ interface ExportSectionProps {
 
 export default function ExportSection({
   raceId,
-  result,
-  verifiedStops,
   onExported,
 }: ExportSectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
-
-  async function handleCompanionExport() {
-    setError(null);
-    setLoading("companion");
-    try {
-      const bundle = buildCompanionBundle(raceId, result, verifiedStops);
-      downloadCompanionBundle(bundle);
-      onExported?.();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Companion export failed.");
-    } finally {
-      setLoading(null);
-    }
-  }
 
   async function handleExport(endpoint: string, filename: string, label: string) {
     setError(null);
@@ -52,7 +35,8 @@ export default function ExportSection({
     <section className="rounded-2xl bg-card p-6 shadow-card">
       <h3 className="text-lg font-semibold text-ink">Export</h3>
       <p className="mt-1 text-sm text-muted">
-        Download your roadbook, validation files, or a Companion race bundle for offline use.
+        Download your roadbook or validation files. Races sync automatically to the Companion app when
+        you are signed in.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
@@ -83,15 +67,6 @@ export default function ExportSection({
           title="Coming soon"
         >
           Export PDF — Coming Soon
-        </button>
-
-        <button
-          type="button"
-          onClick={() => handleCompanionExport()}
-          disabled={loading !== null}
-          className="rounded-xl border border-line bg-canvas px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-accent/30 hover:bg-white disabled:opacity-60"
-        >
-          {loading === "companion" ? "Exporting…" : "Export for Companion"}
         </button>
       </div>
 

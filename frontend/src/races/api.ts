@@ -1,7 +1,9 @@
+import { apiFetch, getAuthAccessToken } from "../api/authFetch";
 import type {
   AnalysisStreamEvent,
   ProgressStepDefinition,
 } from "../progress";
+import { queueRacePush } from "@shared/api/sync";
 import type { PoiPlanningProfile, RoadbookResult } from "../api";
 import { raceOpenTrace } from "../debug/raceOpenTrace";
 import {
@@ -71,7 +73,7 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 export async function fetchRaces(): Promise<RaceSummary[]> {
-  const response = await fetch("/api/races");
+  const response = await apiFetch("/api/races");
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to load races."));
   }
@@ -86,7 +88,7 @@ export async function createRace(file: File, name?: string): Promise<RaceSummary
     formData.append("name", name.trim());
   }
 
-  const response = await fetch("/api/races", { method: "POST", body: formData });
+  const response = await apiFetch("/api/races", { method: "POST", body: formData });
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to create race."));
   }
@@ -95,7 +97,7 @@ export async function createRace(file: File, name?: string): Promise<RaceSummary
 }
 
 export async function fetchRaceDetail(raceId: string): Promise<RaceDetail> {
-  const response = await fetch(`/api/races/${raceId}`);
+  const response = await apiFetch(`/api/races/${raceId}`);
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to load race."));
   }
@@ -111,7 +113,7 @@ export async function fetchRaceDetail(raceId: string): Promise<RaceDetail> {
 }
 
 export async function renameRace(raceId: string, name: string): Promise<RaceSummary> {
-  const response = await fetch(`/api/races/${raceId}`, {
+  const response = await apiFetch(`/api/races/${raceId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name }),
@@ -124,7 +126,7 @@ export async function renameRace(raceId: string, name: string): Promise<RaceSumm
 }
 
 export async function deleteRace(raceId: string): Promise<void> {
-  const response = await fetch(`/api/races/${raceId}`, { method: "DELETE" });
+  const response = await apiFetch(`/api/races/${raceId}`, { method: "DELETE" });
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to delete race."));
   }
@@ -172,7 +174,7 @@ export async function updateRacePreparation(
     );
   }
 
-  const response = await fetch(`/api/races/${raceId}/preparation`, {
+  const response = await apiFetch(`/api/races/${raceId}/preparation`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -240,7 +242,7 @@ function parseFeedbackContext(raw: unknown): StopRejectFeedbackContext | undefin
 
 export async function fetchRaceRoadbook(raceId: string): Promise<RoadbookResult> {
   raceOpenTrace("open_race.fetch_roadbook.start", { raceId });
-  const response = await fetch(`/api/races/${raceId}/roadbook`);
+  const response = await apiFetch(`/api/races/${raceId}/roadbook`);
   if (!response.ok) {
     throw new Error(await parseError(response, "Roadbook not available."));
   }
@@ -271,7 +273,7 @@ export async function analyzeRaceStream(
   raceId: string,
   onEvent: (event: AnalysisStreamEvent | unknown) => void,
 ): Promise<RoadbookResult> {
-  const response = await fetch(`/api/races/${raceId}/analyze/stream`, {
+  const response = await apiFetch(`/api/races/${raceId}/analyze/stream`, {
     method: "POST",
   });
 
@@ -322,6 +324,12 @@ export async function analyzeRaceStream(
   if (!result) {
     throw new Error("Analysis finished without a result.");
   }
+
+  const token = getAuthAccessToken();
+  if (token) {
+    void queueRacePush(token, raceId);
+  }
+
   return result;
 }
 
@@ -329,7 +337,7 @@ export async function saveRaceClimbNicknames(
   raceId: string,
   nicknames: Record<string, string>,
 ): Promise<{ climbs: RoadbookResult["climbs"] }> {
-  const response = await fetch(`/api/races/${raceId}/climbs/nicknames`, {
+  const response = await apiFetch(`/api/races/${raceId}/climbs/nicknames`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ nicknames }),
@@ -349,7 +357,7 @@ export async function recalculateRaceClimbs(
   summary: { climb_count: number };
   config: import("../api").ClimbDetectionConfig;
 }> {
-  const response = await fetch(`/api/races/${raceId}/climbs/recalculate`, {
+  const response = await apiFetch(`/api/races/${raceId}/climbs/recalculate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
@@ -465,7 +473,7 @@ export function racePreviewCacheBaseUrl(raceId: string, cacheVersion = 0): strin
 
 export async function fetchRoutePreviewRuntime(raceId: string, cacheBust?: string | number) {
   const suffix = cacheBust ? `?v=${encodeURIComponent(String(cacheBust))}` : `?t=${Date.now()}`;
-  const response = await fetch(`/api/races/${raceId}/preview/runtime${suffix}`, {
+  const response = await apiFetch(`/api/races/${raceId}/preview/runtime${suffix}`, {
     cache: "no-store",
   });
   if (!response.ok) {
@@ -475,7 +483,7 @@ export async function fetchRoutePreviewRuntime(raceId: string, cacheBust?: strin
 }
 
 export async function fetchRoutePreviewStatus(raceId: string): Promise<RoutePreviewStatus> {
-  const response = await fetch(`/api/races/${raceId}/preview/status?t=${Date.now()}`, {
+  const response = await apiFetch(`/api/races/${raceId}/preview/status?t=${Date.now()}`, {
     cache: "no-store",
   });
   if (!response.ok) {
@@ -510,7 +518,7 @@ async function consumePreviewStream(
   endpoint: string,
   onEvent: (event: RoutePreviewStreamEvent) => void,
 ): Promise<void> {
-  const response = await fetch(endpoint, {
+  const response = await apiFetch(endpoint, {
     method: "POST",
     cache: "no-store",
   });

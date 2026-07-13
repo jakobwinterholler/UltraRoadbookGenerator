@@ -1,3 +1,4 @@
+import { apiFetch } from "../api/authFetch";
 import type { SettingsSnapshot } from "./types";
 
 async function parseError(response: Response, fallback: string): Promise<string> {
@@ -7,7 +8,7 @@ async function parseError(response: Response, fallback: string): Promise<string>
 }
 
 export async function fetchAppSettings(): Promise<SettingsSnapshot> {
-  const response = await fetch("/api/settings");
+  const response = await apiFetch("/api/settings");
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to load settings."));
   }
@@ -19,7 +20,7 @@ export async function patchAppSettings(body: {
   analysis?: Partial<SettingsSnapshot["analysis"]>;
   appearance?: Partial<SettingsSnapshot["appearance"]>;
 }): Promise<SettingsSnapshot> {
-  const response = await fetch("/api/settings", {
+  const response = await apiFetch("/api/settings", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -31,7 +32,7 @@ export async function patchAppSettings(body: {
 }
 
 export async function fetchRaceSettings(raceId: string): Promise<SettingsSnapshot> {
-  const response = await fetch(`/api/races/${raceId}/settings`);
+  const response = await apiFetch(`/api/races/${raceId}/settings`);
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to load race settings."));
   }
@@ -45,7 +46,7 @@ export async function patchRaceSettings(
     planning?: Partial<SettingsSnapshot["planning"]>;
   },
 ): Promise<SettingsSnapshot> {
-  const response = await fetch(`/api/races/${raceId}/settings`, {
+  const response = await apiFetch(`/api/races/${raceId}/settings`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

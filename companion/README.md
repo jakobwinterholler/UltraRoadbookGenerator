@@ -4,7 +4,7 @@ Offline race-day PWA — separate from [Ultra Roadbook](../).
 
 **Deploy to Vercel:** see [DEPLOY.md](./DEPLOY.md)
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FYOUR_USER%2FYOUR_REPO&project-name=race-companion&root-directory=companion)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fjakobwinterholler%2FUltraRoadbookGenerator&project-name=companion&root-directory=companion)
 
 ## Screens
 

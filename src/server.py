@@ -7,7 +7,7 @@ from dataclasses import asdict
 from typing import Any
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -30,6 +30,10 @@ from app_settings import AppSettings, app_settings_store
 from race_project import RaceSettings, race_store
 from route_preview_render import get_preview_status, start_preview_generation, start_preview_prepare
 from race_open_trace import race_open_trace
+from auth.dependencies import get_optional_user, require_user
+from auth.jwt import AuthUser
+from cloud.config import cloud_config
+from cloud.race_sync import CloudSyncError, get_companion_bundle, list_sync_races, push_all_local_races, push_race, soft_delete_race
 
 PREVIEW_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -56,13 +60,45 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://companion-flax.vercel.app",
+        "https://companion-road-book.vercel.app",
     ],
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _account_payload(user: AuthUser | None) -> dict[str, Any]:
+    storage = app_settings_store.storage_summary()
+    return {
+        "signed_in": user is not None,
+        "email": user.email if user else None,
+        "display_name": None,
+        "cloud_sync_enabled": cloud_config.sync_enabled,
+        "storage": storage,
+    }
+
+
+def _safe_push_race(user_id: str, race_id: str) -> None:
+    try:
+        push_race(user_id, race_id)
+    except Exception:
+        pass
+
+
+def _schedule_cloud_sync(
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None,
+    race_id: str,
+) -> None:
+    if user and cloud_config.sync_enabled:
+        background_tasks.add_task(_safe_push_race, user.id, race_id)
 
 
 def _require_session():
@@ -122,21 +158,16 @@ class RaceSettingsBody(BaseModel):
 
 
 @app.get("/api/settings")
-def get_app_settings() -> dict:
+def get_app_settings(user: AuthUser | None = Depends(get_optional_user)) -> dict:
     app = app_settings_store.load()
-    storage = app_settings_store.storage_summary()
     return {
         **effective_settings_payload(app, None, scope="app"),
-        "account": {
-            "signed_in": False,
-            "cloud_sync_enabled": False,
-            "storage": storage,
-        },
+        "account": _account_payload(user),
     }
 
 
 @app.patch("/api/settings")
-def patch_app_settings(body: AppSettingsBody) -> dict:
+def patch_app_settings(body: AppSettingsBody, user: AuthUser | None = Depends(get_optional_user)) -> dict:
     from app_settings import AnalysisDefaults, AppearanceDefaults, PlanningDefaults
 
     current = app_settings_store.load()
@@ -150,32 +181,22 @@ def patch_app_settings(body: AppSettingsBody) -> dict:
         merged = {**current.appearance.to_dict(), **body.appearance}
         current.appearance = AppearanceDefaults.from_dict(merged)
     app_settings_store.save(current)
-    storage = app_settings_store.storage_summary()
     return {
         **effective_settings_payload(current, None, scope="app"),
-        "account": {
-            "signed_in": False,
-            "cloud_sync_enabled": False,
-            "storage": storage,
-        },
+        "account": _account_payload(user),
     }
 
 
 @app.get("/api/races/{race_id}/settings")
-def get_race_settings(race_id: str) -> dict:
+def get_race_settings(race_id: str, user: AuthUser | None = Depends(get_optional_user)) -> dict:
     race = _require_race(race_id)
     app = app_settings_store.load()
-    storage = app_settings_store.storage_summary()
     return {
         **effective_settings_payload(app, race.settings, scope="race"),
         "race_id": race_id,
         "race_name": race.meta.name,
         "has_analysis": race_store.has_analysis(race_id),
-        "account": {
-            "signed_in": False,
-            "cloud_sync_enabled": False,
-            "storage": storage,
-        },
+        "account": _account_payload(user),
     }
 
 
@@ -321,12 +342,15 @@ def list_races() -> dict:
 
 @app.post("/api/races")
 async def create_race(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
+    user: AuthUser | None = Depends(get_optional_user),
 ) -> dict:
     file_bytes = await file.read()
     _validate_gpx_upload(file, file_bytes)
     race = race_store.create_race(filename=file.filename, gpx_bytes=file_bytes, name=name)
+    _schedule_cloud_sync(background_tasks, user, race.id)
     return {"race": race_store.get_summary(race.id).to_dict()}
 
 
@@ -345,20 +369,32 @@ def get_race(race_id: str) -> dict:
 
 
 @app.patch("/api/races/{race_id}")
-def patch_race(race_id: str, body: RaceRenameBody) -> dict:
+def patch_race(
+    race_id: str,
+    body: RaceRenameBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> dict:
     _require_race(race_id)
     race = race_store.rename_race(race_id, body.name)
+    _schedule_cloud_sync(background_tasks, user, race_id)
     return {"race": race_store.get_summary(race.id).to_dict()}
 
 
 @app.patch("/api/races/{race_id}/preparation")
-def patch_race_preparation(race_id: str, body: PreparationProgressBody) -> dict:
+def patch_race_preparation(
+    race_id: str,
+    body: PreparationProgressBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> dict:
     _require_race(race_id)
     race = race_store.update_preparation(
         race_id,
         progress=body.progress if body.progress else None,
         verified_stops=body.verified_stops,
     )
+    _schedule_cloud_sync(background_tasks, user, race_id)
     return {
         "preparation": race.preparation.to_dict(),
         "race": race_store.get_summary(race_id).to_dict(),
@@ -366,10 +402,16 @@ def patch_race_preparation(race_id: str, body: PreparationProgressBody) -> dict:
 
 
 @app.delete("/api/races/{race_id}")
-def delete_race(race_id: str) -> dict[str, str]:
+def delete_race(
+    race_id: str,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> dict[str, str]:
     _require_race(race_id)
     clear_race_cache(race_id)
     race_store.delete_race(race_id)
+    if user and cloud_config.enabled:
+        background_tasks.add_task(soft_delete_race, user.id, race_id)
     return {"status": "deleted"}
 
 
@@ -427,7 +469,11 @@ def _run_race_analysis_with_progress(
 
 
 @app.post("/api/races/{race_id}/analyze")
-def analyze_race(race_id: str) -> dict:
+def analyze_race(
+    race_id: str,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> dict:
     _require_race(race_id)
     race = race_store.get_race(race_id)
     gpx_path = race_store.get_gpx_path(race_id)
@@ -448,6 +494,7 @@ def analyze_race(race_id: str) -> dict:
 
     roadbook = roadbook_to_dict(artifacts.roadbook)
     race_store.save_analysis(race_id, roadbook)
+    _schedule_cloud_sync(background_tasks, user, race_id)
     return roadbook
 
 
@@ -509,7 +556,12 @@ def recalculate_race_climbs(race_id: str, body: ClimbDetectionConfigBody) -> dic
 
 
 @app.post("/api/races/{race_id}/climbs/nicknames")
-def save_race_climb_nicknames(race_id: str, body: ClimbNicknamesBody) -> dict:
+def save_race_climb_nicknames(
+    race_id: str,
+    body: ClimbNicknamesBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+) -> dict:
     _race_cache(race_id)
     try:
         artifacts = update_climb_nicknames(body.nicknames, race_id=race_id)
@@ -517,6 +569,7 @@ def save_race_climb_nicknames(race_id: str, body: ClimbNicknamesBody) -> dict:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     race_store.update_preparation(race_id, climb_nicknames=body.nicknames)
+    _schedule_cloud_sync(background_tasks, user, race_id)
     return {"climbs": [asdict(climb) for climb in artifacts.roadbook.climbs]}
 
 
@@ -805,6 +858,79 @@ def export_validation_gpx() -> FileResponse:
         filename="surface_validation.gpx",
         media_type="application/gpx+xml",
     )
+
+
+# --- Cloud sync (Companion + desktop background upload) ---
+
+
+class SyncPushBody(BaseModel):
+    race_id: str
+
+
+@app.get("/api/auth/me")
+def auth_me(user: AuthUser = Depends(require_user)) -> dict:
+    return {"id": user.id, "email": user.email}
+
+
+@app.get("/api/sync/races")
+def sync_list_races(user: AuthUser = Depends(require_user)) -> dict:
+    try:
+        races = list_sync_races(user.id)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {
+        "races": [
+            {
+                "id": race["id"],
+                "name": race["name"],
+                "distance_km": race.get("distance_km"),
+                "elevation_gain_m": race.get("elevation_gain_m"),
+                "companion_revision": race.get("companion_revision") or 0,
+                "updated_at": race.get("updated_at"),
+                "analyzed_at": race.get("analyzed_at"),
+                "has_bundle": bool(race.get("has_bundle")),
+            }
+            for race in races
+        ]
+    }
+
+
+@app.get("/api/sync/races/{race_id}/bundle")
+def sync_get_bundle(race_id: str, user: AuthUser = Depends(require_user)) -> dict:
+    try:
+        return get_companion_bundle(user.id, race_id)
+    except CloudSyncError as exc:
+        message = str(exc)
+        status = 404 if "not found" in message.lower() or "not been analyzed" in message.lower() else 502
+        raise HTTPException(status_code=status, detail=message) from exc
+
+
+@app.post("/api/sync/push")
+def sync_push_race(
+    body: SyncPushBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_user),
+) -> dict:
+    _require_race(body.race_id)
+    background_tasks.add_task(_safe_push_race, user.id, body.race_id)
+    return {"status": "queued", "race_id": body.race_id}
+
+
+@app.post("/api/sync/push-now")
+def sync_push_race_now(body: SyncPushBody, user: AuthUser = Depends(require_user)) -> dict:
+    _require_race(body.race_id)
+    try:
+        return push_race(user.id, body.race_id)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/sync/push-all")
+def sync_push_all(user: AuthUser = Depends(require_user)) -> dict:
+    try:
+        return push_all_local_races(user.id)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 # Serve the built React app when available (production / single-server mode).
