@@ -1,0 +1,174 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+  }
+}
+
+@layer utilities {
+  .text-display {
+    @apply text-4xl leading-tight;
+  }
+
+  .text-h1 {
+    @apply text-[1.75rem] leading-snug;
+  }
+
+  .text-h2 {
+    @apply text-xl leading-snug;
+  }
+
+  .text-body {
+    @apply text-base leading-relaxed;
+  }
+
+  .text-caption {
+    @apply text-[0.8125rem] leading-normal;
+  }
+
+  .text-stat {
+    @apply text-3xl font-semibold tracking-tight;
+  }
+
+  .rounded-panel {
+    @apply rounded-2xl;
+  }
+
+  .rounded-button {
+    @apply rounded-xl;
+  }
+
+  .shadow-soft {
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.06);
+  }
+
+  .dashboard-challenge-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    font-size: 18px;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 9999px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+  }
+
+  .dashboard-challenge-marker--active {
+    transform: scale(1.12);
+    border-color: rgba(232, 93, 4, 0.55);
+    box-shadow:
+      0 0 0 3px rgba(232, 93, 4, 0.18),
+      0 2px 8px rgba(232, 93, 4, 0.28);
+  }
+
+  .dashboard-route-active-segment {
+    filter: drop-shadow(0 0 4px rgba(232, 93, 4, 0.55));
+  }
+
+  .route-context-marker {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    font-size: 16px;
+    line-height: 1;
+    background: rgba(255, 255, 255, 0.94);
+    border: 1px solid rgba(0, 0, 0, 0.12);
+    border-radius: 9999px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16);
+  }
+
+  .route-context-marker--active {
+    transform: scale(1.08);
+    border-color: rgba(37, 99, 235, 0.55);
+    box-shadow:
+      0 0 0 2px rgba(37, 99, 235, 0.16),
+      0 2px 6px rgba(37, 99, 235, 0.22);
+  }
+
+  .route-context-marker {
+    position: relative;
+  }
+
+  .route-context-marker__verified {
+    position: absolute;
+    top: -4px;
+    right: -5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 11px;
+    height: 11px;
+    border-radius: 9999px;
+    background: #10b981;
+    border: 1.5px solid #fff;
+    color: #fff;
+    font-size: 7px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  }
+
+  .route-preview-verified-stop {
+    width: 16px;
+    height: 16px;
+  }
+
+  .route-preview-verified-stop__badge {
+    position: relative;
+    top: 0;
+    right: 0;
+    width: 14px;
+    height: 14px;
+    font-size: 8px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+  }
+
+  .verification-route-endpoint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 9999px;
+    background: rgba(109, 40, 217, 0.92);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.95),
+      0 2px 8px rgba(109, 40, 217, 0.35);
+  }
+
+  .verification-map .leaflet-tile-pane {
+    filter: saturate(0.92) contrast(1.04);
+  }
+
+  /* Outdoor planning palette — soft greens, blues and browns; route stays on top. */
+  .planning-map .leaflet-tile-pane {
+    filter: saturate(1.12) contrast(0.96) brightness(1.06);
+  }
+
+  .planning-map .leaflet-overlay-pane {
+    filter: none;
+  }
+
+  /* Developer basemap comparison — no filters; show provider tiles as-is. */
+  .map-style-evaluation .leaflet-tile-pane {
+    filter: none;
+  }
+
+  .map-style-evaluation .leaflet-overlay-pane {
+    filter: none;
+  }
+}

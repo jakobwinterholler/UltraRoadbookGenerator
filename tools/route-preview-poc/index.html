@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Route Preview POC</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #050505;
+        font-family: Inter, system-ui, sans-serif;
+      }
+
+      #stage {
+        position: relative;
+        width: 2560px;
+        height: 1440px;
+        overflow: hidden;
+        background: #050505;
+      }
+
+      #canvas-host {
+        position: absolute;
+        inset: 0;
+      }
+
+      #canvas-host canvas {
+        display: block;
+        width: 2560px;
+        height: 1440px;
+      }
+
+      #vignette {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(
+          ellipse at center,
+          rgba(0, 0, 0, 0) 52%,
+          rgba(0, 0, 0, 0.22) 100%
+        );
+      }
+
+      #overlay {
+        position: absolute;
+        left: 128px;
+        bottom: 220px;
+        max-width: 680px;
+        padding: 36px 40px 34px;
+        border-radius: 22px;
+        background: rgba(8, 8, 10, 0.22);
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        color: #fff;
+        opacity: 0;
+        transform: translateY(22px);
+        transition: none;
+        pointer-events: none;
+      }
+
+      #overlay .eyebrow {
+        font-size: 14px;
+        font-weight: 500;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        opacity: 0.76;
+        margin-bottom: 18px;
+      }
+
+      #overlay .name {
+        font-size: 68px;
+        line-height: 1.02;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        margin-bottom: 28px;
+      }
+
+      #overlay .stats {
+        display: grid;
+        gap: 10px;
+        font-size: 34px;
+        line-height: 1.12;
+        font-weight: 400;
+        letter-spacing: -0.025em;
+        margin-bottom: 32px;
+        opacity: 0.94;
+      }
+
+      #overlay .water-label {
+        font-size: 13px;
+        font-weight: 500;
+        letter-spacing: 0.2em;
+        text-transform: uppercase;
+        opacity: 0.62;
+        margin-bottom: 10px;
+      }
+
+      #overlay .water-value {
+        font-size: 26px;
+        font-weight: 400;
+        letter-spacing: -0.015em;
+        opacity: 0.92;
+      }
+
+      #climb-strip {
+        position: absolute;
+        left: 50%;
+        bottom: 72px;
+        transform: translateX(-50%) translateY(12px);
+        width: min(1180px, calc(100% - 256px));
+        padding: 22px 28px 20px;
+        border-radius: 18px;
+        background: rgba(8, 8, 10, 0.18);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        color: rgba(255, 255, 255, 0.88);
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      #climb-strip .strip-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 32px;
+        margin-bottom: 16px;
+      }
+
+      #climb-strip .metric {
+        min-width: 0;
+      }
+
+      #climb-strip .metric-label {
+        font-size: 11px;
+        font-weight: 500;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        opacity: 0.52;
+        margin-bottom: 6px;
+      }
+
+      #climb-strip .metric-value {
+        font-size: 22px;
+        font-weight: 500;
+        letter-spacing: -0.02em;
+        white-space: nowrap;
+      }
+
+      #climb-strip .metric-sub {
+        font-size: 14px;
+        font-weight: 400;
+        opacity: 0.58;
+        margin-top: 4px;
+        letter-spacing: -0.01em;
+      }
+
+      #climb-strip .profile-wrap {
+        position: relative;
+        height: 54px;
+      }
+
+      #climb-strip svg {
+        display: block;
+        width: 100%;
+        height: 54px;
+      }
+
+      #climb-strip .profile-line {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.42);
+        stroke-width: 1.5;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      #climb-strip .profile-fill {
+        fill: url(#profileGradient);
+        opacity: 0.14;
+      }
+
+      #climb-strip .profile-marker {
+        fill: #fff;
+        opacity: 0.92;
+      }
+
+      #climb-strip .profile-track {
+        fill: none;
+        stroke: rgba(255, 255, 255, 0.1);
+        stroke-width: 1;
+      }
+
+      #loading {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 14px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="stage">
+      <div id="canvas-host"></div>
+      <div id="vignette"></div>
+      <div id="overlay" hidden>
+        <div class="eyebrow"></div>
+        <div class="name"></div>
+        <div class="stats"></div>
+        <div class="water-label">Last verified water</div>
+        <div class="water-value"></div>
+      </div>
+      <div id="climb-strip" hidden>
+        <div class="strip-row">
+          <div class="metric">
+            <div class="metric-label">Distance</div>
+            <div class="metric-value" id="metric-distance">—</div>
+            <div class="metric-sub" id="metric-distance-sub">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Elevation</div>
+            <div class="metric-value" id="metric-elevation">—</div>
+            <div class="metric-sub" id="metric-elevation-sub">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Altitude</div>
+            <div class="metric-value" id="metric-altitude">—</div>
+            <div class="metric-sub" id="metric-altitude-sub">—</div>
+          </div>
+          <div class="metric">
+            <div class="metric-label">Gradient</div>
+            <div class="metric-value" id="metric-gradient">—</div>
+            <div class="metric-sub" id="metric-gradient-sub">last 100 m</div>
+          </div>
+        </div>
+        <div class="profile-wrap">
+          <svg viewBox="0 0 1124 54" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id="profileGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="#ffffff" />
+                <stop offset="100%" stop-color="#ffffff" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+            <path class="profile-track" d="M0,48 H1124" />
+            <path class="profile-fill" id="profile-fill" d="" />
+            <path class="profile-line" id="profile-line" d="" />
+            <circle class="profile-marker" id="profile-marker" r="4.5" cx="0" cy="0" />
+          </svg>
+        </div>
+      </div>
+      <div id="loading">Loading terrain…</div>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

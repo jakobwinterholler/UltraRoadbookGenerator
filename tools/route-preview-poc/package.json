@@ -1,0 +1,16 @@
+{
+  "name": "route-preview-poc",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prepare-segment": "python3 ../../scripts/prepare_route_preview_poc.py",
+    "render": "node capture.mjs",
+    "render:quick": "node capture.mjs --quick"
+  },
+  "dependencies": {
+    "three": "^0.172.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1"
+  }
+}

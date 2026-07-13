@@ -1,0 +1,42 @@
+{
+  "planning": {
+    "poi_profile": {
+      "mini_supermarkets": true,
+      "small_supermarkets": true,
+      "convenience_stores": true,
+      "gas_stations": true,
+      "drinking_water": true,
+      "bakeries": true,
+      "restaurants": false,
+      "cafes": false,
+      "fast_food": false,
+      "atms": false,
+      "pharmacies": false,
+      "bike_shops": false,
+      "dining_fallback_km": 30.0,
+      "dining_fallback_enabled": true
+    },
+    "climb_sensitivity": "normal",
+    "climb_config": {
+      "smoothing_window_m": 60.0,
+      "rolling_gradient_window_m": 100.0,
+      "gradient_threshold_pct": 1.0,
+      "meaningful_descent_threshold_m": 50.0,
+      "min_elevation_gain_m": 50.0,
+      "min_average_gradient_pct": 3.0
+    },
+    "preferred_stage_length_km": 75,
+    "max_gap_without_resupply_km": 50,
+    "default_arrival_time_window": null,
+    "default_zone_density": "planning"
+  },
+  "analysis": {
+    "refresh_osm_on_analyse": true
+  },
+  "appearance": {
+    "theme": "system",
+    "mapStyle": "standard",
+    "language": "en",
+    "units": "metric"
+  }
+}
