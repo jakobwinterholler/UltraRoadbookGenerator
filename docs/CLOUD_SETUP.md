@@ -3,20 +3,18 @@
 ## 1. Supabase project
 
 1. Create a project at [supabase.com](https://supabase.com)
-2. Run `supabase/migrations/001_phase1.sql` in the SQL editor
-3. Create a **private** storage bucket named `race-assets`
-4. Add storage policy (SQL editor):
+2. Apply the migration (creates `profiles`, `races`, RLS, storage bucket):
 
-```sql
-create policy "Users read own race assets"
-  on storage.objects for select
-  using (
-    bucket_id = 'race-assets'
-    and auth.uid()::text = (storage.foldername(name))[1]
-  );
+```bash
+pip install psycopg2-binary python-dotenv
+# Supabase Dashboard → Project Settings → Database → database password
+export SUPABASE_DB_PASSWORD='your-database-password'
+python scripts/apply_supabase_migration.py
 ```
 
-5. Copy from **Project Settings → API**:
+Or paste the SQL from `supabase/migrations/001_phase1.sql` into the Supabase SQL editor.
+
+3. Copy from **Project Settings → API**:
    - Project URL → `SUPABASE_URL` / `VITE_SUPABASE_URL`
    - **anon** or **publishable** key → `SUPABASE_ANON_KEY` / `VITE_SUPABASE_ANON_KEY`
    - service_role key → `SUPABASE_SERVICE_ROLE_KEY` (backend only)
