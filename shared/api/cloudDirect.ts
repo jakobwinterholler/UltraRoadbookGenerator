@@ -2,6 +2,17 @@ import { getSupabaseClient } from "../auth/supabaseClient";
 import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
 import { isCompanionBundle } from "../types/sync";
 
+interface CloudRaceRow {
+  id: string;
+  name: string;
+  distance_km: number | null;
+  elevation_gain_m: number | null;
+  companion_revision: number | null;
+  updated_at: string | null;
+  analyzed_at: string | null;
+  has_bundle: boolean | null;
+}
+
 /** Read cloud races directly from Supabase (Companion production — no API server needed). */
 export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
   const supabase = getSupabaseClient();
@@ -17,7 +28,7 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((race) => ({
+  return (data ?? []).map((race: CloudRaceRow) => ({
     id: race.id,
     name: race.name,
     distance_km: race.distance_km,
