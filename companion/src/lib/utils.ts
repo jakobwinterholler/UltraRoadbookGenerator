@@ -1,4 +1,9 @@
 import type { CompanionBundle, CompanionStop, ResupplyTimelineEntry } from "../types";
+import {
+  googleMapsUrl as sharedGoogleMapsUrl,
+  googleStreetViewUrl as sharedGoogleStreetViewUrl,
+  type StreetViewUrlOptions,
+} from "@shared/race/streetViewUrl";
 
 export function buildResupplyTimeline(
   bundle: CompanionBundle,
@@ -23,12 +28,23 @@ export function formatKm(km: number): string {
   return `${Math.round(km)} km`;
 }
 
-export function googleMapsUrl(lat: number, lon: number): string {
-  return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
+export function googleMapsUrl(lat: number, lon: number, placeId?: string | null): string {
+  return sharedGoogleMapsUrl(lat, lon, placeId);
 }
 
-export function googleStreetViewUrl(lat: number, lon: number): string {
-  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${lat},${lon}`;
+export function googleStreetViewUrl(
+  stop: Pick<CompanionStop, "lat" | "lon" | "placeId" | "km">,
+  options?: StreetViewUrlOptions,
+): string {
+  return sharedGoogleStreetViewUrl(
+    {
+      lat: stop.lat,
+      lon: stop.lon,
+      placeId: stop.placeId,
+      routeKm: stop.km,
+    },
+    options,
+  );
 }
 
 export function stopByZoneId(bundle: CompanionBundle, zoneId: number): CompanionStop | null {

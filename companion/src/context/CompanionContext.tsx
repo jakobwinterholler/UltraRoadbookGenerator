@@ -1,14 +1,20 @@
 import { createContext, useContext } from "react";
+import type { RouteTrack } from "@shared/race/mapMatching";
 import type { CompanionBundle, CompanionStop } from "../types";
+import type { RaceGpsState } from "../lib/useRaceGps";
 
 export interface CompanionContextValue {
   bundle: CompanionBundle;
   currentKm: number;
-  setCurrentKm: (km: number) => void;
+  gps: RaceGpsState;
+  routeTrack: RouteTrack | null;
   selectedStop: CompanionStop | null;
   selectStop: (stop: CompanionStop | null) => void;
   showUnverified: boolean;
   setShowUnverified: (value: boolean) => void;
+  mapGesturesLocked: boolean;
+  setMapGesturesLocked: (locked: boolean) => void;
+  updateBundle: (bundle: CompanionBundle) => void;
   clearRace: () => Promise<void>;
 }
 

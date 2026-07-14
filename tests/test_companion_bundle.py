@@ -59,4 +59,6 @@ def test_build_companion_bundle_minimal():
     assert len(bundle["stops"]) == 1
     assert bundle["stops"][0]["verificationStatus"] == "verified"
     assert bundle["stops"][0]["notes"] == "Good stop"
+    assert bundle["stops"][0]["hasWater"] is True
+    assert bundle["dashboardStats"]["readinessScore"] >= 0
     assert len(bundle["route"]["coordinates"]) == 2

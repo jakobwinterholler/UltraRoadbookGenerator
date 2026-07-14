@@ -1,7 +1,7 @@
 import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
 
 const DB_NAME = "race-companion";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const BUNDLE_STORE = "bundles";
 const LIST_STORE = "raceList";
 const META_STORE = "meta";
@@ -25,6 +25,11 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE);
+      }
+      if (!db.objectStoreNames.contains("verifications")) {
+        const store = db.createObjectStore("verifications", { keyPath: "id" });
+        store.createIndex("raceId", "raceId", { unique: false });
+        store.createIndex("synced", "synced", { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -76,6 +81,7 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
           ...existing,
           downloadedRevision: bundle.revision ?? existing.companion_revision,
           offlineReady: true,
+          readiness_score: bundle.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
         });
       }
     };
@@ -123,6 +129,20 @@ export async function clearCompanionData(): Promise<void> {
 
 export async function setActiveRaceId(raceId: string): Promise<void> {
   localStorage.setItem(ACTIVE_KEY, raceId);
+}
+
+export async function estimateCompanionStorageBytes(): Promise<number | null> {
+  if (typeof navigator !== "undefined" && navigator.storage?.estimate) {
+    try {
+      const estimate = await navigator.storage.estimate();
+      if (typeof estimate.usage === "number") {
+        return estimate.usage;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 export type { StoredRaceListItem };

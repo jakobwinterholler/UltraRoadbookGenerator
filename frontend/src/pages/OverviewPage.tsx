@@ -15,8 +15,23 @@ import {
   dashboardOverviewHighlights,
 } from "../planning/routeHighlights";
 import { presentZones } from "../planning/zonePresentation";
+import CompanionVerificationReview from "../components/verification/CompanionVerificationReview";
 import { PreparationProgress } from "../components/races/RaceCard";
 import { useRace } from "../races/RaceContext";
+import { computeDashboardStatsFromRoadbook } from "../races/dashboardStats";
+import { verifiedStopKey } from "../planning/stopVerification/types";
+import type { VerifiedStopRecord } from "../planning/stopVerification/types";
+import type { ResupplyZone } from "../api";
+import type { StopConfidenceInput } from "@shared/race/stopConfidence";
+import { StopConfidenceOverview } from "@shared/ui/StopConfidenceDisplay";
+import {
+  formatLastVerification,
+  RaceStatsGrid,
+  ReadinessReasonsList,
+  ReadinessScoreBadge,
+  ReadinessStatusHeader,
+} from "@shared/ui/RaceReadinessDisplay";
+import { useSettings } from "../settings/SettingsContext";
 
 interface DashboardPageProps {
   result: RoadbookResult;
@@ -37,11 +52,64 @@ function briefingHighlightsWithoutClimbs<T extends { id: string }>(
   );
 }
 
+function primaryPoi(zone: ResupplyZone) {
+  for (const key of ["water", "food", "fuel"] as const) {
+    const group = zone.categories.find((item) => item.key === key);
+    if (group?.primary) {
+      return group.primary;
+    }
+  }
+  return zone.categories.find((group) => group.primary)?.primary ?? null;
+}
+
+function stopConfidenceInputs(
+  zones: ResupplyZone[],
+  verifiedStops: Record<string, VerifiedStopRecord>,
+): Array<StopConfidenceInput & { name: string; zoneId: number }> {
+  return zones.map((zone) => {
+    const poi = primaryPoi(zone);
+    const record = verifiedStops[verifiedStopKey(zone.zone_id)];
+    const status = record?.status;
+    let verificationStatus: StopConfidenceInput["verificationStatus"] = "unverified";
+    if (status === "verified") {
+      verificationStatus = "verified";
+    } else if (status === "rejected") {
+      verificationStatus = "rejected";
+    } else if (status === "deferred") {
+      verificationStatus = "deferred";
+    }
+    return {
+      zoneId: zone.zone_id,
+      name: poi?.name?.trim() || zone.name || `Zone ${zone.zone_id}`,
+      verificationStatus,
+      verifiedAt: record?.updatedAt ?? null,
+      poiScore: poi?.score ?? null,
+      openingHours: poi?.opening_hours ?? null,
+      website: poi?.website ?? null,
+      phone: poi?.phone ?? null,
+    };
+  });
+}
+
 export default function DashboardPage({ result, raceId, onNavigate }: DashboardPageProps) {
   useRenderTrace("render.dashboard.start", "render.dashboard.done");
   const { activeRace, refreshRaces, verifiedStops } = useRace();
+  const { settings } = useSettings();
   const { timeMode, zoneDensity, setPlanningIntent } = usePlanning();
   const { hoveredHighlightId, setHoveredHighlightId } = useHighlightHoverSync();
+
+  const dashboardStats = useMemo(() => {
+    const assumptions = settings?.planning
+      ? {
+          ridingSpeedKmh: 20,
+          climbingPenaltyMinPer100m: 3,
+          waterMlPerHour: 500,
+          carbsGPerHour: 60,
+          maxGapWithoutResupplyKm: settings.planning.max_gap_without_resupply_km,
+        }
+      : undefined;
+    return computeDashboardStatsFromRoadbook(result, verifiedStops, assumptions);
+  }, [result, settings?.planning, verifiedStops]);
 
   const presentedZones = useMemo(
     () =>
@@ -81,6 +149,11 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
     [overviewHighlights, keyClimbs.length],
   );
 
+  const stopConfidence = useMemo(
+    () => stopConfidenceInputs(result.resupply_zones, verifiedStops),
+    [result.resupply_zones, verifiedStops],
+  );
+
   const hardestClimb = keyClimbs[0] ?? null;
 
   function handleSelectHighlight(highlight: (typeof highlights)[number]) {
@@ -105,6 +178,40 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
           What should I know before I start planning?
         </p>
       </header>
+
+      <CompanionVerificationReview raceId={raceId} onReviewed={() => void refreshRaces()} />
+
+      <section className="mb-10 rounded-2xl border border-line bg-card p-6 shadow-card">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <ReadinessStatusHeader
+              score={dashboardStats.readiness_score}
+              unverifiedStops={dashboardStats.unverified_stops}
+            />
+            <p className="mt-2 text-sm text-muted">
+              Computed from verification, resupply coverage, and opening hours.
+            </p>
+          </div>
+          <ReadinessScoreBadge score={dashboardStats.readiness_score} />
+        </div>
+        <div className="mt-5">
+          <RaceStatsGrid stats={dashboardStats} />
+        </div>
+        <ReadinessReasonsList reasons={dashboardStats.readiness_reasons} className="mt-4" />
+        <p className="mt-4 text-xs text-muted">
+          Last verified {formatLastVerification(dashboardStats.last_verification_at)}
+        </p>
+      </section>
+
+      <section className="mb-10 rounded-2xl border border-line bg-card p-6 shadow-card">
+        <h2 className="text-sm font-medium text-ink">Stop confidence</h2>
+        <p className="mt-1 text-sm text-muted">
+          Based on verification age, confirmations, and POI data quality.
+        </p>
+        <div className="mt-4">
+          <StopConfidenceOverview stops={stopConfidence} />
+        </div>
+      </section>
 
       <section className="mb-10">
         <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-muted">

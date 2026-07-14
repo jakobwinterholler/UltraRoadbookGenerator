@@ -10,10 +10,14 @@ from pathlib import Path
 from urllib.parse import quote_plus
 
 try:
+    import httpx
+except ImportError:
+    httpx = None  # type: ignore[assignment]
+
+try:
     import psycopg2
 except ImportError:
-    print("Install psycopg2-binary: pip install psycopg2-binary", file=sys.stderr)
-    raise
+    psycopg2 = None  # type: ignore[assignment]
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MIGRATION = PROJECT_ROOT / "supabase" / "migrations" / "001_phase1.sql"
@@ -86,6 +90,46 @@ def verify_bucket(cursor) -> None:
     print("✓ storage bucket race-assets exists (private)")
 
 
+def apply_via_management_api(project_ref: str, sql: str, access_token: str) -> None:
+    if httpx is None:
+        raise RuntimeError("Install httpx: pip install httpx")
+
+    url = f"https://api.supabase.com/v1/projects/{project_ref}/database/query"
+    response = httpx.post(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json={"query": sql},
+        timeout=120.0,
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(
+            f"Management API migration failed ({response.status_code}): {response.text}"
+        )
+    print("✓ migration SQL executed via Supabase Management API")
+
+
+def verify_via_rest(project_ref: str) -> None:
+    if httpx is None:
+        return
+    load_dotenv()
+    anon_key = os.getenv("SUPABASE_ANON_KEY", "")
+    if not anon_key:
+        return
+    base = os.getenv("SUPABASE_URL", f"https://{project_ref}.supabase.co").rstrip("/")
+    for table in ("profiles", "races"):
+        response = httpx.get(
+            f"{base}/rest/v1/{table}?select=id&limit=1",
+            headers={"apikey": anon_key, "Authorization": f"Bearer {anon_key}"},
+            timeout=30.0,
+        )
+        if response.status_code == 404 and "PGRST205" in response.text:
+            raise RuntimeError(f"public.{table} still missing in PostgREST schema cache")
+        print(f"✓ REST API can reach public.{table}")
+
+
 def main() -> int:
     load_dotenv()
     parser = argparse.ArgumentParser(description="Apply Phase 1 Supabase migration")
@@ -104,17 +148,30 @@ def main() -> int:
         print(f"Migration not found: {MIGRATION}", file=sys.stderr)
         return 1
 
+    sql = MIGRATION.read_text(encoding="utf-8")
+    access_token = os.getenv("SUPABASE_ACCESS_TOKEN", "")
+
+    if access_token:
+        print(f"Applying migration to project {args.project_ref} via Management API…")
+        apply_via_management_api(args.project_ref, sql, access_token)
+        verify_via_rest(args.project_ref)
+        print("Migration applied successfully.")
+        return 0
+
+    if psycopg2 is None:
+        print("Install psycopg2-binary: pip install psycopg2-binary", file=sys.stderr)
+        return 1
+
     password = args.password
     if not password and not os.getenv("DATABASE_URL"):
         print(
-            "Set SUPABASE_DB_PASSWORD or DATABASE_URL, or pass --password",
+            "Set SUPABASE_ACCESS_TOKEN, SUPABASE_DB_PASSWORD, or DATABASE_URL",
             file=sys.stderr,
         )
         return 1
 
-    sql = MIGRATION.read_text(encoding="utf-8")
     dsn = build_dsn(args.project_ref, password)
-    print(f"Applying migration to project {args.project_ref}…")
+    print(f"Applying migration to project {args.project_ref} via Postgres…")
 
     with psycopg2.connect(dsn) as conn:
         conn.autocommit = True

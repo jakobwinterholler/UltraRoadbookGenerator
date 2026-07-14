@@ -86,6 +86,10 @@ export default function StopVerificationCard({
 
   const mapsLat = best?.poi.lat ?? zone.lat;
   const mapsLon = best?.poi.lon ?? zone.lon;
+  const routeCoordinates = useMemo(
+    () => route.track_points.map((point) => [point.lon, point.lat] as [number, number]),
+    [route.track_points],
+  );
   const routeKm = Math.round(zone.distance_along_km);
   const segmentKm = mapContextWindowKm(zone.distance_along_km, Number.isFinite(detourM) ? detourM : 0) * 2;
   const mapStory = stopMapStory(Number.isFinite(detourM) ? detourM : 0, segmentKm);
@@ -200,7 +204,17 @@ export default function StopVerificationCard({
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <a
-              href={googleStreetViewUrl(mapsLat, mapsLon)}
+              href={googleStreetViewUrl(
+                {
+                  lat: mapsLat,
+                  lon: mapsLon,
+                  routeKm: zone.distance_along_km,
+                },
+                {
+                  routeCoordinates,
+                  totalDistanceKm: totalKm,
+                },
+              )}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink transition hover:border-accent/40 hover:bg-accent/[0.03]"

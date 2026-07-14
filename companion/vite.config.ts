@@ -4,6 +4,7 @@ import path from "node:path";
 import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
+  envPrefix: ["VITE_", "NEXT_PUBLIC_"],
   resolve: {
     alias: {
       "@shared": path.resolve(__dirname, "../shared"),
@@ -57,6 +58,7 @@ export default defineConfig({
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
+        mode: "development",
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,

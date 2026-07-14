@@ -31,8 +31,8 @@ class CloudConfig:
 
     @property
     def sync_enabled(self) -> bool:
-        """Desktop → cloud upload (requires secret/service role key)."""
-        return bool(self.url and self.service_role_key)
+        """Desktop → cloud upload (service role and/or signed-in user token)."""
+        return bool(self.url and (self.service_role_key or self.anon_key))
 
     @property
     def enabled(self) -> bool:

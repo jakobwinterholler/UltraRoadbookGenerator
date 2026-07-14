@@ -3,7 +3,8 @@ import { useAuth } from "@shared/auth/AuthProvider";
 import { pushAllLocalRaces } from "@shared/api/sync";
 import { updateDeviceLastActive } from "@shared/sync/deviceProfile";
 import { setAuthAccessToken } from "../api/authFetch";
-import { recordSyncSuccess } from "./useAccountSync";
+import { recordSyncFailure, recordSyncSuccess } from "./useAccountSync";
+import { setSyncUserId } from "./syncUserContext";
 
 const IMPORTED_KEY = "cloud-sync-imported";
 
@@ -13,7 +14,8 @@ export function AuthSyncBridge() {
 
   useEffect(() => {
     setAuthAccessToken(accessToken);
-  }, [accessToken]);
+    setSyncUserId(user?.id ?? null);
+  }, [accessToken, user?.id]);
 
   useEffect(() => {
     if (!configured || !accessToken || !user || importedRef.current) {
@@ -28,9 +30,15 @@ export function AuthSyncBridge() {
     importedRef.current = true;
     void updateDeviceLastActive("desktop");
     void pushAllLocalRaces(accessToken)
-      .then(() => {
+      .then((result) => {
         localStorage.setItem(`${IMPORTED_KEY}:${user.id}`, "1");
         recordSyncSuccess(user.id);
+        if (result.failed.length > 0) {
+          recordSyncFailure(
+            user.id,
+            result.failed.map((entry) => entry.race_id),
+          );
+        }
       })
       .catch(() => {
         importedRef.current = false;

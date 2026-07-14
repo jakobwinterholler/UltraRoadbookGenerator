@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { normalizeSyncListError } from "@shared/api/supabaseErrors";
 import { fetchSyncRaces } from "@shared/api/sync";
 import type { SyncRaceSummary } from "@shared/types/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
@@ -47,7 +48,8 @@ export function useCloudRaceList() {
     } catch (err) {
       const local = await loadRaceList();
       setRaces(local);
-      setError(err instanceof Error ? err.message : "Failed to load races.");
+      const message = err instanceof Error ? err.message : "Failed to load races.";
+      setError(normalizeSyncListError(message));
     } finally {
       setLoading(false);
     }

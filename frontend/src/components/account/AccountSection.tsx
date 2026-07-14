@@ -1,12 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
-import { getAvatarUrl, getDisplayName } from "@shared/auth/profile";
+import {
+  getAuthProviderLabel,
+  getAvatarUrl,
+  getConnectedSince,
+  getDisplayName,
+} from "@shared/auth/profile";
 import { GoogleSignInButton } from "@shared/ui/GoogleSignInButton";
 import { Avatar, SigningInScreen } from "@shared/ui/AuthScreens";
+import { SyncStatusBadge, type SyncIndicator } from "@shared/ui/SyncStatusBadge";
 import { formatDeviceLastActive } from "@shared/sync/deviceActivity";
 import { readDevicesFromMetadata, updateDeviceLastActive } from "@shared/sync/deviceProfile";
+import { companionConnectionLabel } from "@shared/ui/accountDevices";
 import type { AccountSettings } from "../../settings/types";
-import { formatStorage } from "../../settings/api";
+import { formatStorage } from "@shared/ui/formatStorage";
 import { useAccountSync } from "../../sync/useAccountSync";
 
 interface AccountSectionProps {
@@ -28,7 +35,7 @@ function StatRow({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <span className="text-sm text-muted">{label}</span>
-      <span className="text-sm font-medium text-ink">{value}</span>
+      <span className="text-right text-sm font-medium text-ink">{value}</span>
     </div>
   );
 }
@@ -44,38 +51,108 @@ function DeleteAccountModal({
   onConfirm: () => void;
   busy: boolean;
 }) {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [typed, setTyped] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setStep(1);
+      setTyped("");
+    }
+  }, [open]);
+
   if (!open) {
     return null;
   }
+
+  const canConfirm = typed.trim().toUpperCase() === "DELETE" && !busy;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-2xl border border-line bg-card p-6 shadow-card animate-fade-in">
-        <h3 className="text-lg font-semibold text-ink">Delete account?</h3>
-        <p className="mt-2 text-sm leading-relaxed text-muted">
-          This signs you out on all devices and removes local sync data from this computer.
-          To permanently delete your cloud account and races, contact support.
-        </p>
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={busy}
-            className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={busy}
-            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {busy ? "Signing out…" : "Delete account"}
-          </button>
-        </div>
+        {step === 1 ? (
+          <>
+            <h3 className="text-lg font-semibold text-ink">Delete account?</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              This signs you out on all devices and removes local sync data from this computer.
+              To permanently delete your cloud account and races, contact support.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                disabled={busy}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                Continue
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <h3 className="text-lg font-semibold text-ink">Confirm deletion</h3>
+            <p className="mt-2 text-sm leading-relaxed text-muted">
+              Type <span className="font-mono font-semibold text-ink">DELETE</span> to confirm
+              removing your account from this device.
+            </p>
+            <input
+              type="text"
+              value={typed}
+              autoComplete="off"
+              onChange={(event) => setTyped(event.target.value)}
+              placeholder="DELETE"
+              className="mt-4 w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-ink"
+            />
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={busy}
+                className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onConfirm}
+                disabled={!canConfirm}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {busy ? "Signing out…" : "Delete account"}
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
+}
+
+function resolveSyncStatus(input: {
+  syncing: boolean;
+  hasPending: boolean;
+  syncError: string | null;
+  signedIn: boolean;
+  cloudEnabled: boolean;
+}): SyncIndicator | null {
+  if (!input.signedIn || !input.cloudEnabled) {
+    return null;
+  }
+  if (input.syncing) {
+    return "syncing";
+  }
+  if (input.syncError || input.hasPending) {
+    return "waiting-to-sync";
+  }
+  return "cloud-synced";
 }
 
 export default function AccountSection({ account }: AccountSectionProps) {
@@ -92,6 +169,7 @@ export default function AccountSection({ account }: AccountSectionProps) {
     cloudRaceCount,
     lastSyncLabel,
     syncError,
+    hasPending,
     syncNow,
   } = useAccountSync();
   const [localError, setLocalError] = useState<string | null>(null);
@@ -102,7 +180,18 @@ export default function AccountSection({ account }: AccountSectionProps) {
 
   const displayName = getDisplayName(user);
   const avatarUrl = getAvatarUrl(user);
+  const connectedSince = getConnectedSince(user);
+  const authProvider = getAuthProviderLabel(user);
   const devices = readDevicesFromMetadata(user?.user_metadata);
+  const companionConnected = companionConnectionLabel(devices);
+
+  const syncStatus = resolveSyncStatus({
+    syncing,
+    hasPending,
+    syncError,
+    signedIn: Boolean(user),
+    cloudEnabled: account.cloud_sync_enabled,
+  });
 
   useEffect(() => {
     if (!user || deviceRecorded.current) {
@@ -149,7 +238,6 @@ export default function AccountSection({ account }: AccountSectionProps) {
   }
 
   const authError = localError ?? oauthError;
-  const connected = Boolean(user && account.cloud_sync_enabled);
 
   if (signingIn) {
     return (
@@ -205,29 +293,32 @@ export default function AccountSection({ account }: AccountSectionProps) {
           <div className="mt-5 sm:mt-0 sm:ml-6">
             <h2 className="text-2xl font-semibold tracking-tight text-ink">{displayName}</h2>
             <p className="mt-1 text-sm text-muted">{user.email}</p>
+            {connectedSince ? (
+              <p className="mt-2 text-xs text-muted">Connected since {connectedSince}</p>
+            ) : null}
           </div>
+        </div>
+
+        <div className="mt-8 divide-y divide-line/70 border-t border-line/70">
+          <StatRow label="Google account" value={authProvider === "Google" ? user.email : authProvider} />
+          <StatRow
+            label="Companion connected"
+            value={companionConnected}
+          />
+          <StatRow label="Races" value={cloudRaceCount ?? account.storage.race_count} />
+          <StatRow label="Storage used" value={formatStorage(account.storage.storage_bytes)} />
         </div>
       </section>
 
       <section className="rounded-2xl border border-line bg-card p-6 shadow-card">
-        <div className="flex items-center justify-between gap-4">
-          <h3 className="text-lg font-semibold text-ink">Cloud Sync</h3>
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-success">
-            <span className="h-2 w-2 rounded-full bg-success" aria-hidden />
-            {connected ? "Connected" : "Sign in required"}
-          </span>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h3 className="text-lg font-semibold text-ink">Cloud sync</h3>
+          {syncStatus ? <SyncStatusBadge status={syncStatus} /> : null}
         </div>
 
         <div className="mt-4 divide-y divide-line/70">
           <StatRow label="Last sync" value={lastSyncLabel} />
-          <StatRow
-            label="Races in cloud"
-            value={cloudRaceCount ?? account.storage.race_count}
-          />
-          <StatRow
-            label="Storage used"
-            value={formatStorage(account.storage.storage_bytes)}
-          />
+          <StatRow label="Races in cloud" value={cloudRaceCount ?? "—"} />
         </div>
 
         {(syncError || authError) && (
@@ -247,7 +338,7 @@ export default function AccountSection({ account }: AccountSectionProps) {
 
         {!account.cloud_sync_enabled ? (
           <p className="mt-3 text-xs text-muted">
-            Add SUPABASE_SECRET_KEY to enable race uploads to the cloud.
+            Add Supabase credentials to enable race uploads to the cloud.
           </p>
         ) : null}
       </section>
@@ -257,8 +348,8 @@ export default function AccountSection({ account }: AccountSectionProps) {
         <div className="mt-4 space-y-4">
           <div className="flex items-center justify-between rounded-xl bg-canvas px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-ink">MacBook</p>
-              <p className="text-xs text-muted">Ultra Roadbook · This device</p>
+              <p className="text-sm font-medium text-ink">This Mac</p>
+              <p className="text-xs text-muted">Ultra Roadbook · Desktop</p>
             </div>
             <p className="text-xs text-muted">
               {formatDeviceLastActive(devices.desktop?.lastActive ?? new Date().toISOString())}
@@ -266,8 +357,10 @@ export default function AccountSection({ account }: AccountSectionProps) {
           </div>
           <div className="flex items-center justify-between rounded-xl bg-canvas px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-ink">iPhone Companion</p>
-              <p className="text-xs text-muted">Race day app</p>
+              <p className="text-sm font-medium text-ink">Companion</p>
+              <p className="text-xs text-muted">
+                {companionConnected === "Yes" ? "Connected" : "Race day app"}
+              </p>
             </div>
             <p className="text-xs text-muted">
               {formatDeviceLastActive(devices.companion?.lastActive)}
@@ -277,7 +370,7 @@ export default function AccountSection({ account }: AccountSectionProps) {
       </section>
 
       <section className="rounded-2xl border border-red-200 bg-card p-6 shadow-card">
-        <h3 className="text-lg font-semibold text-ink">Danger zone</h3>
+        <h3 className="text-lg font-semibold text-ink">Account actions</h3>
         <p className="mt-1 text-sm text-muted">Sign out or remove your account from this device.</p>
         <div className="mt-5 flex flex-wrap gap-3">
           <button

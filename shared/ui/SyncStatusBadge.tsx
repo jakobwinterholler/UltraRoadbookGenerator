@@ -1,6 +1,7 @@
 export type SyncIndicator =
   | "cloud-synced"
   | "syncing"
+  | "waiting-to-sync"
   | "needs-upload"
   | "offline-downloaded"
   | "update-available";
@@ -8,6 +9,7 @@ export type SyncIndicator =
 const LABELS: Record<SyncIndicator, string> = {
   "cloud-synced": "Cloud synced",
   syncing: "Syncing…",
+  "waiting-to-sync": "Waiting to sync",
   "needs-upload": "Needs upload",
   "offline-downloaded": "Downloaded",
   "update-available": "Update available",
@@ -40,7 +42,7 @@ function Icon({ status }: { status: SyncIndicator }) {
       </svg>
     );
   }
-  if (status === "needs-upload") {
+  if (status === "needs-upload" || status === "waiting-to-sync") {
     return (
       <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
         <path d="M12 19V5M5 12l7-7 7 7" strokeLinecap="round" strokeLinejoin="round" />
@@ -66,6 +68,9 @@ function Icon({ status }: { status: SyncIndicator }) {
 function tone(status: SyncIndicator, dark: boolean): string {
   if (status === "syncing") {
     return dark ? "text-sky-300 bg-sky-400/10" : "text-sky-700 bg-sky-50";
+  }
+  if (status === "waiting-to-sync") {
+    return dark ? "text-violet-300 bg-violet-400/10" : "text-violet-700 bg-violet-50";
   }
   if (status === "needs-upload") {
     return dark ? "text-amber-300 bg-amber-400/10" : "text-amber-700 bg-amber-50";
@@ -121,12 +126,16 @@ export function getDesktopRaceSyncStatus(
   cloudById: Map<string, { updated_at: string | null }>,
   syncing: boolean,
   signedIn: boolean,
+  pendingSync: Set<string> = new Set(),
 ): SyncIndicator | null {
   if (!signedIn || !race.has_analysis) {
     return null;
   }
   if (syncing) {
     return "syncing";
+  }
+  if (pendingSync.has(race.id)) {
+    return "waiting-to-sync";
   }
   const cloud = cloudById.get(race.id);
   if (!cloud) {

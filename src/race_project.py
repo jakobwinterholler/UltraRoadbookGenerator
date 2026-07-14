@@ -20,6 +20,7 @@ from preview_versions import (
     RUNTIME_VERSION,
     STORY_VERSION,
 )
+from race_dashboard import compute_race_dashboard_stats
 from race_open_trace import race_open_trace
 
 SCHEMA_VERSION = 1
@@ -171,10 +172,67 @@ class VerifiedStopRecord:
 
 
 @dataclass
+class CompanionVerificationRecord:
+    id: str
+    race_id: str
+    zone_id: int
+    stop_name: str
+    submitted_at: str
+    source: str = "companion"
+    review_status: str = "pending"
+    lat: float | None = None
+    lon: float | None = None
+    updates: dict[str, Any] = field(default_factory=dict)
+    reviewed_at: str | None = None
+    review_action: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "id": self.id,
+            "raceId": self.race_id,
+            "zoneId": self.zone_id,
+            "stopName": self.stop_name,
+            "submittedAt": self.submitted_at,
+            "source": self.source,
+            "reviewStatus": self.review_status,
+            "updates": self.updates,
+        }
+        if self.lat is not None:
+            payload["lat"] = self.lat
+        if self.lon is not None:
+            payload["lon"] = self.lon
+        if self.reviewed_at is not None:
+            payload["reviewedAt"] = self.reviewed_at
+        if self.review_action is not None:
+            payload["reviewAction"] = self.review_action
+        return payload
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> CompanionVerificationRecord:
+        updates = payload.get("updates")
+        return cls(
+            id=str(payload.get("id") or ""),
+            race_id=str(payload.get("raceId") or payload.get("race_id") or ""),
+            zone_id=int(payload.get("zoneId") or payload.get("zone_id") or 0),
+            stop_name=str(payload.get("stopName") or payload.get("stop_name") or ""),
+            submitted_at=str(payload.get("submittedAt") or payload.get("submitted_at") or _utc_now()),
+            source=str(payload.get("source") or "companion"),
+            review_status=str(payload.get("reviewStatus") or payload.get("review_status") or "pending"),
+            lat=payload.get("lat"),
+            lon=payload.get("lon"),
+            updates=updates if isinstance(updates, dict) else {},
+            reviewed_at=payload.get("reviewedAt") or payload.get("reviewed_at"),
+            review_action=payload.get("reviewAction") or payload.get("review_action"),
+        )
+
+
+@dataclass
 class PreparationState:
     climb_nicknames: dict[str, str] = field(default_factory=dict)
     progress: PreparationProgress = field(default_factory=PreparationProgress)
     verified_stops: dict[str, VerifiedStopRecord] = field(default_factory=dict)
+    companion_pending_verifications: dict[str, CompanionVerificationRecord] = field(default_factory=dict)
+    companion_verification_history: dict[str, CompanionVerificationRecord] = field(default_factory=dict)
 
     def to_dict(self) -> dict:
         return {
@@ -182,6 +240,12 @@ class PreparationState:
             "progress": self.progress.to_dict(),
             "verified_stops": {
                 key: record.to_dict() for key, record in self.verified_stops.items()
+            },
+            "companion_pending_verifications": {
+                key: record.to_dict() for key, record in self.companion_pending_verifications.items()
+            },
+            "companion_verification_history": {
+                key: record.to_dict() for key, record in self.companion_verification_history.items()
             },
         }
 
@@ -195,10 +259,24 @@ class PreparationState:
             for key, value in verified_raw.items()
             if isinstance(value, dict)
         }
+        pending_raw = payload.get("companion_pending_verifications") or {}
+        companion_pending_verifications = {
+            str(key): CompanionVerificationRecord.from_dict(value)
+            for key, value in pending_raw.items()
+            if isinstance(value, dict)
+        }
+        history_raw = payload.get("companion_verification_history") or {}
+        companion_verification_history = {
+            str(key): CompanionVerificationRecord.from_dict(value)
+            for key, value in history_raw.items()
+            if isinstance(value, dict)
+        }
         return cls(
             climb_nicknames=dict(payload.get("climb_nicknames") or {}),
             progress=PreparationProgress.from_dict(payload.get("progress")),
             verified_stops=verified_stops,
+            companion_pending_verifications=companion_pending_verifications,
+            companion_verification_history=companion_verification_history,
         )
 
 
@@ -235,6 +313,7 @@ class RaceMeta:
     distance_km: float | None = None
     elevation_gain_m: float | None = None
     climb_count: int | None = None
+    archived_at: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -300,9 +379,11 @@ class RaceSummary:
     preparation_completed: int
     preparation_total: int
     preparation_items: list[PreparationProgressItem]
+    archived_at: str | None = None
+    dashboard_stats: dict[str, Any] | None = None
 
     def to_dict(self) -> dict:
-        return {
+        payload = {
             "id": self.id,
             "name": self.name,
             "created_at": self.created_at,
@@ -316,7 +397,11 @@ class RaceSummary:
             "preparation_completed": self.preparation_completed,
             "preparation_total": self.preparation_total,
             "preparation_items": [asdict(item) for item in self.preparation_items],
+            "archived_at": self.archived_at,
         }
+        if self.dashboard_stats is not None:
+            payload["dashboard_stats"] = self.dashboard_stats
+        return payload
 
 
 class RaceProjectStore:
@@ -539,7 +624,7 @@ class RaceProjectStore:
             encoding="utf-8",
         )
 
-    def list_races(self) -> list[RaceSummary]:
+    def list_races(self, include_archived: bool = False) -> list[RaceSummary]:
         summaries: list[RaceSummary] = []
         if not self.root.is_dir():
             return summaries
@@ -551,6 +636,8 @@ class RaceProjectStore:
             if not manifest.is_file():
                 continue
             race = self._load_race(entry.name)
+            if not include_archived and race.meta.archived_at:
+                continue
             summaries.append(self._to_summary(race))
         return summaries
 
@@ -613,6 +700,37 @@ class RaceProjectStore:
         self._save_race(race)
         return race
 
+    def _max_gap_for_race(self, race: RaceProject) -> float:
+        max_gap = 45.0
+        if race.settings.max_gap_without_resupply_km is not None:
+            return float(race.settings.max_gap_without_resupply_km)
+        if race.settings.use_app_defaults:
+            try:
+                from app_settings import app_settings_store
+
+                return float(app_settings_store.load().planning.max_gap_without_resupply_km)
+            except Exception:
+                return max_gap
+        return max_gap
+
+    def _refresh_dashboard_stats_cache(
+        self,
+        race: RaceProject,
+        roadbook: dict | None = None,
+    ) -> dict[str, Any] | None:
+        if roadbook is None:
+            roadbook = self.load_analysis(race.id)
+        if not roadbook:
+            race.analysis.pop("dashboard_stats", None)
+            return None
+        stats = compute_race_dashboard_stats(
+            roadbook,
+            race.preparation.to_dict(),
+            max_gap_km=self._max_gap_for_race(race),
+        )
+        race.analysis["dashboard_stats"] = stats
+        return stats
+
     def update_preparation(
         self,
         race_id: str,
@@ -636,6 +754,89 @@ class RaceProjectStore:
                     continue
                 race.preparation.verified_stops[str(key)] = VerifiedStopRecord.from_dict(payload)
         race.meta.updated_at = _utc_now()
+        if verified_stops is not None and self.has_analysis(race_id):
+            self._refresh_dashboard_stats_cache(race)
+        self._save_race(race)
+        return race
+
+    def add_companion_verifications(
+        self,
+        race_id: str,
+        verifications: list[dict[str, Any]],
+    ) -> list[str]:
+        race = self.get_race(race_id)
+        accepted: list[str] = []
+        now = _utc_now()
+        for raw in verifications:
+            if not isinstance(raw, dict):
+                continue
+            record = CompanionVerificationRecord.from_dict(raw)
+            if not record.id:
+                continue
+            record.review_status = "pending"
+            race.preparation.companion_pending_verifications[record.id] = record
+            accepted.append(record.id)
+        if accepted:
+            race.meta.updated_at = now
+            self._save_race(race)
+        return accepted
+
+    def list_companion_verifications(
+        self,
+        race_id: str,
+        *,
+        status: str = "pending",
+    ) -> list[dict[str, Any]]:
+        race = self.get_race(race_id)
+        if status == "history":
+            records = race.preparation.companion_verification_history.values()
+        elif status == "all":
+            records = [
+                *race.preparation.companion_pending_verifications.values(),
+                *race.preparation.companion_verification_history.values(),
+            ]
+        else:
+            records = race.preparation.companion_pending_verifications.values()
+        results = [record.to_dict() for record in records]
+        if status == "pending":
+            results = [item for item in results if item.get("reviewStatus") == "pending"]
+        elif status == "history":
+            results = [item for item in results if item.get("reviewStatus") != "pending"]
+        results.sort(key=lambda item: str(item.get("submittedAt") or ""), reverse=True)
+        return results
+
+    def review_companion_verification(
+        self,
+        race_id: str,
+        verification_id: str,
+        *,
+        action: str,
+    ) -> RaceProject | None:
+        race = self.get_race(race_id)
+        record = race.preparation.companion_pending_verifications.get(verification_id)
+        if record is None:
+            return None
+
+        if action == "accept":
+            updates = record.updates or {}
+            status = str(updates.get("status") or "verified")
+            reject_reason = updates.get("rejectReason") or updates.get("reject_reason")
+            reject_notes = updates.get("notes")
+            race.preparation.verified_stops[str(record.zone_id)] = VerifiedStopRecord(
+                status=status,
+                reject_reason=str(reject_reason) if reject_reason else None,
+                reject_notes=str(reject_notes) if reject_notes else None,
+                updated_at=record.submitted_at,
+            )
+            if self.has_analysis(race_id):
+                self._refresh_dashboard_stats_cache(race)
+
+        record.review_status = "accepted" if action == "accept" else "rejected"
+        record.reviewed_at = _utc_now()
+        record.review_action = action
+        del race.preparation.companion_pending_verifications[verification_id]
+        race.preparation.companion_verification_history[verification_id] = record
+        race.meta.updated_at = _utc_now()
         self._save_race(race)
         return race
 
@@ -644,6 +845,30 @@ class RaceProjectStore:
         if not race_dir.is_dir():
             raise FileNotFoundError(f"Race {race_id} not found.")
         shutil.rmtree(race_dir, ignore_errors=True)
+
+    def duplicate_race(self, race_id: str) -> RaceProject:
+        self.get_race(race_id)
+        source_dir = self._race_dir(race_id)
+        new_id = str(uuid.uuid4())
+        dest_dir = self._race_dir(new_id)
+        shutil.copytree(source_dir, dest_dir)
+        race = self._load_race(new_id)
+        now = _utc_now()
+        race.id = new_id
+        race.meta.name = f"{race.meta.name} (copy)"
+        race.meta.created_at = now
+        race.meta.updated_at = now
+        race.meta.last_opened_at = now
+        race.meta.archived_at = None
+        self._save_race(race)
+        return race
+
+    def set_archived(self, race_id: str, archived: bool) -> RaceProject:
+        race = self.get_race(race_id)
+        race.meta.archived_at = _utc_now() if archived else None
+        race.meta.updated_at = _utc_now()
+        self._save_race(race)
+        return race
 
     def get_gpx_path(self, race_id: str) -> Path:
         path = self._gpx_path(race_id)
@@ -697,6 +922,7 @@ class RaceProjectStore:
             "pipeline_version": PIPELINE_VERSION,
             "analyzed_at": race.meta.updated_at,
         }
+        self._refresh_dashboard_stats_cache(race, roadbook)
         self._save_race(race)
         return race
 
@@ -754,6 +980,15 @@ class RaceProjectStore:
             PreparationProgressItem(id=key, label=label, complete=getattr(progress, key))
             for key, label in PREPARATION_LABELS.items()
         ]
+        dashboard_stats: dict[str, Any] | None = None
+        if has_analysis:
+            cached = race.analysis.get("dashboard_stats")
+            if isinstance(cached, dict) and cached.get("readiness_score") is not None:
+                dashboard_stats = cached
+            else:
+                dashboard_stats = self._refresh_dashboard_stats_cache(race)
+                if dashboard_stats is not None:
+                    self._save_race(race)
         return RaceSummary(
             id=race.id,
             name=race.meta.name,
@@ -768,6 +1003,8 @@ class RaceProjectStore:
             preparation_completed=progress.completed_count(),
             preparation_total=progress.total_count,
             preparation_items=items,
+            archived_at=race.meta.archived_at,
+            dashboard_stats=dashboard_stats,
         )
 
 

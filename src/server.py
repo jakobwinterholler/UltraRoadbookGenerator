@@ -30,10 +30,20 @@ from app_settings import AppSettings, app_settings_store
 from race_project import RaceSettings, race_store
 from route_preview_render import get_preview_status, start_preview_generation, start_preview_prepare
 from race_open_trace import race_open_trace
-from auth.dependencies import get_optional_user, require_user
+from auth.dependencies import get_bearer_token, get_optional_user, require_user
 from auth.jwt import AuthUser
 from cloud.config import cloud_config
-from cloud.race_sync import CloudSyncError, get_companion_bundle, list_sync_races, push_all_local_races, push_race, soft_delete_race
+from cloud.race_sync import (
+    CloudSyncError,
+    add_companion_verifications,
+    get_companion_bundle,
+    list_companion_verifications,
+    list_sync_races,
+    push_all_local_races,
+    push_race,
+    review_companion_verification,
+    soft_delete_race,
+)
 
 PREVIEW_NO_CACHE_HEADERS = {
     "Cache-Control": "no-store, no-cache, must-revalidate",
@@ -85,9 +95,9 @@ def _account_payload(user: AuthUser | None) -> dict[str, Any]:
     }
 
 
-def _safe_push_race(user_id: str, race_id: str) -> None:
+def _safe_push_race(user_id: str, race_id: str, access_token: str | None = None) -> None:
     try:
-        push_race(user_id, race_id)
+        push_race(user_id, race_id, access_token)
     except Exception:
         pass
 
@@ -96,9 +106,10 @@ def _schedule_cloud_sync(
     background_tasks: BackgroundTasks,
     user: AuthUser | None,
     race_id: str,
+    access_token: str | None = None,
 ) -> None:
-    if user and cloud_config.sync_enabled:
-        background_tasks.add_task(_safe_push_race, user.id, race_id)
+    if user and (cloud_config.sync_enabled or access_token):
+        background_tasks.add_task(_safe_push_race, user.id, race_id, access_token)
 
 
 def _require_session():
@@ -330,14 +341,23 @@ class RaceRenameBody(BaseModel):
     name: str
 
 
+class RaceArchiveBody(BaseModel):
+    archived: bool
+
+
 class PreparationProgressBody(BaseModel):
     progress: dict[str, bool] = Field(default_factory=dict)
     verified_stops: dict[str, dict[str, Any]] | None = None
 
 
 @app.get("/api/races")
-def list_races() -> dict:
-    return {"races": [summary.to_dict() for summary in race_store.list_races()]}
+def list_races(include_archived: bool = False) -> dict:
+    return {
+        "races": [
+            summary.to_dict()
+            for summary in race_store.list_races(include_archived=include_archived)
+        ]
+    }
 
 
 @app.post("/api/races")
@@ -346,11 +366,12 @@ async def create_race(
     file: UploadFile = File(...),
     name: str | None = Form(default=None),
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     file_bytes = await file.read()
     _validate_gpx_upload(file, file_bytes)
     race = race_store.create_race(filename=file.filename, gpx_bytes=file_bytes, name=name)
-    _schedule_cloud_sync(background_tasks, user, race.id)
+    _schedule_cloud_sync(background_tasks, user, race.id, access_token)
     return {"race": race_store.get_summary(race.id).to_dict()}
 
 
@@ -374,10 +395,11 @@ def patch_race(
     body: RaceRenameBody,
     background_tasks: BackgroundTasks,
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _require_race(race_id)
     race = race_store.rename_race(race_id, body.name)
-    _schedule_cloud_sync(background_tasks, user, race_id)
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
     return {"race": race_store.get_summary(race.id).to_dict()}
 
 
@@ -387,6 +409,7 @@ def patch_race_preparation(
     body: PreparationProgressBody,
     background_tasks: BackgroundTasks,
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _require_race(race_id)
     race = race_store.update_preparation(
@@ -394,7 +417,7 @@ def patch_race_preparation(
         progress=body.progress if body.progress else None,
         verified_stops=body.verified_stops,
     )
-    _schedule_cloud_sync(background_tasks, user, race_id)
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
     return {
         "preparation": race.preparation.to_dict(),
         "race": race_store.get_summary(race_id).to_dict(),
@@ -406,13 +429,41 @@ def delete_race(
     race_id: str,
     background_tasks: BackgroundTasks,
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict[str, str]:
     _require_race(race_id)
     clear_race_cache(race_id)
     race_store.delete_race(race_id)
-    if user and cloud_config.enabled:
-        background_tasks.add_task(soft_delete_race, user.id, race_id)
+    if user and (cloud_config.sync_enabled or access_token):
+        background_tasks.add_task(soft_delete_race, user.id, race_id, access_token)
     return {"status": "deleted"}
+
+
+@app.post("/api/races/{race_id}/duplicate")
+def duplicate_race(
+    race_id: str,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    _require_race(race_id)
+    race = race_store.duplicate_race(race_id)
+    _schedule_cloud_sync(background_tasks, user, race.id, access_token)
+    return {"race": race_store.get_summary(race.id).to_dict()}
+
+
+@app.patch("/api/races/{race_id}/archive")
+def archive_race(
+    race_id: str,
+    body: RaceArchiveBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    _require_race(race_id)
+    race = race_store.set_archived(race_id, body.archived)
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
+    return {"race": race_store.get_summary(race.id).to_dict()}
 
 
 @app.get("/api/races/{race_id}/roadbook")
@@ -473,6 +524,7 @@ def analyze_race(
     race_id: str,
     background_tasks: BackgroundTasks,
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _require_race(race_id)
     race = race_store.get_race(race_id)
@@ -494,7 +546,7 @@ def analyze_race(
 
     roadbook = roadbook_to_dict(artifacts.roadbook)
     race_store.save_analysis(race_id, roadbook)
-    _schedule_cloud_sync(background_tasks, user, race_id)
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
     return roadbook
 
 
@@ -561,6 +613,7 @@ def save_race_climb_nicknames(
     body: ClimbNicknamesBody,
     background_tasks: BackgroundTasks,
     user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _race_cache(race_id)
     try:
@@ -569,7 +622,7 @@ def save_race_climb_nicknames(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     race_store.update_preparation(race_id, climb_nicknames=body.nicknames)
-    _schedule_cloud_sync(background_tasks, user, race_id)
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
     return {"climbs": [asdict(climb) for climb in artifacts.roadbook.climbs]}
 
 
@@ -867,15 +920,27 @@ class SyncPushBody(BaseModel):
     race_id: str
 
 
+class CompanionVerificationsBody(BaseModel):
+    verifications: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class CompanionVerificationReviewBody(BaseModel):
+    race_id: str
+    action: str
+
+
 @app.get("/api/auth/me")
 def auth_me(user: AuthUser = Depends(require_user)) -> dict:
     return {"id": user.id, "email": user.email}
 
 
 @app.get("/api/sync/races")
-def sync_list_races(user: AuthUser = Depends(require_user)) -> dict:
+def sync_list_races(
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
     try:
-        races = list_sync_races(user.id)
+        races = list_sync_races(user.id, access_token)
     except CloudSyncError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     return {
@@ -896,9 +961,13 @@ def sync_list_races(user: AuthUser = Depends(require_user)) -> dict:
 
 
 @app.get("/api/sync/races/{race_id}/bundle")
-def sync_get_bundle(race_id: str, user: AuthUser = Depends(require_user)) -> dict:
+def sync_get_bundle(
+    race_id: str,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
     try:
-        return get_companion_bundle(user.id, race_id)
+        return get_companion_bundle(user.id, race_id, access_token)
     except CloudSyncError as exc:
         message = str(exc)
         status = 404 if "not found" in message.lower() or "not been analyzed" in message.lower() else 502
@@ -910,27 +979,95 @@ def sync_push_race(
     body: SyncPushBody,
     background_tasks: BackgroundTasks,
     user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _require_race(body.race_id)
-    background_tasks.add_task(_safe_push_race, user.id, body.race_id)
+    background_tasks.add_task(_safe_push_race, user.id, body.race_id, access_token)
     return {"status": "queued", "race_id": body.race_id}
 
 
 @app.post("/api/sync/push-now")
-def sync_push_race_now(body: SyncPushBody, user: AuthUser = Depends(require_user)) -> dict:
+def sync_push_race_now(
+    body: SyncPushBody,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
     _require_race(body.race_id)
     try:
-        return push_race(user.id, body.race_id)
+        return push_race(user.id, body.race_id, access_token)
     except CloudSyncError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/api/sync/push-all")
-def sync_push_all(user: AuthUser = Depends(require_user)) -> dict:
+def sync_push_all(
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
     try:
-        return push_all_local_races(user.id)
+        return push_all_local_races(user.id, access_token)
     except CloudSyncError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/sync/verifications")
+def sync_submit_verifications(
+    body: CompanionVerificationsBody,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    try:
+        accepted = add_companion_verifications(user.id, body.verifications, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"accepted": accepted}
+
+
+@app.get("/api/sync/verifications")
+def sync_list_verifications(
+    race_id: str,
+    status: str = "pending",
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    if status not in {"pending", "history", "all"}:
+        raise HTTPException(status_code=400, detail="status must be pending, history, or all")
+    try:
+        verifications = list_companion_verifications(
+            user.id,
+            race_id,
+            access_token,
+            status=status,
+        )
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    return {"verifications": verifications}
+
+
+@app.post("/api/sync/verifications/{verification_id}/review")
+def sync_review_verification(
+    verification_id: str,
+    body: CompanionVerificationReviewBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    if body.action not in {"accept", "reject"}:
+        raise HTTPException(status_code=400, detail="action must be accept or reject")
+    try:
+        ok = review_companion_verification(
+            user.id,
+            body.race_id,
+            verification_id,
+            action=body.action,
+            access_token=access_token,
+        )
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    if not ok:
+        raise HTTPException(status_code=404, detail="Verification not found.")
+    background_tasks.add_task(_safe_push_race, user.id, body.race_id, access_token)
+    return {"status": body.action, "verification_id": verification_id}
 
 
 # Serve the built React app when available (production / single-server mode).

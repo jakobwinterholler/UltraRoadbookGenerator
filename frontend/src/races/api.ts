@@ -4,7 +4,9 @@ import type {
   ProgressStepDefinition,
 } from "../progress";
 import { queueRacePush } from "@shared/api/sync";
+import { addPendingSyncRace } from "@shared/sync/pendingSync";
 import type { PoiPlanningProfile, RoadbookResult } from "../api";
+import { getSyncUserId } from "../sync/syncUserContext";
 import { raceOpenTrace } from "../debug/raceOpenTrace";
 import {
   DEFAULT_POI_PROFILE,
@@ -16,6 +18,8 @@ import type {
   StopVerificationStatus,
   VerifiedStopRecord,
 } from "../planning/stopVerification/types";
+
+import type { RaceDashboardStats } from "@shared/race/readiness";
 
 export type PreparationMilestoneId =
   | "route_understood"
@@ -48,6 +52,8 @@ export interface RaceSummary {
   preparation_completed: number;
   preparation_total: number;
   preparation_items: PreparationProgressItem[];
+  archived_at?: string | null;
+  dashboard_stats?: RaceDashboardStats | null;
 }
 
 export interface RaceDetail {
@@ -72,8 +78,9 @@ async function parseError(response: Response, fallback: string): Promise<string>
   return typeof detail === "string" ? detail : fallback;
 }
 
-export async function fetchRaces(): Promise<RaceSummary[]> {
-  const response = await apiFetch("/api/races");
+export async function fetchRaces(includeArchived = false): Promise<RaceSummary[]> {
+  const query = includeArchived ? "?include_archived=1" : "";
+  const response = await apiFetch(`/api/races${query}`);
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to load races."));
   }
@@ -130,6 +137,28 @@ export async function deleteRace(raceId: string): Promise<void> {
   if (!response.ok) {
     throw new Error(await parseError(response, "Failed to delete race."));
   }
+}
+
+export async function duplicateRace(raceId: string): Promise<RaceSummary> {
+  const response = await apiFetch(`/api/races/${raceId}/duplicate`, { method: "POST" });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to duplicate race."));
+  }
+  const payload = await response.json();
+  return payload.race;
+}
+
+export async function archiveRace(raceId: string, archived: boolean): Promise<RaceSummary> {
+  const response = await apiFetch(`/api/races/${raceId}/archive`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ archived }),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to update archive status."));
+  }
+  const payload = await response.json();
+  return payload.race;
 }
 
 export async function updateRacePreparation(
@@ -327,7 +356,12 @@ export async function analyzeRaceStream(
 
   const token = getAuthAccessToken();
   if (token) {
-    void queueRacePush(token, raceId);
+    void queueRacePush(token, raceId).catch(() => {
+      const userId = getSyncUserId();
+      if (userId) {
+        addPendingSyncRace(userId, raceId);
+      }
+    });
   }
 
   return result;

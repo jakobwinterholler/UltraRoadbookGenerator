@@ -95,6 +95,17 @@ create policy "Users read own races"
   on public.races for select
   using (auth.uid() = user_id and deleted_at is null);
 
+drop policy if exists "Users insert own races" on public.races;
+create policy "Users insert own races"
+  on public.races for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users update own races" on public.races;
+create policy "Users update own races"
+  on public.races for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
 -- ---------------------------------------------------------------------------
 -- Storage bucket (private race assets)
 -- ---------------------------------------------------------------------------
@@ -115,6 +126,26 @@ drop policy if exists "Users read own race assets" on storage.objects;
 create policy "Users read own race assets"
   on storage.objects for select
   using (
+    bucket_id = 'race-assets'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "Users upload own race assets" on storage.objects;
+create policy "Users upload own race assets"
+  on storage.objects for insert
+  with check (
+    bucket_id = 'race-assets'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  );
+
+drop policy if exists "Users update own race assets" on storage.objects;
+create policy "Users update own race assets"
+  on storage.objects for update
+  using (
+    bucket_id = 'race-assets'
+    and auth.uid()::text = (storage.foldername(name))[1]
+  )
+  with check (
     bucket_id = 'race-assets'
     and auth.uid()::text = (storage.foldername(name))[1]
   );

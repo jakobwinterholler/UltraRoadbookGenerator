@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../auth/supabaseClient";
 import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
 import { isCompanionBundle } from "../types/sync";
+import type { CompanionVerificationSubmission } from "../types/verification";
 
 interface CloudRaceRow {
   id: string;
@@ -11,6 +12,88 @@ interface CloudRaceRow {
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean | null;
+  preparation?: Record<string, unknown> | null;
+}
+
+function applyVerificationToPreparation(
+  preparation: Record<string, unknown>,
+  submission: CompanionVerificationSubmission,
+): Record<string, unknown> {
+  const verifiedStops = {
+    ...(preparation.verified_stops as Record<string, unknown> | undefined),
+  };
+  const history = {
+    ...(preparation.companion_verification_history as Record<string, unknown> | undefined),
+  };
+  const { updates } = submission;
+  verifiedStops[String(submission.zoneId)] = {
+    status: updates.status,
+    reject_reason: updates.rejectReason ?? null,
+    reject_notes: updates.notes ?? null,
+    updated_at: submission.submittedAt,
+  };
+  history[submission.id] = {
+    ...submission,
+    reviewStatus: "accepted",
+    reviewedAt: new Date().toISOString(),
+    reviewAction: "accept",
+  };
+  return {
+    ...preparation,
+    verified_stops: verifiedStops,
+    companion_verification_history: history,
+  };
+}
+
+function patchBundleFromPreparation(
+  bundle: CompanionBundle,
+  preparation: Record<string, unknown>,
+  revision: number,
+): CompanionBundle {
+  const verifiedStops = (preparation.verified_stops ?? {}) as Record<
+    string,
+    { status?: string; reject_notes?: string; updated_at?: string }
+  >;
+  const stops = bundle.stops.map((stop) => {
+    const record = verifiedStops[String(stop.zoneId)];
+    if (!record) {
+      return stop;
+    }
+    if (record.status === "verified") {
+      return {
+        ...stop,
+        verificationStatus: "verified" as const,
+        verificationDate: record.updated_at ?? null,
+      };
+    }
+    if (record.status === "rejected" || record.status === "deferred") {
+      return {
+        ...stop,
+        verificationStatus: "needs_review" as const,
+        notes: record.reject_notes?.trim() || stop.notes,
+      };
+    }
+    return stop;
+  });
+  const verifiedCount = stops.filter((stop) => stop.verificationStatus === "verified").length;
+  const unverifiedCount = stops.length - verifiedCount;
+  return {
+    ...bundle,
+    revision,
+    syncedAt: new Date().toISOString(),
+    stops,
+    dashboardStats: {
+      ...bundle.dashboardStats,
+      verifiedStops: verifiedCount,
+      unverifiedStops: unverifiedCount,
+      remainingStops: unverifiedCount,
+      readinessScore: bundle.dashboardStats
+        ? Math.round((verifiedCount / Math.max(stops.length, 1)) * bundle.dashboardStats.readinessScore)
+        : Math.round((verifiedCount / Math.max(stops.length, 1)) * 100),
+      readinessReasons: bundle.dashboardStats?.readinessReasons ?? [],
+      remainingUnsupportedKm: bundle.dashboardStats?.remainingUnsupportedKm ?? 0,
+    },
+  };
 }
 
 /** Read cloud races directly from Supabase (Companion production — no API server needed). */
@@ -58,4 +141,81 @@ export async function fetchCompanionBundleDirect(
     throw new Error("Invalid companion bundle from cloud.");
   }
   return parsed;
+}
+
+/** Submit companion verifications directly to Supabase (production companion — no API server). */
+export async function submitCompanionVerificationsDirect(
+  userId: string,
+  raceId: string,
+  submissions: CompanionVerificationSubmission[],
+): Promise<{ accepted: string[] }> {
+  if (submissions.length === 0) {
+    return { accepted: [] };
+  }
+
+  const supabase = getSupabaseClient();
+  const { data: row, error: fetchError } = await supabase
+    .from("races")
+    .select("id,preparation,companion_revision,has_bundle")
+    .eq("id", raceId)
+    .eq("user_id", userId)
+    .is("deleted_at", null)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw new Error(fetchError.message);
+  }
+  if (!row) {
+    throw new Error("Race not found.");
+  }
+
+  let preparation = (row.preparation ?? {}) as Record<string, unknown>;
+  const accepted: string[] = [];
+  for (const submission of submissions) {
+    preparation = applyVerificationToPreparation(preparation, submission);
+    accepted.push(submission.id);
+  }
+
+  const nextRevision = (row.companion_revision ?? 0) + 1;
+  const updatedAt = new Date().toISOString();
+
+  if (row.has_bundle) {
+    const bundlePath = `${userId}/${raceId}/companion-bundle.json`;
+    const { data: bundleBlob, error: bundleError } = await supabase.storage
+      .from("race-assets")
+      .download(bundlePath);
+    if (bundleError) {
+      throw new Error(bundleError.message);
+    }
+    const parsed: unknown = JSON.parse(await bundleBlob.text());
+    if (!isCompanionBundle(parsed)) {
+      throw new Error("Invalid companion bundle from cloud.");
+    }
+    const patched = patchBundleFromPreparation(parsed, preparation, nextRevision);
+    const { error: uploadError } = await supabase.storage
+      .from("race-assets")
+      .upload(bundlePath, JSON.stringify(patched), {
+        contentType: "application/json",
+        upsert: true,
+      });
+    if (uploadError) {
+      throw new Error(uploadError.message);
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from("races")
+    .update({
+      preparation,
+      companion_revision: nextRevision,
+      updated_at: updatedAt,
+    })
+    .eq("id", raceId)
+    .eq("user_id", userId);
+
+  if (updateError) {
+    throw new Error(updateError.message);
+  }
+
+  return { accepted };
 }

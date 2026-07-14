@@ -6,11 +6,16 @@ import { Avatar, SessionRestoreScreen, SigningInScreen } from "@shared/ui/AuthSc
 import { updateDeviceLastActive } from "@shared/sync/deviceProfile";
 import { CompanionContext } from "./context/CompanionContext";
 import BottomNav, { type CompanionTab } from "./components/BottomNav";
+import ExecutionHeader from "./components/ExecutionHeader";
 import AccountScreen from "./screens/AccountScreen";
 import HomeScreen from "./screens/HomeScreen";
 import MapScreen from "./screens/MapScreen";
 import ResupplyScreen from "./screens/ResupplyScreen";
+import VerificationScreen from "./screens/VerificationScreen";
 import WelcomeScreen from "./screens/WelcomeScreen";
+import { saveCompanionBundle } from "./db";
+import { useRaceGps } from "./lib/useRaceGps";
+import { useVerificationSync } from "./sync/useVerificationSync";
 
 type AppView = "welcome" | "home" | "race";
 type HomeTab = "races" | "account";
@@ -21,13 +26,25 @@ export default function App() {
   const [homeTab, setHomeTab] = useState<HomeTab>("races");
   const [bundle, setBundle] = useState<CompanionBundle | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
-  const [tab, setTab] = useState<CompanionTab>("resupply");
-  const [currentKm, setCurrentKm] = useState(0);
+  const [tab, setTab] = useState<CompanionTab>("map");
   const [selectedStop, setSelectedStop] = useState<CompanionStop | null>(null);
   const [showUnverified, setShowUnverified] = useState(false);
+  const [mapGesturesLocked, setMapGesturesLocked] = useState(true);
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
+
+  const { gps, routeTrack } = useRaceGps({
+    enabled: view === "race" && bundle !== null,
+    bundle,
+  });
+
+  useVerificationSync(online, user?.id ?? null);
+
+  const updateBundle = useCallback((next: CompanionBundle) => {
+    setBundle(next);
+    void saveCompanionBundle(next);
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -62,8 +79,7 @@ export default function App() {
   const clearRace = useCallback(async () => {
     setBundle(null);
     setSelectedStop(null);
-    setCurrentKm(0);
-    setTab("resupply");
+    setTab("map");
     setView(session ? "home" : "welcome");
   }, [session]);
 
@@ -72,17 +88,40 @@ export default function App() {
       bundle
         ? {
             bundle,
-            currentKm,
-            setCurrentKm,
+            currentKm: gps.currentKm,
+            gps,
+            routeTrack,
             selectedStop,
             selectStop: setSelectedStop,
             showUnverified,
             setShowUnverified,
+            mapGesturesLocked,
+            setMapGesturesLocked,
+            updateBundle,
             clearRace,
           }
         : null,
-    [bundle, clearRace, currentKm, selectedStop, showUnverified],
+    [
+      bundle,
+      clearRace,
+      gps,
+      mapGesturesLocked,
+      routeTrack,
+      selectedStop,
+      showUnverified,
+      updateBundle,
+    ],
   );
+
+  const headerTrailing = bundle ? (
+    <button
+      type="button"
+      onClick={() => void clearRace()}
+      className="min-h-[44px] rounded-xl px-3 py-2 text-sm font-medium text-white/55 hover:bg-white/10 hover:text-white"
+    >
+      Races
+    </button>
+  ) : null;
 
   if (isRestoring || bootLoading) {
     return <SessionRestoreScreen variant="dark" />;
@@ -94,7 +133,7 @@ export default function App() {
 
   if (!configured) {
     return (
-      <div className="flex h-full items-center justify-center px-6 text-center text-sm text-red-300">
+      <div className="flex h-full items-center justify-center px-4 text-center text-sm text-red-300">
         Cloud sync is not configured for this build.
       </div>
     );
@@ -110,11 +149,11 @@ export default function App() {
       const avatarUrl = getAvatarUrl(user);
       return (
         <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-          <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
+          <header className="flex shrink-0 items-center gap-3 border-b border-white/8 px-4 pb-2 pt-[max(8px,env(safe-area-inset-top))]">
             <button
               type="button"
               onClick={() => setHomeTab("races")}
-              className="text-sm text-white/50 hover:text-white"
+              className="min-h-[44px] rounded-xl px-2 text-sm text-white/50 hover:bg-white/5 hover:text-white"
             >
               ← Races
             </button>
@@ -122,7 +161,7 @@ export default function App() {
               <Avatar name={displayName} imageUrl={avatarUrl} size="md" variant="dark" />
             </div>
           </header>
-          <AccountScreen />
+          <AccountScreen embedded />
         </div>
       );
     }
@@ -132,9 +171,8 @@ export default function App() {
         onOpenAccount={() => setHomeTab("account")}
         onOpenRace={(next) => {
           setBundle(next);
-          setCurrentKm(0);
           setSelectedStop(null);
-          setTab("resupply");
+          setTab("map");
           setView("race");
         }}
       />
@@ -147,39 +185,34 @@ export default function App() {
         onOpenAccount={() => setHomeTab("account")}
         onOpenRace={(next) => {
           setBundle(next);
-          setCurrentKm(0);
           setSelectedStop(null);
-          setTab("resupply");
+          setTab("map");
           setView("race");
         }}
       />
     );
   }
 
+  const isMapTab = tab === "map";
+  const showExecutionHeader = tab !== "account" && tab !== "verify" && !isMapTab;
+
   return (
     <CompanionContext.Provider value={contextValue}>
       <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-        {tab !== "account" ? (
-          <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2.5">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-white">{bundle.race.name}</p>
-              <p className="text-xs tabular-nums text-white/45">
-                {Math.round(bundle.race.distanceKm)} km
-                {!online ? " · offline" : " · ready"}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => void clearRace()}
-              className="shrink-0 text-xs text-white/45 hover:text-white"
-            >
-              All races
-            </button>
-          </header>
+        {showExecutionHeader ? (
+          <ExecutionHeader trailing={headerTrailing} />
         ) : null}
 
-        <main className="min-h-0 flex-1">
-          {tab === "map" ? <MapScreen /> : tab === "resupply" ? <ResupplyScreen /> : <AccountScreen />}
+        <main className="min-h-0 flex-1 animate-tab-in" key={tab}>
+          {tab === "map" ? (
+            <MapScreen />
+          ) : tab === "resupply" ? (
+            <ResupplyScreen />
+          ) : tab === "verify" ? (
+            <VerificationScreen />
+          ) : (
+            <AccountScreen />
+          )}
         </main>
 
         <BottomNav active={tab} onChange={setTab} />

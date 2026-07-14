@@ -1,10 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
 import { getDesktopRaceSyncStatus } from "@shared/ui/SyncStatusBadge";
 import { useAuth } from "@shared/auth/AuthProvider";
+import { getPendingSyncRaces } from "@shared/sync/pendingSync";
 import UploadZone from "../components/UploadZone";
 import { RaceCard } from "../components/races/RaceCard";
+import type { RaceManageAction } from "../components/races/RaceManageMenu";
+import { RenameRaceDialog } from "../components/races/RenameRaceDialog";
 import { useRace } from "../races/RaceContext";
-import { createRace } from "../races/api";
+import {
+  archiveRace,
+  createRace,
+  deleteRace,
+  duplicateRace,
+  fetchRaces,
+  raceExportEndpoint,
+  renameRace,
+  type RaceSummary,
+} from "../races/api";
 import { useAccountSync } from "../sync/useAccountSync";
 import { useDesktopCloudRaces } from "../sync/useDesktopCloudRaces";
 
@@ -14,8 +27,9 @@ interface MyRacesPageProps {
 }
 
 export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPageProps) {
-  const { races, loadingRaces, error, refreshRaces } = useRace();
+  const { races, loadingRaces, error, refreshRaces, activeRaceId, closeRace } = useRace();
   const { user } = useAuth();
+  const userId = user?.id ?? "";
   const { syncing } = useAccountSync();
   const { cloudById } = useDesktopCloudRaces();
   const [showCreate, setShowCreate] = useState(false);
@@ -24,11 +38,32 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
   const [isDragging, setIsDragging] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [pageError, setPageError] = useState<string | null>(null);
+  const [archivedRaces, setArchivedRaces] = useState<RaceSummary[]>([]);
+  const [showArchived, setShowArchived] = useState(false);
+  const [renameTarget, setRenameTarget] = useState<RaceSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RaceSummary | null>(null);
+  const [actionBusy, setActionBusy] = useState(false);
+  const [pendingRevision, setPendingRevision] = useState(0);
   const dialogRef = useRef<HTMLDialogElement>(null);
+
+  const pendingSync = useMemo(
+    () => getPendingSyncRaces(userId),
+    [userId, pendingRevision, syncing],
+  );
 
   useEffect(() => {
     void refreshRaces();
   }, [refreshRaces]);
+
+  useEffect(() => {
+    if (!showArchived) {
+      return;
+    }
+    void fetchRaces(true)
+      .then((all) => setArchivedRaces(all.filter((race) => race.archived_at)))
+      .catch(() => setArchivedRaces([]));
+  }, [showArchived, races]);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -80,6 +115,106 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
     }
   }
 
+  const handleManage = useCallback(
+    async (raceId: string, action: RaceManageAction) => {
+      const race = [...races, ...archivedRaces].find((entry) => entry.id === raceId);
+      if (!race) {
+        return;
+      }
+      setPageError(null);
+
+      if (action === "rename") {
+        setRenameTarget(race);
+        return;
+      }
+      if (action === "delete") {
+        setDeleteTarget(race);
+        return;
+      }
+      if (action === "export-excel" || action === "export-gpx") {
+        const type = action === "export-excel" ? "excel" : "validation-gpx";
+        window.open(raceExportEndpoint(raceId, type), "_blank", "noopener,noreferrer");
+        return;
+      }
+
+      setActionBusy(true);
+      try {
+        if (action === "duplicate") {
+          const copy = await duplicateRace(raceId);
+          await refreshRaces();
+          onOpenRace(copy.id);
+          return;
+        }
+        if (action === "archive") {
+          await archiveRace(raceId, true);
+          if (activeRaceId === raceId) {
+            closeRace();
+          }
+          await refreshRaces();
+          if (showArchived) {
+            const all = await fetchRaces(true);
+            setArchivedRaces(all.filter((entry) => entry.archived_at));
+          }
+          return;
+        }
+        if (action === "unarchive") {
+          await archiveRace(raceId, false);
+          await refreshRaces();
+          if (showArchived) {
+            const all = await fetchRaces(true);
+            setArchivedRaces(all.filter((entry) => entry.archived_at));
+          }
+        }
+      } catch (err) {
+        setPageError(err instanceof Error ? err.message : "Action failed.");
+      } finally {
+        setActionBusy(false);
+      }
+    },
+    [activeRaceId, archivedRaces, closeRace, onOpenRace, races, refreshRaces, showArchived],
+  );
+
+  async function confirmRename(name: string) {
+    if (!renameTarget) {
+      return;
+    }
+    setActionBusy(true);
+    setPageError(null);
+    try {
+      await renameRace(renameTarget.id, name);
+      setRenameTarget(null);
+      await refreshRaces();
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : "Failed to rename race.");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) {
+      return;
+    }
+    setActionBusy(true);
+    setPageError(null);
+    try {
+      await deleteRace(deleteTarget.id);
+      if (activeRaceId === deleteTarget.id) {
+        closeRace();
+      }
+      setDeleteTarget(null);
+      await refreshRaces();
+      setPendingRevision((value) => value + 1);
+    } catch (err) {
+      setPageError(err instanceof Error ? err.message : "Failed to delete race.");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  const activeRaces = races.filter((race) => !race.archived_at);
+  const hasArchived = archivedRaces.length > 0 || races.some((race) => race.archived_at);
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-12">
       <header className="mb-10 flex flex-wrap items-end justify-between gap-4">
@@ -98,13 +233,15 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         </button>
       </header>
 
-      {(error || createError) && !showCreate && (
-        <p className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error ?? createError}</p>
+      {(error || createError || pageError) && !showCreate && (
+        <p className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error ?? createError ?? pageError}
+        </p>
       )}
 
-      {loadingRaces && races.length === 0 ? (
+      {loadingRaces && activeRaces.length === 0 ? (
         <p className="text-sm text-muted">Loading your races…</p>
-      ) : races.length === 0 ? (
+      ) : activeRaces.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-line bg-card/50 px-8 py-16 text-center">
           <h2 className="text-xl font-semibold text-ink">No races yet</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted">
@@ -120,21 +257,72 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {races.map((race) => (
+          {activeRaces.map((race) => (
             <RaceCard
               key={race.id}
               race={race}
               onOpen={onOpenRace}
+              onManage={(raceId, action) => void handleManage(raceId, action)}
               syncStatus={getDesktopRaceSyncStatus(
                 race,
                 cloudById,
                 syncing,
                 Boolean(user),
+                pendingSync,
               )}
             />
           ))}
         </div>
       )}
+
+      {hasArchived ? (
+        <section className="mt-10">
+          <button
+            type="button"
+            onClick={() => setShowArchived((current) => !current)}
+            className="text-sm font-medium text-muted transition hover:text-ink"
+          >
+            {showArchived ? "Hide archived races" : "Show archived races"}
+          </button>
+          {showArchived && archivedRaces.length > 0 ? (
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {archivedRaces.map((race) => (
+                <RaceCard
+                  key={race.id}
+                  race={race}
+                  onOpen={onOpenRace}
+                  onManage={(raceId, action) => void handleManage(raceId, action)}
+                  syncStatus={getDesktopRaceSyncStatus(
+                    race,
+                    cloudById,
+                    syncing,
+                    Boolean(user),
+                    pendingSync,
+                  )}
+                />
+              ))}
+            </div>
+          ) : showArchived ? (
+            <p className="mt-3 text-sm text-muted">No archived races.</p>
+          ) : null}
+        </section>
+      ) : null}
+
+      <RenameRaceDialog
+        open={Boolean(renameTarget)}
+        currentName={renameTarget?.name ?? ""}
+        busy={actionBusy}
+        onClose={() => setRenameTarget(null)}
+        onConfirm={(name) => void confirmRename(name)}
+      />
+
+      <DeleteRaceDialog
+        open={Boolean(deleteTarget)}
+        raceName={deleteTarget?.name ?? ""}
+        busy={actionBusy}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDelete()}
+      />
 
       <dialog
         ref={dialogRef}

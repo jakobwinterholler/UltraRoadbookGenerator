@@ -7,6 +7,7 @@ import {
   getCompanionRaceSyncStatus,
   SyncStatusBadge,
 } from "@shared/ui/SyncStatusBadge";
+import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
 import { useState } from "react";
 import {
   loadCompanionBundle,
@@ -85,7 +86,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-      <header className="flex items-start justify-between gap-4 px-5 pb-4 pt-[max(1rem,env(safe-area-inset-top))]">
+      <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-[max(8px,env(safe-area-inset-top))]">
         <div>
           <p className="text-2xl font-semibold tracking-tight text-white">{greeting}</p>
           <p className="mt-1 text-sm text-white/45">Your races</p>
@@ -100,7 +101,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
         </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
         {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
 
@@ -137,6 +138,11 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
                             ? ` · +${Math.round(race.elevation_gain_m).toLocaleString()} m`
                             : ""}
                         </p>
+                        {race.readiness_score != null ? (
+                          <div className="mt-2">
+                            <ReadinessScoreBadge score={race.readiness_score} dark />
+                          </div>
+                        ) : null}
                       </div>
                       {syncStatus ? (
                         <SyncStatusBadge status={syncStatus} variant="dark" className="shrink-0" />

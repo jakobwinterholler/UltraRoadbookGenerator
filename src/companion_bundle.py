@@ -5,9 +5,10 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from race_dashboard import compute_race_dashboard_stats
 from unsupported_sections import analyze_unsupported_sections
 
-COMPANION_SCHEMA_VERSION = 2
+COMPANION_SCHEMA_VERSION = 3
 
 POI_ICONS: dict[str, str] = {
     "water": "💧",
@@ -20,18 +21,37 @@ POI_ICONS: dict[str, str] = {
     "bakery": "🥐",
 }
 
+DEFAULT_RIDER_ASSUMPTIONS = {
+    "ridingSpeedKmh": 20,
+    "climbingPenaltyMinPer100m": 3,
+    "waterMlPerHour": 500,
+    "carbsGPerHour": 60,
+    "maxGapWithoutResupplyKm": 45,
+}
+
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _zone_has_category(zone: dict[str, Any], key: str) -> bool:
+    for group in zone.get("categories") or []:
+        if group.get("key") == key and group.get("primary"):
+            return True
+    return False
+
+
+def _is_coffee_category(category: str) -> bool:
+    lowered = category.lower()
+    return "cafe" in lowered or "coffee" in lowered or lowered == "café"
+
+
 def _primary_poi(zone: dict[str, Any]) -> dict[str, Any] | None:
-    categories = zone.get("categories") or []
     for key in ("water", "food", "fuel"):
-        for group in categories:
+        for group in zone.get("categories") or []:
             if group.get("key") == key and group.get("primary"):
                 return group["primary"]
-    for group in categories:
+    for group in zone.get("categories") or []:
         if group.get("primary"):
             return group["primary"]
     return None
@@ -68,6 +88,51 @@ def _verified_stop_key(zone_id: int | str) -> str:
     return str(zone_id)
 
 
+def _verification_status(record: dict[str, Any] | None) -> str:
+    if not record:
+        return "unverified"
+    status = record.get("status")
+    if status == "verified":
+        return "verified"
+    if status in ("rejected", "deferred"):
+        return "needs_review"
+    return "unverified"
+
+
+def _elevation_gain_in_range(track_points: list[dict[str, Any]], start_km: float, end_km: float) -> int:
+    in_range = [
+        point
+        for point in track_points
+        if start_km <= float(point.get("km") or 0) <= end_km
+    ]
+    if len(in_range) < 2:
+        return int(max(0, (end_km - start_km) * 8))
+    gain = 0.0
+    for index in range(1, len(in_range)):
+        previous = in_range[index - 1].get("ele_m")
+        current = in_range[index].get("ele_m")
+        if previous is not None and current is not None and current > previous:
+            gain += float(current) - float(previous)
+    return int(round(gain))
+
+
+def _estimate_riding_hours(distance_km: float, elevation_gain_m: float, assumptions: dict[str, float]) -> float:
+    base = distance_km / assumptions["ridingSpeedKmh"]
+    climb = (elevation_gain_m / 100) * (assumptions["climbingPenaltyMinPer100m"] / 60)
+    return base + climb
+
+
+def _unsupported_risk_band(distance_km: float, elevation_gain_m: float, assumptions: dict[str, float]) -> str:
+    gap_factor = distance_km / assumptions["maxGapWithoutResupplyKm"]
+    climb_factor = elevation_gain_m / 1500
+    score = gap_factor * 0.7 + climb_factor * 0.3
+    if score >= 1.4:
+        return "High"
+    if score >= 0.85:
+        return "Medium"
+    return "Low"
+
+
 def _build_bounds(track_points: list[dict[str, Any]]) -> dict[str, float]:
     if not track_points:
         return {"south": 0, "west": 0, "north": 0, "east": 0}
@@ -91,6 +156,7 @@ def build_companion_bundle(
     preparation: dict[str, Any],
     *,
     revision: int,
+    rider_assumptions: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     summary = roadbook.get("summary") or {}
     route = roadbook.get("route") or {}
@@ -98,6 +164,7 @@ def build_companion_bundle(
     zones = roadbook.get("resupply_zones") or []
     verified_stops = (preparation or {}).get("verified_stops") or {}
     total_km = float(summary.get("distance_km") or 0)
+    assumptions = {**DEFAULT_RIDER_ASSUMPTIONS, **(rider_assumptions or {})}
 
     stops: list[dict[str, Any]] = []
     for zone in zones:
@@ -105,7 +172,7 @@ def build_companion_bundle(
         poi = _primary_poi(zone)
         category = str((poi or {}).get("poi_category") or "Resupply")
         record = verified_stops.get(_verified_stop_key(zone_id))
-        verified = (record or {}).get("status") == "verified"
+        status = _verification_status(record if isinstance(record, dict) else None)
         notes = str((record or {}).get("reject_notes") or (record or {}).get("rejectNotes") or "").strip() or None
         stops.append(
             {
@@ -117,14 +184,57 @@ def build_companion_bundle(
                 "category": category,
                 "categoryLabel": _category_label(zone),
                 "icon": _poi_icon(category),
-                "verificationStatus": "verified" if verified else "unverified",
+                "verificationStatus": status,
                 "openingHours": (poi or {}).get("opening_hours"),
                 "notes": notes,
+                "phone": (poi or {}).get("phone"),
+                "website": (poi or {}).get("website"),
+                "hasFood": _zone_has_category(zone, "food"),
+                "hasWater": _zone_has_category(zone, "water"),
+                "hasFuel": _zone_has_category(zone, "fuel"),
+                "hasCoffee": _is_coffee_category(category),
+                "confidenceScore": (poi or {}).get("score"),
+                "verificationDate": (record or {}).get("updated_at") if status == "verified" else None,
             }
         )
 
     stops.sort(key=lambda stop: float(stop.get("km") or 0))
-    unsupported = analyze_unsupported_sections(zones, total_km)
+    raw_sections = analyze_unsupported_sections(zones, total_km)
+    unsupported: list[dict[str, Any]] = []
+    for section in raw_sections:
+        start_km = float(section["startKm"])
+        end_km = float(section["endKm"])
+        distance = float(section["distanceKm"])
+        elevation_gain = _elevation_gain_in_range(track_points, start_km, end_km)
+        riding_hours = _estimate_riding_hours(distance, elevation_gain, assumptions)
+        unsupported.append(
+            {
+                **section,
+                "elevationGainM": elevation_gain,
+                "estimatedRidingHours": round(riding_hours, 2),
+                "waterNeededMl": int(round(riding_hours * assumptions["waterMlPerHour"])),
+                "carbsNeededG": int(round(riding_hours * assumptions["carbsGPerHour"])),
+                "riskBand": _unsupported_risk_band(distance, elevation_gain, assumptions),
+            }
+        )
+
+    dashboard = compute_race_dashboard_stats(roadbook, preparation, max_gap_km=assumptions["maxGapWithoutResupplyKm"])
+    dashboard_stats = {
+        "verifiedStops": dashboard["verified_stops"],
+        "unverifiedStops": dashboard["unverified_stops"],
+        "remainingStops": dashboard["unverified_stops"],
+        "remainingUnsupportedKm": int(
+            round(
+                sum(
+                    section["distanceKm"]
+                    for section in unsupported
+                    if section["distanceKm"] >= assumptions["maxGapWithoutResupplyKm"] * 0.5
+                )
+            )
+        ),
+        "readinessScore": dashboard["readiness_score"],
+        "readinessReasons": dashboard["readiness_reasons"],
+    }
 
     return {
         "schemaVersion": COMPANION_SCHEMA_VERSION,
@@ -146,4 +256,6 @@ def build_companion_bundle(
         },
         "stops": stops,
         "unsupportedSections": unsupported,
+        "dashboardStats": dashboard_stats,
+        "riderAssumptions": assumptions,
     }

@@ -7,6 +7,7 @@ export interface SyncRaceSummary {
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean;
+  readiness_score?: number | null;
 }
 
 export interface AuthProfile {
@@ -23,9 +24,19 @@ export interface CompanionStop {
   category: string;
   categoryLabel: string;
   icon: string;
-  verificationStatus: "verified" | "unverified";
+  verificationStatus: "verified" | "unverified" | "needs_review" | "pending";
   openingHours: string | null;
   notes: string | null;
+  phone?: string | null;
+  website?: string | null;
+  /** Google Place ID for precise Maps / Street View links when available. */
+  placeId?: string | null;
+  hasFood?: boolean;
+  hasWater?: boolean;
+  hasFuel?: boolean;
+  hasCoffee?: boolean;
+  confidenceScore?: number | null;
+  verificationDate?: string | null;
 }
 
 export interface CompanionUnsupportedSection {
@@ -35,6 +46,20 @@ export interface CompanionUnsupportedSection {
   distanceKm: number;
   displayLabel: string;
   riskLevel: string;
+  elevationGainM?: number;
+  estimatedRidingHours?: number;
+  waterNeededMl?: number;
+  carbsNeededG?: number;
+  riskBand?: "Low" | "Medium" | "High";
+}
+
+export interface CompanionDashboardStats {
+  verifiedStops: number;
+  unverifiedStops: number;
+  remainingStops: number;
+  remainingUnsupportedKm: number;
+  readinessScore: number;
+  readinessReasons: Array<{ kind: "pass" | "warn"; text: string }>;
 }
 
 export interface CompanionBundle {
@@ -60,6 +85,14 @@ export interface CompanionBundle {
   };
   stops: CompanionStop[];
   unsupportedSections: CompanionUnsupportedSection[];
+  dashboardStats?: CompanionDashboardStats;
+  riderAssumptions?: {
+    ridingSpeedKmh: number;
+    climbingPenaltyMinPer100m: number;
+    waterMlPerHour: number;
+    carbsGPerHour: number;
+    maxGapWithoutResupplyKm: number;
+  };
 }
 
 export function isCompanionBundle(value: unknown): value is CompanionBundle {

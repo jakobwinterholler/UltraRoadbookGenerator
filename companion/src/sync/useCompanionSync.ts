@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { fetchSyncRaces } from "@shared/api/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
 import {
   formatRelativeTime,
@@ -9,7 +10,7 @@ import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { loadRaceList } from "../db";
 
 export function useCompanionSync() {
-  const { user } = useAuth();
+  const { user, accessToken } = useAuth();
   const userId = user?.id ?? "";
   const { refresh, loading } = useCloudRaceList();
   const [syncing, setSyncing] = useState(false);
@@ -17,12 +18,26 @@ export function useCompanionSync() {
     userId ? getLastSyncAt(userId) : null,
   );
   const [downloadedCount, setDownloadedCount] = useState(0);
+  const [cloudRaceCount, setCloudRaceCount] = useState<number | null>(null);
   const [syncError, setSyncError] = useState<string | null>(null);
 
   const refreshLocalStats = useCallback(async () => {
     const races = await loadRaceList();
     setDownloadedCount(races.filter((race) => race.offlineReady).length);
   }, []);
+
+  const refreshCloudStats = useCallback(async () => {
+    if (!accessToken) {
+      setCloudRaceCount(null);
+      return;
+    }
+    try {
+      const races = await fetchSyncRaces(accessToken);
+      setCloudRaceCount(races.length);
+    } catch {
+      setCloudRaceCount(null);
+    }
+  }, [accessToken]);
 
   useEffect(() => {
     if (userId) {
@@ -32,7 +47,8 @@ export function useCompanionSync() {
 
   useEffect(() => {
     void refreshLocalStats();
-  }, [refreshLocalStats, loading]);
+    void refreshCloudStats();
+  }, [refreshLocalStats, refreshCloudStats, loading]);
 
   const syncNow = useCallback(async () => {
     if (!userId) {
@@ -46,19 +62,21 @@ export function useCompanionSync() {
       setLastSyncAt(userId, now);
       setLastSyncAtState(now);
       await refreshLocalStats();
+      await refreshCloudStats();
     } catch (err) {
       setSyncError(err instanceof Error ? err.message : "Sync failed.");
       throw err;
     } finally {
       setSyncing(false);
     }
-  }, [refresh, refreshLocalStats, userId]);
+  }, [refresh, refreshCloudStats, refreshLocalStats, userId]);
 
   return {
     syncing: syncing || loading,
     lastSyncAt,
     lastSyncLabel: formatRelativeTime(lastSyncAt),
     downloadedCount,
+    cloudRaceCount,
     syncError,
     syncNow,
     refreshLocalStats,

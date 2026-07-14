@@ -3,13 +3,19 @@ import { createClient, type Session, type SupabaseClient } from "@supabase/supab
 let client: SupabaseClient | null = null;
 
 export function getSupabaseUrl(): string {
-  return import.meta.env.VITE_SUPABASE_URL ?? "";
+  return (
+    import.meta.env.VITE_SUPABASE_URL ??
+    import.meta.env.NEXT_PUBLIC_SUPABASE_URL ??
+    ""
+  );
 }
 
 export function getSupabaseAnonKey(): string {
   return (
     import.meta.env.VITE_SUPABASE_ANON_KEY ??
     import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ??
+    import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
+    import.meta.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ??
     ""
   );
 }

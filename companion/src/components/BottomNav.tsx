@@ -1,15 +1,13 @@
-type CompanionTab = "map" | "resupply" | "account";
-
 interface BottomNavProps {
   active: CompanionTab;
   onChange: (tab: CompanionTab) => void;
 }
 
 function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
-  const color = active ? "text-white" : "text-white/35";
+  const color = active ? "text-white" : "text-white/40";
   if (tab === "map") {
     return (
-      <svg className={`h-5 w-5 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
         <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z" strokeLinejoin="round" />
         <path d="M9 4v14M15 6v14" />
       </svg>
@@ -17,7 +15,7 @@ function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
   }
   if (tab === "resupply") {
     return (
-      <svg className={`h-5 w-5 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+      <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
         <path d="M6 6h15l-1.5 9H7.5L6 6z" strokeLinejoin="round" />
         <path d="M6 6L5 3H2" strokeLinecap="round" />
         <circle cx="9" cy="20" r="1" fill="currentColor" />
@@ -25,8 +23,16 @@ function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
       </svg>
     );
   }
+  if (tab === "verify") {
+    return (
+      <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <path d="M9 11l3 3L22 4" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
-    <svg className={`h-5 w-5 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+    <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
       <circle cx="12" cy="8" r="4" />
       <path d="M5 20c0-3.866 3.134-7 7-7s7 3.134 7 7" strokeLinecap="round" />
     </svg>
@@ -34,32 +40,52 @@ function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
 }
 
 export default function BottomNav({ active, onChange }: BottomNavProps) {
-  const items: { id: CompanionTab; label: string }[] = [
+  const items: { id: CompanionTab; label: string; accent?: boolean }[] = [
     { id: "map", label: "Map" },
     { id: "resupply", label: "Resupply" },
+    { id: "verify", label: "Verify", accent: true },
     { id: "account", label: "Account" },
   ];
 
   return (
-    <nav className="grid shrink-0 grid-cols-3 border-t border-white/10 bg-[#0a0a0a]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md">
-      {items.map((item) => {
-        const isActive = active === item.id;
-        return (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => onChange(item.id)}
-            className={`flex flex-col items-center gap-1 py-2.5 transition ${
-              isActive ? "text-white" : "text-white/40"
-            }`}
-          >
-            <NavIcon tab={item.id} active={isActive} />
-            <span className="text-[11px] font-medium">{item.label}</span>
-          </button>
-        );
-      })}
+    <nav
+      className="shrink-0 border-t border-white/8 bg-[#0a0a0a]/92 backdrop-blur-xl"
+      style={{ paddingBottom: "max(6px, env(safe-area-inset-bottom))" }}
+    >
+      <div className="relative grid grid-cols-4">
+        {items.map((item) => {
+          const isActive = active === item.id;
+          const activeClass =
+            item.accent && isActive
+              ? "text-orange-300"
+              : isActive
+                ? "text-sky-300"
+                : "text-white/40";
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onChange(item.id)}
+              aria-label={item.label}
+              aria-current={isActive ? "page" : undefined}
+              className={`relative flex min-h-[52px] flex-col items-center justify-center gap-1 py-1.5 transition-colors duration-200 ${activeClass}`}
+            >
+              {isActive ? (
+                <span
+                  className={`absolute top-0 h-0.5 w-8 rounded-full ${
+                    item.accent ? "bg-orange-400" : "bg-sky-400"
+                  }`}
+                  aria-hidden
+                />
+              ) : null}
+              <NavIcon tab={item.id} active={isActive} />
+              <span className="text-[11px] font-medium leading-none">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
     </nav>
   );
 }
 
-export type { CompanionTab };
+export type CompanionTab = "map" | "resupply" | "verify" | "account";

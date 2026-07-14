@@ -22,6 +22,13 @@ def get_optional_user(authorization: str | None = Header(default=None)) -> AuthU
         return None
 
 
+def get_bearer_token(authorization: str | None = Header(default=None)) -> str | None:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    return token or None
+
+
 def require_user(authorization: str | None = Header(default=None)) -> AuthUser:
     if not cloud_config.auth_enabled:
         raise HTTPException(status_code=503, detail="Cloud auth is not configured on this server.")
