@@ -13,7 +13,7 @@ export default function ExecutionHeader({ overlay = false, trailing }: Execution
 
   return (
     <header
-      className={`shrink-0 px-4 pb-2 pt-[max(8px,env(safe-area-inset-top))] ${
+      className={`shrink-0 px-4 pb-2 pt-safe-top ${
         overlay
           ? "bg-gradient-to-b from-black/75 via-black/45 to-transparent"
           : "border-b border-white/8 bg-[#0a0a0a]"

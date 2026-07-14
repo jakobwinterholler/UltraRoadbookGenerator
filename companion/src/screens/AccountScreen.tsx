@@ -198,7 +198,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
   return (
     <div
       className={`flex h-full min-h-0 flex-col overflow-y-auto px-4 pb-4 ${
-        embedded ? "pt-4" : "pt-[max(8px,env(safe-area-inset-top))]"
+        embedded ? "pt-4" : "pt-safe-top"
       }`}
     >
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
@@ -301,6 +301,8 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
         onContinue={() => setDeleteStep(2)}
         onConfirm={() => void handleDeleteAccount()}
       />
+
+      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.1</p>
     </div>
   );
 }

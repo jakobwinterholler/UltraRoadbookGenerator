@@ -27,6 +27,17 @@ body {
 }
 
 @layer utilities {
+  /* Clears Dynamic Island / notch — env() can be 0 in iOS standalone PWA */
+  .pt-safe-top {
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+  }
+
+  @media (display-mode: standalone) {
+    .pt-safe-top {
+      padding-top: max(54px, env(safe-area-inset-top, 0px));
+    }
+  }
+
   .touch-target {
     @apply min-h-[44px] min-w-[44px];
   }
@@ -98,8 +109,7 @@ body {
   }
 
   .verification-flow-overlay {
-    @apply fixed inset-0 z-50 flex flex-col bg-[#0a0a0a];
-    padding-top: env(safe-area-inset-top);
+    @apply fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] pt-safe-top;
     padding-bottom: env(safe-area-inset-bottom);
   }
 

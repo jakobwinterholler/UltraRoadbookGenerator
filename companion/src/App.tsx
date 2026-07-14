@@ -6,6 +6,7 @@ import { Avatar, SessionRestoreScreen, SigningInScreen } from "@shared/ui/AuthSc
 import { updateDeviceLastActive } from "@shared/sync/deviceProfile";
 import { CompanionContext } from "./context/CompanionContext";
 import BottomNav, { type CompanionTab } from "./components/BottomNav";
+import AppUpdateBanner from "./components/AppUpdateBanner";
 import ExecutionHeader from "./components/ExecutionHeader";
 import AccountScreen from "./screens/AccountScreen";
 import HomeScreen from "./screens/HomeScreen";
@@ -149,7 +150,7 @@ export default function App() {
       const avatarUrl = getAvatarUrl(user);
       return (
         <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-          <header className="flex shrink-0 items-center gap-3 border-b border-white/8 px-4 pb-2 pt-[max(8px,env(safe-area-inset-top))]">
+          <header className="flex shrink-0 items-center gap-3 border-b border-white/8 px-4 pb-2 pt-safe-top">
             <button
               type="button"
               onClick={() => setHomeTab("races")}
@@ -193,12 +194,12 @@ export default function App() {
     );
   }
 
-  const isMapTab = tab === "map";
-  const showExecutionHeader = tab !== "account" && tab !== "verify" && !isMapTab;
+  const showExecutionHeader = tab !== "account" && tab !== "verify";
 
   return (
     <CompanionContext.Provider value={contextValue}>
       <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
+        <AppUpdateBanner />
         {showExecutionHeader ? (
           <ExecutionHeader trailing={headerTrailing} />
         ) : null}

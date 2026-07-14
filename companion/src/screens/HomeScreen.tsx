@@ -86,7 +86,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-      <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-[max(8px,env(safe-area-inset-top))]">
+      <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-safe-top">
         <div>
           <p className="text-2xl font-semibold tracking-tight text-white">{greeting}</p>
           <p className="mt-1 text-sm text-white/45">Your races</p>

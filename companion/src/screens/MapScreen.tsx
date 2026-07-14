@@ -4,13 +4,11 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
 import type { CompanionStop } from "../types";
-import ExecutionHeader from "../components/ExecutionHeader";
 import FloatingCard from "../components/FloatingCard";
 import StopSheet from "../components/StopSheet";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 /** Header block height below safe-area (px) */
-const HEADER_OFFSET = 56;
 
 function stopsGeoJson(
   stops: CompanionStop[],
@@ -403,19 +401,11 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
     mapRef.current?.zoomOut({ duration: 200 });
   }
 
-  const controlsTop = embedded
-    ? "top-3"
-    : `top-[calc(env(safe-area-inset-top)+${HEADER_OFFSET}px+8px)]`;
+  const controlsTop = embedded ? "top-3" : "top-4";
 
   return (
     <div className={`relative min-h-0 ${embedded ? "h-full" : "h-full"}`}>
       <div ref={hostRef} className="absolute inset-0" />
-
-      {!embedded ? (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-20">
-          <ExecutionHeader overlay />
-        </div>
-      ) : null}
 
       {!embedded ? (
         <>

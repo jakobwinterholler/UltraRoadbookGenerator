@@ -37,7 +37,7 @@ export default function WelcomeScreen() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a] px-6 pb-10 pt-[max(3rem,env(safe-area-inset-top))]">
+    <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a] px-6 pb-10 pt-safe-top">
       <div className="flex flex-1 flex-col items-center justify-center text-center animate-fade-in">
         <CompanionLogo />
         <h1 className="mt-6 text-[1.75rem] font-semibold tracking-tight text-white">

@@ -66,7 +66,7 @@ export default function VerificationScreen() {
 
   return (
     <div className="verify-tab flex h-full min-h-0 flex-col">
-      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-3 pt-[max(8px,env(safe-area-inset-top))]">
+      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-3 pt-safe-top">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-300">Verify</p>
         <p className="mt-1 text-sm font-medium tabular-nums text-white/75">{statsLine}</p>
         {nearbyCount > 0 ? (
