@@ -224,11 +224,6 @@ function SwipeCard({
         Needs review
       </div>
 
-      <div className="verification-swipe-card__photo" aria-hidden>
-        <span className="verification-swipe-card__photo-icon">{stop.icon}</span>
-        <span className="verification-swipe-card__photo-label">Storefront photo</span>
-      </div>
-
       <div className="verification-swipe-card__body">
         <div className="verification-swipe-card__title-block">
           <h3 className="verification-swipe-card__name">{stop.name}</h3>
@@ -344,6 +339,11 @@ function SwipeCard({
             ) : null}
           </dl>
         </details>
+      </div>
+
+      <div className="verification-swipe-card__photo" aria-hidden>
+        <span className="verification-swipe-card__photo-icon">{stop.icon}</span>
+        <span className="verification-swipe-card__photo-label">Storefront photo</span>
       </div>
     </div>
   );

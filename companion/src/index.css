@@ -126,7 +126,7 @@ body {
   }
 
   .verification-swipe-stack__deck {
-    @apply relative mx-auto flex min-h-0 w-full max-w-md flex-1 items-center justify-center;
+    @apply relative mx-auto flex min-h-0 w-full max-w-md flex-1 flex-col justify-end pb-1 pt-2;
   }
 
   .verification-swipe-stack--empty {
@@ -134,10 +134,9 @@ body {
   }
 
   .verification-swipe-card {
-    @apply absolute inset-x-0 mx-auto w-full max-w-md select-none rounded-3xl border border-white/10 bg-gradient-to-b from-[#1c1c1c] to-[#101010] shadow-2xl;
-    top: 50%;
-    margin-top: -280px;
-    height: min(560px, calc(100dvh - 12rem));
+    @apply relative mx-auto w-full max-w-md select-none rounded-3xl border border-white/10 bg-gradient-to-b from-[#1c1c1c] to-[#101010] shadow-2xl;
+    max-height: 100%;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -146,12 +145,19 @@ body {
     transform: translateZ(0);
   }
 
+  .verification-swipe-card--behind {
+    @apply absolute inset-x-0 bottom-1 mx-auto;
+    max-height: calc(100% - 0.5rem);
+    transform: scale(0.96);
+    opacity: 0.85;
+  }
+
   .verification-swipe-card__photo {
-    @apply relative flex h-40 shrink-0 flex-col items-center justify-center gap-1 border-b border-dashed border-white/15 bg-white/[0.04];
+    @apply relative flex h-24 shrink-0 flex-col items-center justify-center gap-1 border-t border-dashed border-white/15 bg-white/[0.03];
   }
 
   .verification-swipe-card__photo-icon {
-    @apply text-5xl leading-none;
+    @apply text-3xl leading-none;
   }
 
   .verification-swipe-card__photo-label {
@@ -272,11 +278,6 @@ body {
 
   .verification-swipe-card--top {
     @apply cursor-grab active:cursor-grabbing touch-pan-y;
-  }
-
-  .verification-swipe-card--behind {
-    transform: scale(0.96);
-    opacity: 0.85;
   }
 
   .verification-swipe-card__stamp {

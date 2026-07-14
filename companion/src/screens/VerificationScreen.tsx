@@ -66,18 +66,18 @@ export default function VerificationScreen() {
 
   return (
     <div className="verify-tab flex h-full min-h-0 flex-col">
-      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-3 pt-safe-top">
-        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-300">Verify</p>
-        <p className="mt-1 text-sm font-medium tabular-nums text-white/75">{statsLine}</p>
-        {nearbyCount > 0 ? (
-          <p className="mt-2 inline-flex rounded-full bg-orange-500/15 px-3 py-1 text-xs font-semibold text-orange-200 ring-1 ring-orange-400/30">
-            {nearbyCount} stop{nearbyCount === 1 ? "" : "s"} nearby
-          </p>
-        ) : gps.lat != null && gps.lon != null ? (
-          <p className="mt-2 text-xs text-white/45">Next stop along your route</p>
-        ) : (
-          <p className="mt-2 text-xs text-white/45">Enable GPS to prioritize nearby stops</p>
-        )}
+      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-2 pt-safe-top">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-300">Verify</p>
+            <p className="mt-0.5 truncate text-sm font-medium tabular-nums text-white/75">{statsLine}</p>
+          </div>
+          {nearbyCount > 0 ? (
+            <p className="shrink-0 rounded-full bg-orange-500/15 px-2.5 py-1 text-[11px] font-semibold text-orange-200 ring-1 ring-orange-400/30">
+              {nearbyCount} nearby
+            </p>
+          ) : null}
+        </div>
       </header>
 
       <div className="verify-tab__stack min-h-0 flex-1">
