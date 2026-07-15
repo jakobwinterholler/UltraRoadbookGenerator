@@ -1,11 +1,12 @@
 import { apiFetch } from "../api/authFetch";
 import { getFreshAccessToken } from "@shared/auth/accessToken";
+import { fetchSyncRaces, pushRaceNow } from "@shared/api/sync";
+import { addPendingSyncRace, removePendingSyncRace } from "@shared/sync/pendingSync";
+import { isDesktopCloudCurrent, resolveCloudRaceForLocal } from "@shared/sync/raceVersion";
 import type {
   AnalysisStreamEvent,
   ProgressStepDefinition,
 } from "../progress";
-import { pushRaceNow } from "@shared/api/sync";
-import { addPendingSyncRace, removePendingSyncRace } from "@shared/sync/pendingSync";
 import type { PoiPlanningProfile, RoadbookResult } from "../api";
 import { getSyncUserId } from "../sync/syncUserContext";
 import { raceOpenTrace } from "../debug/raceOpenTrace";
@@ -371,6 +372,19 @@ export async function analyzeRaceStream(
       }
     } catch (err) {
       const userId = getSyncUserId();
+      if (token && userId) {
+        try {
+          const [localRaces, cloudRaces] = await Promise.all([fetchRaces(), fetchSyncRaces(token)]);
+          const local = localRaces.find((race) => race.id === raceId);
+          const cloud = local ? resolveCloudRaceForLocal(local, cloudRaces) : undefined;
+          if (local && isDesktopCloudCurrent(local, cloud)) {
+            removePendingSyncRace(userId, raceId);
+            return result;
+          }
+        } catch {
+          // Ignore reconcile errors — fall through to pending + user message.
+        }
+      }
       if (userId) {
         addPendingSyncRace(userId, raceId);
       }

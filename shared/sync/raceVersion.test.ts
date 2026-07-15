@@ -6,6 +6,7 @@
 import assert from "node:assert/strict";
 import type { SyncRaceSummary } from "../types/sync";
 import {
+  isDesktopCloudCurrent,
   needsCompanionDownload,
   needsDesktopUpload,
   resolveCloudRaceForLocal,
@@ -90,6 +91,22 @@ function testResolveCloudRaceUsesFingerprint() {
   assert.equal(resolved?.id, "626b3103-c50d-49eb-b5de-8a129a5f27f3");
 }
 
+function testPendingDoesNotForceUploadWhenCloudIsCurrent() {
+  const local = {
+    id: "b7a1c487-80c6-477c-87ae-ec9dd32b900c",
+    updated_at: "2026-07-15T13:02:44+00:00",
+    has_analysis: true,
+    gpx_fingerprint: "c19c3ee71994c636",
+  };
+  const cloud = baseRace({
+    id: "626b3103-c50d-49eb-b5de-8a129a5f27f3",
+    updated_at: "2026-07-15T13:02:44+00:00",
+  });
+  assert.equal(isDesktopCloudCurrent(local, cloud), true);
+  assert.equal(needsDesktopUpload(local, cloud, new Set([local.id])), false);
+}
+
+testPendingDoesNotForceUploadWhenCloudIsCurrent();
 testClimbCountMismatchTriggersDownload();
 testMatchingClimbCountDoesNotTriggerDownload();
 testHigherRevisionStillTriggersDownload();

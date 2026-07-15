@@ -87,6 +87,25 @@ export function needsCompanionDownload(
   return false;
 }
 
+/** True when the cloud already has an up-to-date bundle for this local race. */
+export function isDesktopCloudCurrent(
+  local: {
+    updated_at: string;
+    has_analysis: boolean;
+  },
+  cloud: SyncRaceSummary | undefined,
+): boolean {
+  if (!local.has_analysis || !cloud?.has_bundle) {
+    return false;
+  }
+  if (cloudBundleMetadataIsStale(cloud)) {
+    return false;
+  }
+  const localTime = new Date(local.updated_at).getTime();
+  const cloudTime = cloud.updated_at ? new Date(cloud.updated_at).getTime() : 0;
+  return cloudTime + 1000 >= localTime;
+}
+
 export function needsDesktopUpload(
   local: {
     id: string;
@@ -97,6 +116,9 @@ export function needsDesktopUpload(
   pendingSync: Set<string>,
 ): boolean {
   if (!local.has_analysis) {
+    return false;
+  }
+  if (isDesktopCloudCurrent(local, cloud)) {
     return false;
   }
   if (pendingSync.has(local.id)) {
