@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   bearingBetween,
   buildStreetViewUrlFromPanorama,
+  computeStreetViewApproach,
   googleStreetViewUrl,
   gpxPointAtStopKm,
   parseStreetViewMetadataStatus,
@@ -28,23 +29,24 @@ const OILPRIX = {
   placeId: "node/287007125",
 };
 
-function testViewpointUsesPoiNotGpx() {
+function testViewpointUsesRouteApproachNotPoi() {
   const url = googleStreetViewUrl(OILPRIX, {
     routeCoordinates: COLLserola_ROUTE,
     totalDistanceKm: 39,
   });
 
-  const gpx = gpxPointAtStopKm(OILPRIX, {
+  const approach = computeStreetViewApproach(OILPRIX, {
     routeCoordinates: COLLserola_ROUTE,
     totalDistanceKm: 39,
   });
-  assert.ok(gpx);
 
-  assert.match(url, /viewpoint=41\.430306%2C2\.128889/);
-  assert.doesNotMatch(url, new RegExp(`viewpoint=${gpx!.lat.toFixed(6)}`.replace(".", "\\.")));
+  assert.match(
+    url,
+    new RegExp(`viewpoint=${approach.viewpoint.lat.toFixed(6)}%2C${approach.viewpoint.lon.toFixed(6)}`),
+  );
+  assert.doesNotMatch(url, /viewpoint=41\.430306%2C2\.128889/);
   assert.match(url, /heading=/);
-  assert.match(url, /query=Oilprix/);
-  assert.doesNotMatch(url, /place_id:/);
+  assert.doesNotMatch(url, /query=/);
 }
 
 function testPanoramaHeadingFacesPoi() {
@@ -52,12 +54,16 @@ function testPanoramaHeadingFacesPoi() {
   const poi = { lat: OILPRIX.lat, lon: OILPRIX.lon };
   const expectedHeading = Math.round(bearingBetween(panorama, poi));
 
-  const url = buildStreetViewUrlFromPanorama(panorama, poi, { name: "Oilprix" });
+  const url = buildStreetViewUrlFromPanorama(panorama, poi, {
+    panoId: "tu510ie_z4ptBZYo2BGEJg",
+  });
   assert.match(url, /viewpoint=41\.430100%2C2\.128500/);
   assert.match(url, new RegExp(`heading=${expectedHeading}`));
+  assert.match(url, /pano=tu510ie_z4ptBZYo2BGEJg/);
+  assert.doesNotMatch(url, /query=/);
 }
 
-function testStreetViewUsesPlaceIdWhenValid() {
+function testStreetViewNeverUsesPlaceQuery() {
   const placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
   const url = googleStreetViewUrl({
     lat: OILPRIX.lat,
@@ -66,8 +72,8 @@ function testStreetViewUsesPlaceIdWhenValid() {
     placeId,
   });
 
-  assert.match(url, /viewpoint=41\.430306%2C2\.128889/);
-  assert.match(url, /query=place_id%3AChIJN1t_tDeuEmsRUsoyG83frY4/);
+  assert.match(url, /map_action=pano/);
+  assert.doesNotMatch(url, /query=/);
 }
 
 function testParseStreetViewMetadata() {
@@ -97,6 +103,7 @@ async function testResolveStreetViewLogsAndUsesPoiSearch() {
       json: async () => ({
         status: "OK",
         location: { lat: 41.4301, lng: 2.1285 },
+        pano_id: "tu510ie_z4ptBZYo2BGEJg",
       }),
     }) as Response;
 
@@ -108,10 +115,54 @@ async function testResolveStreetViewLogsAndUsesPoiSearch() {
     assert.equal(resolved.available, true);
     assert.ok(resolved.streetViewUrl);
     assert.match(resolved.streetViewUrl!, /viewpoint=41\.430100%2C2\.128500/);
+    assert.match(resolved.streetViewUrl!, /pano=tu510ie_z4ptBZYo2BGEJg/);
+    assert.doesNotMatch(resolved.streetViewUrl!, /query=/);
     assert.equal(resolved.debug.poiLat, OILPRIX.lat);
     assert.equal(resolved.debug.panoramaLat, 41.4301);
     assert.ok(resolved.debug.heading != null);
     assert.ok(resolved.debug.panoramaDistanceFromPoiM! <= STREET_VIEW_SEARCH_RADIUS_M);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testResolveStreetViewFallbackWhenMetadataDenied() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    ({
+      ok: true,
+      json: async () => ({
+        status: "REQUEST_DENIED",
+        error_message: "You must use an API key",
+      }),
+    }) as Response;
+
+  try {
+    const resolved = await resolveStreetView(OILPRIX, {
+      routeCoordinates: COLLserola_ROUTE,
+      totalDistanceKm: 39,
+    });
+    assert.equal(resolved.available, true);
+    assert.ok(resolved.streetViewUrl);
+    assert.doesNotMatch(resolved.streetViewUrl!, /query=/);
+    assert.equal(resolved.debug.status, "UNKNOWN");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function testResolveStreetViewFallbackWhenFetchFails() {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("network");
+  };
+
+  try {
+    const resolved = await resolveStreetView(OILPRIX);
+    assert.equal(resolved.available, true);
+    assert.ok(resolved.streetViewUrl);
+    assert.match(resolved.streetViewUrl!, /map_action=pano/);
+    assert.doesNotMatch(resolved.streetViewUrl!, /query=/);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -135,12 +186,14 @@ async function testResolveStreetViewFallbackWhenNoCoverage() {
   }
 }
 
-testViewpointUsesPoiNotGpx();
+testViewpointUsesRouteApproachNotPoi();
 testPanoramaHeadingFacesPoi();
-testStreetViewUsesPlaceIdWhenValid();
+testStreetViewNeverUsesPlaceQuery();
 testParseStreetViewMetadata();
 testCollserolaOilprixGpxDiffersFromPoi();
 await testResolveStreetViewLogsAndUsesPoiSearch();
+await testResolveStreetViewFallbackWhenMetadataDenied();
+await testResolveStreetViewFallbackWhenFetchFails();
 await testResolveStreetViewFallbackWhenNoCoverage();
 
 console.log("streetViewUrl.test.ts: all tests passed");
