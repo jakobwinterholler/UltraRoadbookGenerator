@@ -99,7 +99,14 @@ def _account_payload(user: AuthUser | None) -> dict[str, Any]:
 
 def _safe_push_race(user_id: str, race_id: str, access_token: str | None = None) -> None:
     try:
-        push_race(user_id, race_id, access_token)
+        result = push_race(user_id, race_id, access_token)
+        logger.info(
+            "Cloud push succeeded for race %s (user %s, revision %s, has_bundle=%s)",
+            race_id,
+            user_id,
+            result.get("companion_revision"),
+            result.get("has_bundle"),
+        )
     except Exception:
         logger.exception("Background cloud push failed for race %s (user %s)", race_id, user_id)
 
@@ -553,7 +560,12 @@ def analyze_race(
 
 
 @app.post("/api/races/{race_id}/analyze/stream")
-async def analyze_race_stream(race_id: str) -> StreamingResponse:
+async def analyze_race_stream(
+    race_id: str,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> StreamingResponse:
     _require_race(race_id)
 
     loop = asyncio.get_running_loop()
@@ -566,11 +578,16 @@ async def analyze_race_stream(race_id: str) -> StreamingResponse:
     thread.start()
 
     async def event_stream():
+        analysis_ok = False
         while True:
             event = await queue.get()
             if event is None:
                 break
+            if isinstance(event, dict) and event.get("type") == "complete":
+                analysis_ok = True
             yield f"data: {json.dumps(event)}\n\n"
+        if analysis_ok:
+            _schedule_cloud_sync(background_tasks, user, race_id, access_token)
 
     return StreamingResponse(
         event_stream(),
@@ -979,13 +996,14 @@ def sync_get_bundle(
 @app.post("/api/sync/push")
 def sync_push_race(
     body: SyncPushBody,
-    background_tasks: BackgroundTasks,
     user: AuthUser = Depends(require_user),
     access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
     _require_race(body.race_id)
-    background_tasks.add_task(_safe_push_race, user.id, body.race_id, access_token)
-    return {"status": "queued", "race_id": body.race_id}
+    try:
+        return push_race(user.id, body.race_id, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.post("/api/sync/push-now")

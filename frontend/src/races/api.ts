@@ -3,8 +3,8 @@ import type {
   AnalysisStreamEvent,
   ProgressStepDefinition,
 } from "../progress";
-import { queueRacePush } from "@shared/api/sync";
-import { addPendingSyncRace } from "@shared/sync/pendingSync";
+import { pushRaceNow } from "@shared/api/sync";
+import { addPendingSyncRace, removePendingSyncRace } from "@shared/sync/pendingSync";
 import type { PoiPlanningProfile, RoadbookResult } from "../api";
 import { getSyncUserId } from "../sync/syncUserContext";
 import { raceOpenTrace } from "../debug/raceOpenTrace";
@@ -356,12 +356,20 @@ export async function analyzeRaceStream(
 
   const token = getAuthAccessToken();
   if (token) {
-    void queueRacePush(token, raceId).catch(() => {
+    try {
+      await pushRaceNow(token, raceId);
+      const userId = getSyncUserId();
+      if (userId) {
+        removePendingSyncRace(userId, raceId);
+      }
+    } catch (err) {
       const userId = getSyncUserId();
       if (userId) {
         addPendingSyncRace(userId, raceId);
       }
-    });
+      const message = err instanceof Error ? err.message : "Cloud upload failed.";
+      throw new Error(`Analysis saved locally but cloud upload failed: ${message}`);
+    }
   }
 
   return result;

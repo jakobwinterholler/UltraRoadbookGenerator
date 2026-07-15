@@ -53,6 +53,9 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
     checkMessage,
     checkForUpdates,
     lastCheckLabel,
+    syncError,
+    syncDebugLog,
+    updateResults,
   } = useCompanionSync();
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
@@ -148,11 +151,35 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
+        {syncError ? <p className="mb-3 text-sm text-red-300">{syncError}</p> : null}
         {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
         {checkMessage ? (
           <p className="mb-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
             {checkMessage}
           </p>
+        ) : null}
+        {syncDebugLog.length > 0 ? (
+          <details className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-white/55">
+            <summary className="cursor-pointer font-medium text-white/70">Sync debug log</summary>
+            <ul className="mt-2 space-y-1">
+              {syncDebugLog.map((entry) => (
+                <li key={`${entry.at}-${entry.stage}-${entry.detail}`}>
+                  <span className="text-white/35">{entry.stage}</span> {entry.detail}
+                </li>
+              ))}
+            </ul>
+            {updateResults.some((entry) => entry.reason) ? (
+              <ul className="mt-2 space-y-1 border-t border-white/8 pt-2">
+                {updateResults.map((entry) => (
+                  <li key={entry.raceId}>
+                    {entry.name}: {entry.status}
+                    {entry.reason ? ` — ${entry.reason}` : ""}
+                    {entry.error ? ` — ${entry.error}` : ""}
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </details>
         ) : null}
 
         {loading ? (

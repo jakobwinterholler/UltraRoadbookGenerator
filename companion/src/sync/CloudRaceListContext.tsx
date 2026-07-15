@@ -11,6 +11,7 @@ import { normalizeSyncListError } from "@shared/api/supabaseErrors";
 import { fetchSyncRaces } from "@shared/api/sync";
 import type { SyncRaceSummary } from "@shared/types/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
+import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import { loadRaceList, saveRaceList, type StoredRaceListItem } from "../db";
 
 function mergeRaceLists(
@@ -60,9 +61,11 @@ export function CloudRaceListProvider({ children }: { children: ReactNode }) {
         return;
       }
       const cloud = await fetchSyncRaces(accessToken);
+      logSyncDebug("race-list", `Cloud race list refreshed (${cloud.length} races)`, cloud);
       const merged = mergeRaceLists(cloud, local);
       await saveRaceList(merged);
       setRaces(merged);
+      logSyncDebug("race-list", `IndexedDB race list saved (${merged.length} races)`);
     } catch (err) {
       const local = await loadRaceList();
       setRaces(local);
