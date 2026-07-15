@@ -286,7 +286,6 @@ function waypointName(
       hasFuel: stop.hasFuel,
       hasWater: stop.hasWater,
       hasFood: stop.hasFood,
-      km,
       resupplyReason: stop.resupplyReason,
       isPrimary,
     });
