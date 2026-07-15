@@ -3,9 +3,11 @@ import type { RoadbookResult } from "../api";
 import { downloadExport } from "../api";
 import type { VerifiedStopRecord } from "../planning/stopVerification/types";
 import { raceExportEndpoint } from "../races/api";
+import GpsGpxExportDialog from "./GpsGpxExportDialog";
 
 interface ExportSectionProps {
   raceId: string;
+  raceName: string;
   result: RoadbookResult;
   verifiedStops: Record<string, VerifiedStopRecord>;
   onExported?: () => void;
@@ -13,10 +15,13 @@ interface ExportSectionProps {
 
 export default function ExportSection({
   raceId,
+  raceName,
+  verifiedStops,
   onExported,
 }: ExportSectionProps) {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
+  const [gpsDialogOpen, setGpsDialogOpen] = useState(false);
 
   async function handleExport(endpoint: string, filename: string, label: string) {
     setError(null);
@@ -35,16 +40,25 @@ export default function ExportSection({
     <section className="rounded-2xl bg-card p-6 shadow-card">
       <h3 className="text-lg font-semibold text-ink">Export</h3>
       <p className="mt-1 text-sm text-muted">
-        Download your roadbook or validation files. Races sync automatically to the Companion app when
-        you are signed in.
+        Download your roadbook, GPS navigation GPX, or validation files. Races sync automatically to
+        the Companion app when you are signed in.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-3">
         <button
           type="button"
-          onClick={() => handleExport(raceExportEndpoint(raceId, "excel"), "Roadbook.xlsx", "excel")}
+          onClick={() => setGpsDialogOpen(true)}
           disabled={loading !== null}
           className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-60"
+        >
+          Race GPX for GPS
+        </button>
+
+        <button
+          type="button"
+          onClick={() => handleExport(raceExportEndpoint(raceId, "excel"), "Roadbook.xlsx", "excel")}
+          disabled={loading !== null}
+          className="rounded-xl border border-line bg-canvas px-5 py-2.5 text-sm font-semibold text-ink transition hover:border-accent/30 hover:bg-white disabled:opacity-60"
         >
           {loading === "excel" ? "Exporting…" : "Export Excel"}
         </button>
@@ -71,6 +85,15 @@ export default function ExportSection({
       </div>
 
       {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+
+      <GpsGpxExportDialog
+        raceId={raceId}
+        raceName={raceName}
+        open={gpsDialogOpen}
+        verifiedStops={verifiedStops}
+        onClose={() => setGpsDialogOpen(false)}
+        onExported={onExported}
+      />
     </section>
   );
 }

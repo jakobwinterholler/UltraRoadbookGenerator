@@ -1,4 +1,3 @@
-import { fetchCompanionBundle } from "@shared/api/sync";
 import type { CompanionBundle } from "@shared/types/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
@@ -11,10 +10,10 @@ import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
 import { useState } from "react";
 import {
   loadCompanionBundle,
-  saveCompanionBundle,
   setActiveRaceId,
   type StoredRaceListItem,
 } from "../db";
+import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { useCompanionSync } from "../sync/useCompanionSync";
 
@@ -99,9 +98,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
     }, 200);
 
     try {
-      const bundle = await fetchCompanionBundle(accessToken, race.id, user?.id);
-      setDownloadProgress(95);
-      await saveCompanionBundle(bundle);
+      const bundle = await downloadRaceAssets(accessToken, race.id, user?.id);
       setDownloadProgress(100);
       await refresh();
       await setActiveRaceId(race.id);

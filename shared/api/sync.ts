@@ -1,5 +1,5 @@
 import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
-import { fetchCompanionBundleDirect, fetchSyncRacesDirect } from "./cloudDirect";
+import { fetchCompanionBundleDirect, fetchOriginalGpxDirect, fetchSyncRacesDirect } from "./cloudDirect";
 import type { AuthProfile, CompanionBundle, SyncPushAllResult, SyncPushRaceResult, SyncRaceSummary } from "../types/sync";
 
 export async function fetchAuthProfile(accessToken: string): Promise<AuthProfile> {
@@ -43,6 +43,24 @@ export async function fetchCompanionBundle(
     throw new Error(await parseApiError(response, "Failed to download race."));
   }
   return response.json();
+}
+
+export async function fetchOriginalGpx(
+  accessToken: string,
+  raceId: string,
+  userId?: string | null,
+): Promise<ArrayBuffer> {
+  if (!getApiBaseUrl()) {
+    if (!userId) {
+      throw new Error("User id required to download route GPX.");
+    }
+    return fetchOriginalGpxDirect(userId, raceId);
+  }
+  const response = await fetchWithAuth(`/api/sync/races/${raceId}/gpx`, accessToken);
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Failed to download route GPX."));
+  }
+  return response.arrayBuffer();
 }
 
 export async function pushRaceNow(accessToken: string, raceId: string): Promise<SyncPushRaceResult> {

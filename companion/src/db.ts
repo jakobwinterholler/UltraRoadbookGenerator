@@ -1,10 +1,11 @@
 import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
 
 const DB_NAME = "race-companion";
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const BUNDLE_STORE = "bundles";
 const LIST_STORE = "raceList";
 const META_STORE = "meta";
+const GPX_STORE = "gpx";
 const ACTIVE_KEY = "active-race-id";
 
 interface StoredRaceListItem extends SyncRaceSummary {
@@ -25,6 +26,9 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains(META_STORE)) {
         db.createObjectStore(META_STORE);
+      }
+      if (!db.objectStoreNames.contains(GPX_STORE)) {
+        db.createObjectStore(GPX_STORE, { keyPath: "raceId" });
       }
       if (!db.objectStoreNames.contains("verifications")) {
         const store = db.createObjectStore("verifications", { keyPath: "id" });
@@ -130,14 +134,42 @@ export async function loadCompanionBundle(raceId: string): Promise<CompanionBund
   return bundle;
 }
 
+export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(GPX_STORE, "readwrite");
+    tx.objectStore(GPX_STORE).put({
+      raceId,
+      bytes,
+      cachedAt: new Date().toISOString(),
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Failed to cache route GPX."));
+  });
+  db.close();
+}
+
+export async function loadOriginalGpx(raceId: string): Promise<ArrayBuffer | null> {
+  const db = await openDb();
+  const record = await new Promise<{ bytes: ArrayBuffer } | undefined>((resolve, reject) => {
+    const tx = db.transaction(GPX_STORE, "readonly");
+    const request = tx.objectStore(GPX_STORE).get(raceId);
+    request.onsuccess = () => resolve(request.result as { bytes: ArrayBuffer } | undefined);
+    request.onerror = () => reject(request.error ?? new Error("Failed to load route GPX."));
+  });
+  db.close();
+  return record?.bytes ?? null;
+}
+
 export async function clearCompanionData(): Promise<void> {
   localStorage.removeItem(ACTIVE_KEY);
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, META_STORE], "readwrite");
+    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, META_STORE, GPX_STORE], "readwrite");
     tx.objectStore(BUNDLE_STORE).clear();
     tx.objectStore(LIST_STORE).clear();
     tx.objectStore(META_STORE).clear();
+    tx.objectStore(GPX_STORE).clear();
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Failed to clear data."));
   });

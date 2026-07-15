@@ -145,6 +145,19 @@ export async function fetchCompanionBundleDirect(
   return parsed;
 }
 
+/** Download original route GPX from Supabase Storage. */
+export async function fetchOriginalGpxDirect(userId: string, raceId: string): Promise<ArrayBuffer> {
+  const supabase = getSupabaseClient();
+  const path = `${userId}/${raceId}/route.gpx`;
+  const { data, error } = await supabase.storage.from("race-assets").download(path);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data.arrayBuffer();
+}
+
 /** Submit companion verifications directly to Supabase (production companion — no API server). */
 export async function submitCompanionVerificationsDirect(
   userId: string,

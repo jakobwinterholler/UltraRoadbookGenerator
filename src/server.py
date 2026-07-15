@@ -8,7 +8,7 @@ from dataclasses import asdict
 from typing import Any
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
@@ -56,6 +56,7 @@ from poi_profile import DEFAULT_ULTRA_POI_PROFILE, PoiPlanningProfile, profile_c
 from pipeline_watchdog import PipelineStalledError, StageWatchdog
 from progress import ProgressReporter, pipeline_step_catalog
 from surface_gpx_export import export_surface_validation_gpx
+from race_gpx_export import DEVICE_PROFILES, GpsGpxExportOptions, GpxTrackModifiedError, export_race_gpx_for_gps
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -803,6 +804,64 @@ def export_race_validation_gpx(race_id: str) -> FileResponse:
     )
 
 
+@app.get("/api/races/{race_id}/exports/gps-gpx")
+def export_race_gps_gpx(
+    race_id: str,
+    device: str = Query("coros"),
+    verified_only: bool = Query(True),
+    include_high_confidence: bool = Query(False),
+    include_alternatives: bool = Query(False),
+) -> FileResponse:
+    if device not in DEVICE_PROFILES:
+        raise HTTPException(status_code=400, detail=f"Unsupported device profile: {device}")
+
+    race = race_store.get_race(race_id)
+    if not race.meta.has_analysis:
+        raise HTTPException(status_code=400, detail="Analyze the race before exporting GPS GPX.")
+
+    roadbook = race_store.load_analysis(race_id)
+    if not roadbook:
+        raise HTTPException(status_code=400, detail="Race analysis not found.")
+
+    gpx_path = race_store.get_gpx_path(race_id)
+    if not gpx_path.is_file():
+        raise HTTPException(status_code=404, detail="Original GPX file not found.")
+
+    slug = race.meta.name.strip().replace(" ", "-") or "race"
+    filename = f"{slug}-gps-{device}.gpx"
+    export_path = race_store.export_path(race_id, filename)
+    options = GpsGpxExportOptions(
+        device_profile=device,
+        verified_only=verified_only,
+        include_high_confidence=include_high_confidence,
+        include_alternatives=include_alternatives,
+    )
+
+    try:
+        verified_stops = {
+            key: record.to_dict()
+            for key, record in race.preparation.verified_stops.items()
+        }
+        export_race_gpx_for_gps(
+            original_gpx_path=gpx_path,
+            roadbook=roadbook,
+            verified_stops=verified_stops,
+            output_path=export_path,
+            options=options,
+        )
+    except GpxTrackModifiedError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    race_store.record_export(race_id, export_type="gps_gpx", filename=filename)
+    return FileResponse(
+        export_path,
+        filename=filename,
+        media_type="application/gpx+xml",
+    )
+
+
 def _run_analysis_with_progress(
     file_name: str,
     file_bytes: bytes,
@@ -991,6 +1050,19 @@ def sync_get_bundle(
         message = str(exc)
         status = 404 if "not found" in message.lower() or "not been analyzed" in message.lower() else 502
         raise HTTPException(status_code=status, detail=message) from exc
+
+
+@app.get("/api/sync/races/{race_id}/gpx")
+def sync_get_original_gpx(race_id: str, user: AuthUser = Depends(require_user)) -> FileResponse:
+    _require_race(race_id)
+    gpx_path = race_store.get_gpx_path(race_id)
+    if not gpx_path.is_file():
+        raise HTTPException(status_code=404, detail="Original GPX file not found.")
+    return FileResponse(
+        gpx_path,
+        filename=gpx_path.name,
+        media_type="application/gpx+xml",
+    )
 
 
 @app.post("/api/sync/push")

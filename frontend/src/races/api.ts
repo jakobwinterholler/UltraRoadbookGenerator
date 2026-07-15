@@ -611,6 +611,23 @@ export function raceExportEndpoint(raceId: string, type: "excel" | "validation-g
   return `/api/races/${raceId}/exports/${type}`;
 }
 
+export interface RaceGpsExportQuery {
+  device: "original" | "coros" | "garmin" | "wahoo";
+  verifiedOnly: boolean;
+  includeHighConfidence: boolean;
+  includeAlternatives: boolean;
+}
+
+export function raceGpsExportEndpoint(raceId: string, options: RaceGpsExportQuery): string {
+  const params = new URLSearchParams({
+    device: options.device,
+    verified_only: options.verifiedOnly ? "true" : "false",
+    include_high_confidence: options.includeHighConfidence ? "true" : "false",
+    include_alternatives: options.includeAlternatives ? "true" : "false",
+  });
+  return `/api/races/${raceId}/exports/gps-gpx?${params.toString()}`;
+}
+
 export function formatRaceDate(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) {

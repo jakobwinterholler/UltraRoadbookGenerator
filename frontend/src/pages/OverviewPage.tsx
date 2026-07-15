@@ -316,6 +316,7 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
       <footer className="border-t border-line/60 pt-8">
         <ExportSection
           raceId={raceId}
+          raceName={activeRace?.name ?? "race"}
           result={result}
           verifiedStops={verifiedStops}
           onExported={() => void refreshRaces()}

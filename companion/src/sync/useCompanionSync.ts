@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { fetchCompanionBundle, fetchSyncRaces } from "@shared/api/sync";
+import { fetchSyncRaces } from "@shared/api/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
 import {
   formatRelativeTime,
@@ -20,7 +20,8 @@ import {
   raceVersionFields,
 } from "@shared/sync/raceVersion";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
-import { loadRaceList, saveCompanionBundle } from "../db";
+import { loadRaceList } from "../db";
+import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 
 export interface CompanionUpdateResult {
   raceId: string;
@@ -222,8 +223,7 @@ export function useCompanionSync() {
           raceName: target.name,
         });
         try {
-          const bundle = await fetchCompanionBundle(accessToken, target.id, user?.id);
-          await saveCompanionBundle(bundle);
+          await downloadRaceAssets(accessToken, target.id, user?.id);
           results.push({
             raceId: target.id,
             name: target.name,
