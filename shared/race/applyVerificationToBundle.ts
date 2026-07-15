@@ -2,9 +2,12 @@ import type { CompanionBundle, CompanionStop } from "../types/sync";
 import type { CompanionVerificationSubmission } from "../types/verification";
 
 function stopStatusFromSubmission(
-  _updates: CompanionVerificationSubmission["updates"],
+  updates: CompanionVerificationSubmission["updates"],
 ): CompanionStop["verificationStatus"] {
-  return "pending";
+  if (updates.status === "verified") {
+    return "pending";
+  }
+  return "needs_review";
 }
 
 function patchStop(
@@ -31,7 +34,9 @@ function patchStop(
 
 function recountDashboardStats(bundle: CompanionBundle): CompanionBundle["dashboardStats"] {
   const total = bundle.stops.length;
-  const verified = bundle.stops.filter((stop) => stop.verificationStatus === "verified").length;
+  const verified = bundle.stops.filter(
+    (stop) => stop.verificationStatus === "verified" || stop.verificationStatus === "pending",
+  ).length;
   const unverified = total - verified;
   const existing = bundle.dashboardStats;
   return {
@@ -76,10 +81,53 @@ export function revertVerificationOnBundle(
   return next;
 }
 
+function isCountedVerified(status: CompanionStop["verificationStatus"]): boolean {
+  return status === "verified" || status === "pending";
+}
+
 export function verificationStatsLine(bundle: CompanionBundle): string {
   const total = bundle.stops.length;
-  const verified = bundle.stops.filter((stop) => stop.verificationStatus === "verified").length;
+  const verified = bundle.stops.filter((stop) => isCountedVerified(stop.verificationStatus)).length;
   const remaining = total - verified;
   const pct = total > 0 ? Math.round((verified / total) * 100) : 0;
   return `${total} stops · ${verified} verified · ${remaining} remaining · ${pct}%`;
+}
+
+/** Promote locally verified stops to cloud-verified after successful sync. */
+export function applySyncedVerificationsToBundle(
+  bundle: CompanionBundle,
+  synced: CompanionVerificationSubmission[],
+): CompanionBundle {
+  if (synced.length === 0) {
+    return bundle;
+  }
+  const syncedByZone = new Map(
+    synced
+      .filter((item) => item.updates.status === "verified")
+      .map((item) => [item.zoneId, item] as const),
+  );
+  if (syncedByZone.size === 0) {
+    return bundle;
+  }
+
+  const stops = bundle.stops.map((stop) => {
+    const submission = syncedByZone.get(stop.zoneId);
+    if (!submission || stop.verificationStatus !== "pending") {
+      return stop;
+    }
+    return {
+      ...stop,
+      verificationStatus: "verified" as const,
+      verificationDate: submission.submittedAt,
+    };
+  });
+
+  const next: CompanionBundle = {
+    ...bundle,
+    stops,
+    syncedAt: new Date().toISOString(),
+    revision: (bundle.revision ?? 0) + 1,
+  };
+  next.dashboardStats = recountDashboardStats(next);
+  return next;
 }

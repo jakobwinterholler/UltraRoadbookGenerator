@@ -5,13 +5,14 @@ import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionVerificationServices, CompanionVerificationUpdates } from "@shared/types/verification";
 import type { CompanionStop } from "../types";
 import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
-import { serviceLabels, stopStatusLabel } from "../lib/raceExecution";
+import { serviceLabels, isVerifiedEverywhere, isVerifiedLocally, stopStatusLabel } from "../lib/raceExecution";
 
 interface StopDetailSheetProps {
   stop: CompanionStop;
   totalKm: number;
   gpsLat?: number | null;
   gpsLon?: number | null;
+  routeCoordinates?: [number, number][];
   editable?: boolean;
   onClose: () => void;
   onVerify?: (updates: CompanionVerificationUpdates) => void;
@@ -45,14 +46,18 @@ export default function StopDetailSheet({
   totalKm,
   gpsLat = null,
   gpsLon = null,
+  routeCoordinates,
   editable = false,
   onClose,
   onVerify,
   onReject,
   onStartVerify,
 }: StopDetailSheetProps) {
-  const isVerified = stop.verificationStatus === "verified";
-  const isPending = stop.verificationStatus === "pending";
+  const isVerified = isVerifiedEverywhere(stop.verificationStatus);
+  const isPending = isVerifiedLocally(stop.verificationStatus);
+  const streetViewOptions = routeCoordinates
+    ? { routeCoordinates, totalDistanceKm: totalKm }
+    : undefined;
   const confidence = computeStopConfidence({
     verificationStatus: stop.verificationStatus,
     verifiedAt: stop.verificationDate,
@@ -229,7 +234,7 @@ export default function StopDetailSheet({
               Google Maps
             </a>
             <a
-              href={googleStreetViewUrl(stop)}
+              href={googleStreetViewUrl(stop, streetViewOptions)}
               target="_blank"
               rel="noreferrer"
               className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white"
@@ -259,9 +264,9 @@ export default function StopDetailSheet({
 
         <div className="stop-detail-sheet__footer">
           {isVerified ? (
-            <p className="text-center text-sm text-emerald-300">Already verified on Desktop</p>
+            <p className="text-center text-sm text-emerald-300/90">Verified everywhere</p>
           ) : isPending ? (
-            <p className="text-center text-sm text-amber-200">Pending Desktop review</p>
+            <p className="text-center text-sm text-sky-200/90">✓ Verified on this device</p>
           ) : editable && onVerify && onReject ? (
             <div className="grid grid-cols-2 gap-2">
               <button

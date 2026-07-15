@@ -8,7 +8,6 @@ import { sortedVerificationQueue } from "../lib/verificationProximity";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import type { CompanionStop } from "../types";
 import StopDetailSheet from "../components/StopDetailSheet";
-import UndoToast from "../components/UndoToast";
 import VerificationSwipeStack, { type VerificationAction } from "../components/VerificationSwipeStack";
 
 function updatesForAction(action: VerificationAction): CompanionVerificationUpdates {
@@ -24,7 +23,7 @@ function updatesForAction(action: VerificationAction): CompanionVerificationUpda
 export default function VerificationScreen() {
   const { bundle, gps, currentKm } = useCompanion();
   const { user } = useAuth();
-  const { submitVerification, undo, performUndo } = useVerificationActions(user?.id ?? null);
+  const { submitVerification } = useVerificationActions(user?.id ?? null);
   const [detailStop, setDetailStop] = useState<CompanionStop | null>(null);
 
   const queue = useMemo(
@@ -81,20 +80,13 @@ export default function VerificationScreen() {
         />
       </div>
 
-      {undo ? (
-        <UndoToast
-          stopName={undo.stopName}
-          message="Pending desktop review"
-          onUndo={() => void performUndo()}
-        />
-      ) : null}
-
       {detailStop ? (
         <StopDetailSheet
           stop={detailStop}
           totalKm={bundle.race.distanceKm}
           gpsLat={gps.lat}
           gpsLon={gps.lon}
+          routeCoordinates={bundle.route.coordinates}
           onClose={() => setDetailStop(null)}
         />
       ) : null}

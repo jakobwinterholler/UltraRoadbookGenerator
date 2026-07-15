@@ -40,12 +40,15 @@ export default function App() {
     bundle,
   });
 
-  useVerificationSync(online, user?.id ?? null);
-
   const updateBundle = useCallback((next: CompanionBundle) => {
     setBundle(next);
     void saveCompanionBundle(next);
   }, []);
+
+  useVerificationSync(online, user?.id ?? null, {
+    bundle,
+    onBundleUpdate: updateBundle,
+  });
 
   useEffect(() => {
     if (user) {

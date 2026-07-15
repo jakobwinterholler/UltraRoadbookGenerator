@@ -1,3 +1,4 @@
+import { PLANNING_AREA_KM } from "@shared/race/planningArea";
 import type { ResupplyZone } from "../../api";
 import { buildHubRecommendations } from "../hubRecommendations";
 import { computeUltraStopScore } from "../stopPresentation";
@@ -9,7 +10,7 @@ import { isStopPending } from "./priority";
 import type { VerifiedStopRecord } from "./types";
 
 /** Stops within this gap share a planning area for local alternatives. */
-export const PLANNING_AREA_KM = 12;
+export { PLANNING_AREA_KM } from "@shared/race/planningArea";
 
 const MAX_NEARBY_ALTERNATIVES = 3;
 

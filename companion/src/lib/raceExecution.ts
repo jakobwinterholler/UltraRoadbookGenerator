@@ -99,13 +99,25 @@ export function formatEstimatedArrival(ridingHours: number | null): string | nul
 
 export function stopStatusLabel(status: CompanionStop["verificationStatus"]): string {
   if (status === "verified") {
-    return "Verified";
+    return "Verified everywhere";
   }
   if (status === "pending") {
-    return "Pending review";
+    return "✓ Verified on this device";
   }
   if (status === "needs_review") {
     return "Needs review";
   }
   return "Unverified";
+}
+
+export function isVerifiedEverywhere(status: CompanionStop["verificationStatus"]): boolean {
+  return status === "verified";
+}
+
+export function isVerifiedLocally(status: CompanionStop["verificationStatus"]): boolean {
+  return status === "pending";
+}
+
+export function canVerifyStop(status: CompanionStop["verificationStatus"]): boolean {
+  return status !== "verified" && status !== "pending";
 }

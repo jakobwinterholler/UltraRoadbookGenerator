@@ -2,6 +2,10 @@ import { useCallback, useEffect, useRef } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { submitCompanionVerifications } from "@shared/api/verifications";
 import {
+  applySyncedVerificationsToBundle,
+} from "@shared/race/applyVerificationToBundle";
+import type { CompanionBundle } from "@shared/types/sync";
+import {
   loadPendingVerifications,
   markVerificationsSynced,
   removeSyncedVerifications,
@@ -11,6 +15,10 @@ export async function syncPendingVerifications(
   accessToken: string,
   userId: string | null,
   online: boolean,
+  options?: {
+    bundle: CompanionBundle | null;
+    onBundleUpdate?: (bundle: CompanionBundle) => void;
+  },
 ): Promise<void> {
   if (!online) {
     return;
@@ -25,16 +33,33 @@ export async function syncPendingVerifications(
     userId,
   );
   const accepted = new Set(result.accepted ?? []);
-  const syncedIds = pending.filter((item) => accepted.has(item.id)).map((item) => item.id);
+  const syncedItems = pending.filter((item) => accepted.has(item.id));
+  const syncedIds = syncedItems.map((item) => item.id);
   if (syncedIds.length > 0) {
     await markVerificationsSynced(syncedIds);
     await removeSyncedVerifications();
+    if (options?.bundle && options.onBundleUpdate) {
+      const next = applySyncedVerificationsToBundle(
+        options.bundle,
+        syncedItems.map(({ synced: _synced, ...submission }) => submission),
+      );
+      options.onBundleUpdate(next);
+    }
   }
 }
 
-export function useVerificationSync(online: boolean, userId: string | null) {
+export function useVerificationSync(
+  online: boolean,
+  userId: string | null,
+  options?: {
+    bundle: CompanionBundle | null;
+    onBundleUpdate?: (bundle: CompanionBundle) => void;
+  },
+) {
   const { session } = useAuth();
   const syncingRef = useRef(false);
+  const bundleRef = useRef(options?.bundle ?? null);
+  bundleRef.current = options?.bundle ?? null;
 
   const syncNow = useCallback(async () => {
     if (!session?.access_token || syncingRef.current) {
@@ -42,13 +67,16 @@ export function useVerificationSync(online: boolean, userId: string | null) {
     }
     syncingRef.current = true;
     try {
-      await syncPendingVerifications(session.access_token, userId, online);
+      await syncPendingVerifications(session.access_token, userId, online, {
+        bundle: bundleRef.current,
+        onBundleUpdate: options?.onBundleUpdate,
+      });
     } catch {
       // Keep queued for next attempt.
     } finally {
       syncingRef.current = false;
     }
-  }, [online, session?.access_token, userId]);
+  }, [online, options?.onBundleUpdate, session?.access_token, userId]);
 
   useEffect(() => {
     if (online && session?.access_token) {

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
 import { readResupplyFilter, writeResupplyFilter, type ResupplyFilter } from "../lib/resupplyFilter";
+import { isVerifiedEverywhere, isVerifiedLocally } from "../lib/raceExecution";
 import StopSheet from "../components/StopSheet";
 import UnsupportedSectionSheet from "../components/UnsupportedSectionSheet";
 import ResupplyElevationProfile from "../components/ResupplyElevationProfile";
@@ -10,14 +10,21 @@ import { GpsStatusBadge } from "../components/GpsStatusBadge";
 import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 function VerificationBadge({ status }: { status: string }) {
-  if (status === "verified") {
+  if (isVerifiedEverywhere(status as CompanionStop["verificationStatus"])) {
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-[10px] font-bold text-white">
         ✓
       </span>
     );
   }
-  if (status === "needs_review" || status === "pending") {
+  if (isVerifiedLocally(status as CompanionStop["verificationStatus"])) {
+    return (
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-500/80 text-[10px] font-bold text-white">
+        ✓
+      </span>
+    );
+  }
+  if (status === "needs_review") {
     return (
       <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-500 text-[10px] font-bold text-white">
         !
@@ -27,7 +34,6 @@ function VerificationBadge({ status }: { status: string }) {
   return null;
 }
 
-
 function ResupplyGapRow({
   gap,
   onUnsupportedClick,
@@ -36,22 +42,26 @@ function ResupplyGapRow({
   onUnsupportedClick: () => void;
 }) {
   return (
-    <div className="my-2 flex flex-col items-center gap-0.5 py-1 text-center text-xs text-white/35">
-      <div className="h-px w-full max-w-[12rem] bg-white/10" aria-hidden />
-      <p className="tabular-nums">{formatKm(gap.distanceKm)}</p>
-      <p className="tabular-nums">+{gap.elevationGainM} m</p>
-      <p className="tabular-nums">-{gap.elevationLossM} m</p>
-      <p className="tabular-nums">{formatRidingTime(gap.ridingTimeHours)}</p>
+    <div className="my-1.5 flex items-center justify-center gap-3 py-1 text-center text-[11px] tabular-nums text-white/22">
+      <span>{formatKm(gap.distanceKm)}</span>
+      <span className="text-white/15" aria-hidden>
+        ·
+      </span>
+      <span>+{gap.elevationGainM} m</span>
       {gap.unsupportedLabel ? (
-        <button
-          type="button"
-          onClick={onUnsupportedClick}
-          className="mt-0.5 text-amber-300/80 underline-offset-2 hover:underline"
-        >
-          Unsupported section
-        </button>
+        <>
+          <span className="text-white/15" aria-hidden>
+            ·
+          </span>
+          <button
+            type="button"
+            onClick={onUnsupportedClick}
+            className="text-amber-300/50 underline-offset-2 hover:underline"
+          >
+            Unsupported
+          </button>
+        </>
       ) : null}
-      <div className="h-px w-full max-w-[12rem] bg-white/10" aria-hidden />
     </div>
   );
 }
@@ -60,6 +70,7 @@ export default function ResupplyScreen() {
   const listRef = useRef<HTMLDivElement | null>(null);
   const userScrollingRef = useRef(false);
   const scrollIdleTimerRef = useRef<number | null>(null);
+  const focusRafRef = useRef<number | null>(null);
   const { bundle, currentKm, gps, selectedStop, selectStop } = useCompanion();
   const [filter, setFilter] = useState<ResupplyFilter>(() => readResupplyFilter());
   const [selectedSection, setSelectedSection] = useState<CompanionUnsupportedSection | null>(null);
@@ -117,22 +128,27 @@ export default function ResupplyScreen() {
 
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
-        if (visible.length === 0) {
-          return;
+        if (focusRafRef.current != null) {
+          cancelAnimationFrame(focusRafRef.current);
         }
-        const index = Number(visible[0].target.getAttribute("data-stop-index"));
-        const stop = cards[index]?.stop;
-        if (stop) {
-          setFocusedStop(stop);
-        }
+        focusRafRef.current = requestAnimationFrame(() => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+          if (visible.length === 0) {
+            return;
+          }
+          const index = Number(visible[0].target.getAttribute("data-stop-index"));
+          const stop = cards[index]?.stop;
+          if (stop) {
+            setFocusedStop(stop);
+          }
+        });
       },
       {
         root: list,
-        threshold: [0.35, 0.5, 0.65],
-        rootMargin: "-20% 0px -45% 0px",
+        threshold: [0.25, 0.4, 0.55, 0.7],
+        rootMargin: "-18% 0px -42% 0px",
       },
     );
 
@@ -140,7 +156,12 @@ export default function ResupplyScreen() {
       observer.observe(row);
     }
 
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      if (focusRafRef.current != null) {
+        cancelAnimationFrame(focusRafRef.current);
+      }
+    };
   }, [cards]);
 
   useEffect(() => {
@@ -179,12 +200,48 @@ export default function ResupplyScreen() {
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentKm, nextIndex]);
 
+  const scrollToStopIndex = useCallback((index: number) => {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+    const row = list.querySelector(`[data-stop-index="${index}"]`);
+    if (row) {
+      userScrollingRef.current = true;
+      row.scrollIntoView({ block: "center", behavior: "smooth" });
+      window.setTimeout(() => {
+        userScrollingRef.current = false;
+      }, 600);
+    }
+  }, []);
+
+  const handleProfileSelectKm = useCallback(
+    (km: number) => {
+      let closestIndex = 0;
+      let closestDelta = Number.POSITIVE_INFINITY;
+      for (let index = 0; index < cards.length; index += 1) {
+        const delta = Math.abs(cards[index].stop.km - km);
+        if (delta < closestDelta) {
+          closestDelta = delta;
+          closestIndex = index;
+        }
+      }
+      const stop = cards[closestIndex]?.stop;
+      if (stop) {
+        setFocusedStop(stop);
+        scrollToStopIndex(closestIndex);
+      }
+    },
+    [cards, scrollToStopIndex],
+  );
+
   const handleStopTap = useCallback(
-    (stop: CompanionStop) => {
+    (stop: CompanionStop, index: number) => {
       setFocusedStop(stop);
       selectStop(stop);
+      scrollToStopIndex(index);
     },
-    [selectStop],
+    [scrollToStopIndex, selectStop],
   );
 
   return (
@@ -222,7 +279,14 @@ export default function ResupplyScreen() {
         ) : null}
       </header>
 
-      <ResupplyElevationProfile bundle={bundle} riderKm={riderKm} focusKm={focusKm} />
+      <div className="sticky top-0 z-10 shrink-0 bg-[#0a0a0a]">
+        <ResupplyElevationProfile
+          bundle={bundle}
+          riderKm={riderKm}
+          focusKm={focusKm}
+          onSelectKm={handleProfileSelectKm}
+        />
+      </div>
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {cards.map((entry, index) => {
@@ -249,8 +313,8 @@ export default function ResupplyScreen() {
 
               <button
                 type="button"
-                onClick={() => handleStopTap(stop)}
-                className={`mb-3 flex min-h-[72px] w-full flex-col rounded-2xl border px-4 py-4 text-left transition ${
+                onClick={() => handleStopTap(stop, index)}
+                className={`mb-3 flex min-h-[72px] w-full flex-col rounded-2xl border px-4 py-4 text-left transition duration-200 ${
                   isNext || isFocused
                     ? "border-sky-400/35 bg-sky-500/12"
                     : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
@@ -264,6 +328,11 @@ export default function ResupplyScreen() {
                     <p className="flex items-center gap-2 text-base font-semibold text-white">
                       <VerificationBadge status={stop.verificationStatus} />
                       <span className="truncate">{stop.name}</span>
+                      {isVerifiedLocally(stop.verificationStatus) ? (
+                        <span className="shrink-0 text-[10px] font-medium text-sky-300/70">
+                          on device
+                        </span>
+                      ) : null}
                     </p>
                     <p className="mt-0.5 truncate text-sm text-white/45">{stop.categoryLabel}</p>
                   </div>

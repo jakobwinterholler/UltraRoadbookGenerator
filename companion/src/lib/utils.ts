@@ -99,7 +99,12 @@ export function buildResupplyCards(
   verifiedOnly: boolean,
 ): ResupplyCardEntry[] {
   const stops = bundle.stops
-    .filter((stop) => !verifiedOnly || stop.verificationStatus === "verified")
+    .filter(
+      (stop) =>
+        !verifiedOnly ||
+        stop.verificationStatus === "verified" ||
+        stop.verificationStatus === "pending",
+    )
     .sort((left, right) => left.km - right.km);
 
   return stops.map((stop, index) => {

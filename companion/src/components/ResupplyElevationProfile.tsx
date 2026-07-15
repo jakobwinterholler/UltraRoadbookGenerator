@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import type { CompanionClimb } from "@shared/types/sync";
 import type { CompanionBundle } from "../types";
@@ -69,6 +69,11 @@ function kmToX(km: number, totalKm: number, width: number, padding = PADDING): n
   return padding + (km / Math.max(0.001, totalKm)) * (width - padding * 2);
 }
 
+function xToKm(x: number, totalKm: number, width: number, padding = PADDING): number {
+  const ratio = (x - padding) / Math.max(1, width - padding * 2);
+  return Math.max(0, Math.min(totalKm, ratio * totalKm));
+}
+
 function routeProfilePath(
   profile: RouteProfileData,
   width: number,
@@ -114,13 +119,16 @@ interface ResupplyElevationProfileProps {
   bundle: CompanionBundle;
   riderKm: number;
   focusKm: number | null;
+  onSelectKm?: (km: number) => void;
 }
 
 export default function ResupplyElevationProfile({
   bundle,
   riderKm,
   focusKm,
+  onSelectKm,
 }: ResupplyElevationProfileProps) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
   const profile = useMemo(() => buildProfileFromBundle(bundle), [bundle]);
   const profilePath = useMemo(
     () => routeProfilePath(profile, PROFILE_WIDTH, PROFILE_HEIGHT),
@@ -163,6 +171,28 @@ export default function ResupplyElevationProfile({
     return nearby.length > 0 ? nearby : climbHighlights.slice(0, 2);
   }, [climbHighlights, focusKm, riderKm]);
 
+  const stopMarkers = useMemo(
+    () =>
+      bundle.stops.map((stop) => ({
+        stop,
+        marker: markerAtKm(profile, stop.km, PROFILE_WIDTH, PROFILE_HEIGHT),
+      })),
+    [bundle.stops, profile],
+  );
+
+  const handleProfileTap = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!onSelectKm || !svgRef.current) {
+        return;
+      }
+      const rect = svgRef.current.getBoundingClientRect();
+      const x = ((event.clientX - rect.left) / rect.width) * PROFILE_WIDTH;
+      const km = xToKm(x, profile.totalKm, PROFILE_WIDTH);
+      onSelectKm(km);
+    },
+    [onSelectKm, profile.totalKm],
+  );
+
   if (profile.points.length === 0) {
     return null;
   }
@@ -171,17 +201,19 @@ export default function ResupplyElevationProfile({
     focusMarker != null && Math.abs(focusMarker.km - riderMarker.km) > 0.3;
 
   return (
-    <div className="shrink-0 border-b border-white/8 bg-[#0a0a0a] px-4 pb-3 pt-2">
+    <div className="border-b border-white/8 bg-[#0a0a0a] px-4 pb-3 pt-2">
       <div className="mb-1 flex items-center justify-between text-[10px] tabular-nums text-white/40">
         <span>0 km</span>
-        <span>{formatKm(profile.totalKm)}</span>
+        <span>{formatKm(profile.totalKm)} finish</span>
       </div>
 
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${PROFILE_WIDTH} ${PROFILE_HEIGHT}`}
         preserveAspectRatio="none"
-        className="block h-12 w-full rounded-lg bg-[#0f1117]"
-        aria-label="Elevation profile"
+        className="block h-12 w-full cursor-pointer rounded-lg bg-[#0f1117] touch-manipulation"
+        aria-label="Elevation profile — tap to jump to section"
+        onPointerUp={handleProfileTap}
       >
         <defs>
           <linearGradient id="resupplyProfileFill" x1="0" y1="0" x2="0" y2="1">
@@ -216,6 +248,17 @@ export default function ResupplyElevationProfile({
           strokeLinejoin="round"
           opacity="0.9"
         />
+
+        {stopMarkers.map(({ stop, marker }) => (
+          <circle
+            key={stop.zoneId}
+            cx={marker.x}
+            cy={PROFILE_HEIGHT - 3}
+            r="1.5"
+            fill="#64748b"
+            opacity="0.55"
+          />
+        ))}
 
         {showFocusMarker ? (
           <g className="profile-marker profile-marker--focus">
@@ -253,12 +296,12 @@ export default function ResupplyElevationProfile({
       <div className="mt-1.5 flex flex-wrap items-start gap-x-4 gap-y-1 text-[10px] tabular-nums text-white/50">
         <span>
           <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-sky-400" aria-hidden />
-          {formatKm(riderMarker.km)} · {formatElevation(riderMarker.eleM)}
+          GPS {formatKm(riderMarker.km)} · {formatElevation(riderMarker.eleM)}
         </span>
         {showFocusMarker ? (
           <span>
             <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-400" aria-hidden />
-            {formatKm(focusMarker!.km)} · {formatElevation(focusMarker!.eleM)}
+            Stop {formatKm(focusMarker!.km)} · {formatElevation(focusMarker!.eleM)}
           </span>
         ) : null}
       </div>
