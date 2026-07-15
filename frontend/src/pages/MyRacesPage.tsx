@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
 import { getDesktopRaceSyncStatus } from "@shared/ui/SyncStatusBadge";
 import { useAuth } from "@shared/auth/AuthProvider";
-import { getPendingSyncRaces } from "@shared/sync/pendingSync";
+import { getPendingSyncRaces, removePendingSyncRace } from "@shared/sync/pendingSync";
 import UploadZone from "../components/UploadZone";
 import { RaceCard } from "../components/races/RaceCard";
 import type { RaceManageAction } from "../components/races/RaceManageMenu";
@@ -199,6 +199,9 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
     setPageError(null);
     try {
       await deleteRace(deleteTarget.id);
+      if (userId) {
+        removePendingSyncRace(userId, deleteTarget.id);
+      }
       if (activeRaceId === deleteTarget.id) {
         closeRace();
       }
@@ -319,6 +322,14 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
       <DeleteRaceDialog
         open={Boolean(deleteTarget)}
         raceName={deleteTarget?.name ?? ""}
+        distanceKm={deleteTarget?.distance_km}
+        elevationGainM={deleteTarget?.elevation_gain_m}
+        cloudSynced={
+          deleteTarget && user
+            ? cloudById.has(deleteTarget.id) || deleteTarget.has_analysis
+            : null
+        }
+        lastModified={deleteTarget?.updated_at}
         busy={actionBusy}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}

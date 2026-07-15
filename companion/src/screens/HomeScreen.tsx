@@ -1,8 +1,10 @@
 import type { CompanionBundle } from "@shared/types/sync";
+import { deleteCloudRace } from "@shared/api/sync";
 import { importApiAvailable } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
 import { Avatar } from "@shared/ui/AuthScreens";
+import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
 import {
   getCompanionRaceSyncStatus,
   SyncStatusBadge,
@@ -11,6 +13,7 @@ import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
 import { useEffect, useRef, useState } from "react";
 import GpxImportFlow from "../components/GpxImportFlow";
 import {
+  deleteCompanionRace,
   loadCompanionBundle,
   setActiveRaceId,
   type StoredRaceListItem,
@@ -51,11 +54,13 @@ function RaceCard({
   busy,
   downloadProgress,
   onOpen,
+  onDelete,
 }: {
   race: StoredRaceListItem;
   busy: boolean;
   downloadProgress: number | null;
   onOpen: () => void;
+  onDelete: () => void;
 }) {
   const syncStatus = getCompanionRaceSyncStatus({ ...race, busy });
   const badgeLabel =
@@ -68,12 +73,13 @@ function RaceCard({
           : null;
 
   return (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={onOpen}
-      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-emerald-400/25 hover:bg-white/[0.05]"
-    >
+    <div className="relative w-full rounded-2xl border border-white/10 bg-white/[0.03] transition hover:border-emerald-400/25 hover:bg-white/[0.05]">
+      <button
+        type="button"
+        disabled={busy}
+        onClick={onOpen}
+        className="w-full p-5 text-left"
+      >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="truncate text-lg font-semibold text-white">{race.name}</p>
@@ -118,7 +124,22 @@ function RaceCard({
           {syncStatus ? <SyncStatusBadge status={syncStatus} variant="dark" /> : null}
         </div>
       </div>
-    </button>
+      </button>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={(event) => {
+          event.stopPropagation();
+          onDelete();
+        }}
+        aria-label={`Delete ${race.name}`}
+        className="absolute right-3 top-3 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+      >
+        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+          <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
@@ -138,6 +159,8 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<StoredRaceListItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,6 +270,26 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       void setActiveRaceId(bundle.race.id);
       onOpenRace(bundle);
     });
+  }
+
+  async function confirmDeleteRace() {
+    if (!deleteTarget) {
+      return;
+    }
+    setDeleteBusy(true);
+    setActionError(null);
+    try {
+      if (accessToken && deleteTarget.source !== "local-import" && deleteTarget.has_bundle) {
+        await deleteCloudRace(accessToken, deleteTarget.id);
+      }
+      await deleteCompanionRace(deleteTarget.id);
+      setDeleteTarget(null);
+      await refresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to delete race.");
+    } finally {
+      setDeleteBusy(false);
+    }
   }
 
   return (
@@ -386,6 +429,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
                         busy={busyRaceId === race.id}
                         downloadProgress={busyRaceId === race.id ? downloadProgress : null}
                         onOpen={() => void handleOpenRace(race)}
+                        onDelete={() => setDeleteTarget(race)}
                       />
                     </li>
                   ))}
@@ -404,6 +448,19 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           onComplete={handleImportComplete}
         />
       ) : null}
+
+      <DeleteRaceDialog
+        open={Boolean(deleteTarget)}
+        raceName={deleteTarget?.name ?? ""}
+        distanceKm={deleteTarget?.distance_km}
+        elevationGainM={deleteTarget?.elevation_gain_m}
+        cloudSynced={deleteTarget?.has_bundle ?? null}
+        lastModified={deleteTarget?.updated_at}
+        busy={deleteBusy}
+        variant="dark"
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => void confirmDeleteRace()}
+      />
     </div>
   );
 }

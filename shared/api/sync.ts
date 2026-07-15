@@ -100,3 +100,10 @@ export async function queueRacePush(accessToken: string, raceId: string): Promis
     throw new Error(await parseApiError(response, "Failed to queue race sync."));
   }
 }
+
+export async function deleteCloudRace(accessToken: string, raceId: string): Promise<void> {
+  const response = await fetchWithAuth(`/api/races/${raceId}`, accessToken, { method: "DELETE" });
+  if (!response.ok) {
+    throw new Error(await parseApiError(response, "Failed to delete race."));
+  }
+}

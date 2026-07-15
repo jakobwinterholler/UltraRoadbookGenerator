@@ -275,10 +275,11 @@ export default function StopSheet({
             </div>
           </dl>
 
-          <div className="poi-sheet__map relative h-52 overflow-hidden rounded-2xl border border-sky-400/20 shadow-lg shadow-sky-500/10">
+          <div className="poi-sheet__map relative h-52 overflow-hidden rounded-2xl border border-violet-400/25 shadow-lg shadow-violet-500/10">
             <StopDetailMap
               stop={stop}
               bundle={bundle}
+              alternatives={alternatives.map((item) => alternativeToStop(stop, item))}
               riderLat={gps.lat}
               riderLon={gps.lon}
             />

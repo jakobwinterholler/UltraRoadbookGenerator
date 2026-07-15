@@ -2,6 +2,7 @@ import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
 import { migrateCachedBundle } from "@shared/sync/bundleMigration";
 import { validateCompanionBundle, verifyStoredChecksum } from "@shared/sync/bundleValidation";
 import { computeBundleChecksumSync } from "@shared/sync/bundleChecksum";
+import { deleteVerificationsForRace } from "./lib/verificationQueue";
 
 const DB_NAME = "race-companion";
 const DB_VERSION = 5;
@@ -258,6 +259,27 @@ export async function invalidateStaleBundle(raceId: string): Promise<void> {
     localStorage.removeItem(ACTIVE_KEY);
   }
   db.close();
+}
+
+/** Remove all local data for a race (bundle, GPX, list entry, verifications). */
+export async function deleteCompanionRace(raceId: string): Promise<void> {
+  await deleteVerificationsForRace(raceId);
+
+  const db = await openCompanionDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, GPX_STORE], "readwrite");
+    tx.objectStore(BUNDLE_STORE).delete(raceId);
+    tx.objectStore(GPX_STORE).delete(raceId);
+    tx.objectStore(LIST_STORE).delete(raceId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Failed to delete race."));
+  });
+  db.close();
+
+  const activeId = localStorage.getItem(ACTIVE_KEY);
+  if (activeId === raceId) {
+    localStorage.removeItem(ACTIVE_KEY);
+  }
 }
 
 export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promise<void> {

@@ -78,6 +78,24 @@ export async function removeSyncedVerifications(): Promise<void> {
   db.close();
 }
 
+export async function deleteVerificationsForRace(raceId: string): Promise<void> {
+  const db = await openCompanionDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(VERIFICATIONS_STORE, "readwrite");
+    const store = tx.objectStore(VERIFICATIONS_STORE);
+    const request = store.index("raceId").getAll(raceId);
+    request.onsuccess = () => {
+      const items = (request.result as StoredVerification[]) ?? [];
+      for (const item of items) {
+        store.delete(item.id);
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Failed to delete verifications."));
+  });
+  db.close();
+}
+
 export async function deleteVerification(id: string): Promise<void> {
   const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {

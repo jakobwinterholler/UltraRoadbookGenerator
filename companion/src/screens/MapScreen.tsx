@@ -16,6 +16,7 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
     showUnverified,
     setShowUnverified,
     followGps,
+    setFollowGps,
     gps,
   } = useCompanion();
   const mapRef = useRef<RouteMapHandle | null>(null);
@@ -31,6 +32,12 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
   const hasClimbs = (bundle.climbs?.length ?? 0) > 0;
   const gpsActive = gps.lat != null && gps.lon != null;
 
+  useEffect(() => {
+    if (selectedStop) {
+      setFollowGps(false);
+    }
+  }, [selectedStop, setFollowGps]);
+
   if (embedded) {
     return (
       <div className="relative h-full min-h-0">
@@ -41,14 +48,7 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
 
   return (
     <div className="relative h-full min-h-0">
-      <div
-        className={
-          selectedStop
-            ? "pointer-events-none absolute inset-0 invisible"
-            : "absolute inset-0"
-        }
-        aria-hidden={selectedStop ? true : undefined}
-      >
+      <div className="absolute inset-0">
         <RouteMapView
           ref={mapRef}
           showClimbs={showClimbs}

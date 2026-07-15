@@ -19,6 +19,7 @@ import {
   loadCompanionBundle,
   loadRaceList,
   saveRaceList,
+  deleteCompanionRace,
   type StoredRaceListItem,
 } from "../db";
 import { isRaceDownloading } from "../lib/downloadRaceAssets";
@@ -103,13 +104,17 @@ async function mergeRaceLists(
     if (cloudIds.has(race.id)) {
       continue;
     }
-    if (!race.offlineReady && race.source !== "local-import") {
+    if (race.source === "local-import") {
+      merged.push({
+        ...race,
+        source: "local-import",
+      });
       continue;
     }
-    merged.push({
-      ...race,
-      source: race.source ?? "local-import",
-    });
+    if (race.offlineReady || race.has_bundle) {
+      logSyncDebug("race-list", `Purging deleted cloud race ${race.name}`, { raceId: race.id });
+      await deleteCompanionRace(race.id);
+    }
   }
 
   return merged.sort((left, right) =>
