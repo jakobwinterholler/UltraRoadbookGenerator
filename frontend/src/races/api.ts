@@ -621,6 +621,7 @@ export interface RaceGpsExportQuery {
   verifiedOnly: boolean;
   includeHighConfidence: boolean;
   includeAlternatives: boolean;
+  includeOptional: boolean;
 }
 
 export function raceGpsExportEndpoint(raceId: string, options: RaceGpsExportQuery): string {
@@ -629,8 +630,20 @@ export function raceGpsExportEndpoint(raceId: string, options: RaceGpsExportQuer
     verified_only: options.verifiedOnly ? "true" : "false",
     include_high_confidence: options.includeHighConfidence ? "true" : "false",
     include_alternatives: options.includeAlternatives ? "true" : "false",
+    include_optional: options.includeOptional ? "true" : "false",
   });
   return `/api/races/${raceId}/exports/gps-gpx?${params.toString()}`;
+}
+
+export function raceGpsExportPreviewEndpoint(raceId: string, options: RaceGpsExportQuery): string {
+  const params = new URLSearchParams({
+    device: options.device,
+    verified_only: options.verifiedOnly ? "true" : "false",
+    include_high_confidence: options.includeHighConfidence ? "true" : "false",
+    include_alternatives: options.includeAlternatives ? "true" : "false",
+    include_optional: options.includeOptional ? "true" : "false",
+  });
+  return `/api/races/${raceId}/exports/gps-gpx/preview?${params.toString()}`;
 }
 
 export function formatRaceDate(iso: string): string {

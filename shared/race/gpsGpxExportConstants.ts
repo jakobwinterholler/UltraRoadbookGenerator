@@ -5,6 +5,11 @@
  * There is no universal GPX icon standard; Coros maps common sym strings to native icons.
  */
 
+import {
+  buildCorosWaypointLabel,
+  type CorosWaypointLabelInput,
+} from "./corosWaypointNaming";
+
 export const GPS_GPX_EXPORT_VERSION = "3.0";
 
 export const ROUTE_INTEGRITY_FAILED_MESSAGE =
@@ -16,6 +21,7 @@ export const MAX_WAYPOINT_OFF_ROUTE_M = 500;
 export const COROS_WPT_ICONS = [
   "Water",
   "Supplies",
+  "Supplies/Fuel",
   "Hazard",
   "Bathroom",
   "Hut",
@@ -34,6 +40,10 @@ export const EXCLUDED_EXPORT_CATEGORY_KEYWORDS = [
   "gap marker",
   "helper",
   "geometry",
+  "planning",
+  "debug",
+  "skipped",
+  "marker",
 ] as const;
 
 export function isInvalidExportName(value: string | null | undefined): boolean {
@@ -73,7 +83,7 @@ export function resolveCorosWptIcon(input: {
     category.includes("gas_station") ||
     input.hasFuel
   ) {
-    return "Supplies";
+    return "Supplies/Fuel";
   }
   if (
     category.includes("water") ||
@@ -137,7 +147,8 @@ export function corosWaypointEmoji(input: {
   const category = input.category.toLowerCase();
   const map: Record<CorosWptIcon, string> = {
     Water: "💧",
-    Supplies: category.includes("fuel") || category.includes("gas") || input.hasFuel ? "⛽" : input.hasFood ? "🛒" : "📦",
+    Supplies: input.hasFood ? "🛒" : "📦",
+    "Supplies/Fuel": "⛽",
     Hazard: "⚠️",
     Bathroom: "🚻",
     Hut: "🏠",
@@ -145,80 +156,24 @@ export function corosWaypointEmoji(input: {
     Trailfork: "🔀",
     Pin: "📍",
   };
+  if (sym === "Supplies" && (category.includes("fuel") || category.includes("gas") || input.hasFuel)) {
+    return "⛽";
+  }
   return map[sym] ?? "📍";
 }
 
-export function formatCorosWaypointName(input: {
-  name?: string | null;
-  brand?: string | null;
-  category: string;
-  hasFuel?: boolean;
-  hasWater?: boolean;
-  hasFood?: boolean;
-  zoneName?: string | null;
-  km?: number;
-  resupplyReason?: string | null;
-  isPrimary?: boolean;
-}): string {
+export function formatCorosWaypointName(
+  input: CorosWaypointLabelInput & { isPrimary?: boolean },
+): string {
   const prefix = input.isPrimary === false ? "ALT " : "";
   const emoji = corosWaypointEmoji(input);
-  const label = smartPoiLabel(input);
-  if (label === "Fuel" && input.resupplyReason?.toLowerCase().includes("last")) {
-    return `${prefix}${emoji} Last fuel`.trim().slice(0, 32);
-  }
-  if (label === "Water" && input.km != null && Number.isFinite(input.km)) {
-    return `${prefix}${emoji} Water km ${Math.round(input.km)}`.trim().slice(0, 32);
-  }
+  const label = buildCorosWaypointLabel(input);
   return `${prefix}${emoji} ${label}`.trim().slice(0, 32);
 }
 
-export function smartPoiLabel(input: {
-  name?: string | null;
-  brand?: string | null;
-  category: string;
-  hasFuel?: boolean;
-  hasWater?: boolean;
-  hasFood?: boolean;
-  zoneName?: string | null;
-}): string {
-  const brand = input.brand?.trim() ?? "";
-  const name = input.name?.trim() ?? "";
-  if (brand && !isInvalidExportName(brand)) {
-    return brand.slice(0, 14);
-  }
-  if (name && !isInvalidExportName(name)) {
-    return name.slice(0, 14);
-  }
-  if (input.hasFuel) {
-    return "Fuel";
-  }
-  if (input.hasWater) {
-    return "Water";
-  }
-  if (input.hasFood) {
-    return "Shop";
-  }
-  const category = input.category.toLowerCase();
-  if (category.includes("supermarket")) {
-    return "Supermarket";
-  }
-  if (category.includes("convenience")) {
-    return "Shop";
-  }
-  if (category.includes("cafe") || category.includes("café")) {
-    return "Café";
-  }
-  if (category.includes("restaurant")) {
-    return "Restaurant";
-  }
-  if (category.includes("water") || category.includes("fountain")) {
-    return "Water";
-  }
-  const zoneName = input.zoneName?.trim();
-  if (zoneName && !isInvalidExportName(zoneName)) {
-    return zoneName.slice(0, 14);
-  }
-  return "Stop";
+/** @deprecated Use buildCorosWaypointLabel — kept for tests and gradual migration. */
+export function smartPoiLabel(input: CorosWaypointLabelInput): string {
+  return buildCorosWaypointLabel(input);
 }
 
 export function isExcludedExportCategory(category: string): boolean {

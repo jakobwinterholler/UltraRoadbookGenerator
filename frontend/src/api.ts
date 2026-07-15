@@ -646,6 +646,9 @@ export interface GpsGpxExportReport {
   coros_icons_total: number | null;
   integrity_percent: number;
   waypoint_count: number;
+  critical_count: number;
+  recommended_count: number;
+  optional_count: number;
 }
 
 export async function downloadExport(endpoint: string, filename: string): Promise<void> {

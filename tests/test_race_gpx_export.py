@@ -151,7 +151,7 @@ class TestRaceGpxExport(unittest.TestCase):
         syms = _waypoint_syms(exported)
         assert len(syms) == summary["exported_poi_count"]
         assert summary["coros_icons_assigned"] == summary["exported_poi_count"]
-        assert all(sym in {"Water", "Supplies", "Hazard", "Bathroom", "Hut", "Campsite", "Trailfork", "Pin"} for sym in syms)
+        assert all(sym in {"Water", "Supplies", "Supplies/Fuel", "Hazard", "Bathroom", "Hut", "Campsite", "Trailfork", "Pin"} for sym in syms)
 
     @unittest.skipUnless(
         (DATA / RACES["capitals"]).is_dir(),

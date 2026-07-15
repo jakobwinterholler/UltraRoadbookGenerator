@@ -70,6 +70,7 @@ from race_gpx_export import (
     GpsGpxExportOptions,
     GpxExportQualityError,
     GpxTrackModifiedError,
+    build_gpx_export_preview,
     export_race_gpx_for_gps,
     export_report_json,
 )
@@ -821,6 +822,49 @@ def export_race_validation_gpx(race_id: str) -> FileResponse:
     )
 
 
+@app.get("/api/races/{race_id}/exports/gps-gpx/preview")
+def preview_race_gps_gpx(
+    race_id: str,
+    device: str = Query("coros"),
+    verified_only: bool = Query(True),
+    include_high_confidence: bool = Query(False),
+    include_alternatives: bool = Query(False),
+    include_optional: bool = Query(False),
+) -> dict:
+    if device not in DEVICE_PROFILES:
+        raise HTTPException(status_code=400, detail=f"Unsupported device profile: {device}")
+
+    race = race_store.get_race(race_id)
+    if not race.meta.has_analysis:
+        raise HTTPException(status_code=400, detail="Analyze the race before previewing GPS GPX export.")
+
+    roadbook = race_store.load_analysis(race_id)
+    if not roadbook:
+        raise HTTPException(status_code=400, detail="Race analysis not found.")
+
+    gpx_path = race_store.get_gpx_path(race_id)
+    if not gpx_path.is_file():
+        raise HTTPException(status_code=404, detail="Original GPX file not found.")
+
+    options = GpsGpxExportOptions(
+        device_profile=device,
+        verified_only=verified_only,
+        include_high_confidence=include_high_confidence,
+        include_alternatives=include_alternatives,
+        include_optional=include_optional,
+    )
+    verified_stops = {
+        key: record.to_dict()
+        for key, record in race.preparation.verified_stops.items()
+    }
+    return build_gpx_export_preview(
+        original_gpx_path=gpx_path,
+        roadbook=roadbook,
+        verified_stops=verified_stops,
+        options=options,
+    )
+
+
 @app.get("/api/races/{race_id}/exports/gps-gpx")
 def export_race_gps_gpx(
     race_id: str,
@@ -828,6 +872,7 @@ def export_race_gps_gpx(
     verified_only: bool = Query(True),
     include_high_confidence: bool = Query(False),
     include_alternatives: bool = Query(False),
+    include_optional: bool = Query(False),
 ) -> FileResponse:
     if device not in DEVICE_PROFILES:
         raise HTTPException(status_code=400, detail=f"Unsupported device profile: {device}")
@@ -852,6 +897,7 @@ def export_race_gps_gpx(
         verified_only=verified_only,
         include_high_confidence=include_high_confidence,
         include_alternatives=include_alternatives,
+        include_optional=include_optional,
     )
 
     try:
