@@ -15,6 +15,7 @@ import { useAuth } from "@shared/auth/AuthProvider";
 import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import {
   hasValidCompanionBundle,
+  invalidateStaleBundle,
   loadRaceList,
   saveRaceList,
   type StoredRaceListItem,
@@ -42,7 +43,8 @@ async function resolveOfflineReady(
       downloadedRevision,
       downloadedChecksum,
     });
-    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+    await invalidateStaleBundle(race.id);
+    return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
   }
 
   const needsUpdate = needsCompanionDownload(
@@ -52,7 +54,15 @@ async function resolveOfflineReady(
     downloadedChecksum,
   );
   if (needsUpdate) {
-    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+    logSyncDebug("stale-cache", `${race.name} — cloud revision/checksum newer than local`, {
+      raceId: race.id,
+      cloudRevision: race.companion_revision,
+      localRevision: downloadedRevision,
+      cloudChecksum: race.bundle_checksum,
+      localChecksum: downloadedChecksum,
+    });
+    await invalidateStaleBundle(race.id);
+    return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
   }
 
   if (
@@ -65,7 +75,8 @@ async function resolveOfflineReady(
       cloud: race.bundle_checksum,
       local: downloadedChecksum,
     });
-    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+    await invalidateStaleBundle(race.id);
+    return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
   }
 
   return { downloadedRevision, downloadedChecksum, offlineReady: true };

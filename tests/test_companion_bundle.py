@@ -33,6 +33,8 @@ class CompanionBundleTests(unittest.TestCase):
                             "key": "water",
                             "label": "Water",
                             "primary": {
+                                "osm_id": 1,
+                                "osm_type": "node",
                                 "name": "Fountain",
                                 "poi_category": "water",
                                 "opening_hours": "24/7",
@@ -60,6 +62,7 @@ class CompanionBundleTests(unittest.TestCase):
         self.assertTrue(bundle.get("generatedAt"))
         self.assertEqual(bundle["race"]["name"], "Test Route")
         self.assertEqual(len(bundle["stops"]), 1)
+        self.assertEqual(bundle["stops"][0]["poiId"], "poi_1")
         self.assertEqual(bundle["stops"][0]["verificationStatus"], "verified")
         self.assertEqual(bundle["stops"][0]["notes"], "Good stop")
         self.assertTrue(bundle["stops"][0]["hasWater"])

@@ -25,6 +25,7 @@ export function useVerificationActions(userId: string | null) {
         id: crypto.randomUUID(),
         raceId: bundle.race.id,
         zoneId: stop.zoneId,
+        poiId: stop.poiId,
         stopName: stop.name,
         submittedAt: new Date().toISOString(),
         source: "companion",

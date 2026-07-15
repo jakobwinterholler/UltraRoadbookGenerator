@@ -39,6 +39,8 @@ export interface AuthProfile {
 }
 
 export interface CompanionStopAlternative {
+  /** Permanent POI identity. */
+  poiId?: string;
   osmId: number;
   osmType: string;
   name: string;
@@ -48,6 +50,7 @@ export interface CompanionStopAlternative {
   distanceOffRouteM: number;
   distanceAlongKm: number;
   score: number;
+  confidenceScore?: number | null;
   verificationStatus: "verified" | "unverified" | "needs_review" | "pending";
   openingHours: string | null;
   lat: number;
@@ -55,10 +58,15 @@ export interface CompanionStopAlternative {
   phone?: string | null;
   website?: string | null;
   placeId?: string | null;
+  hasFood?: boolean;
+  hasWater?: boolean;
+  hasFuel?: boolean;
 }
 
 export interface CompanionStop {
   zoneId: number;
+  /** Permanent POI identity — stable across re-analysis. */
+  poiId?: string;
   /** Primary POI identity when available. */
   osmId?: number;
   osmType?: string;
@@ -85,6 +93,8 @@ export interface CompanionStop {
   verificationDate?: string | null;
   /** Ranked POI alternatives within the same resupply area. */
   alternatives?: CompanionStopAlternative[];
+  /** Alias for alternatives — embedded nearby options for this stop. */
+  nearbyAlternatives?: CompanionStopAlternative[];
   /** Rider-oriented reasoning for this stop choice. */
   resupplyReason?: string | null;
 }

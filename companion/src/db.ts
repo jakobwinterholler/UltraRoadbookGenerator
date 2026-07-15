@@ -185,6 +185,38 @@ export async function hasValidCompanionBundle(raceId: string): Promise<boolean> 
   return bundle !== null;
 }
 
+/** Remove a stale cached bundle and mark the race as not offline-ready. */
+export async function invalidateStaleBundle(raceId: string): Promise<void> {
+  const db = await openDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, GPX_STORE], "readwrite");
+    tx.objectStore(BUNDLE_STORE).delete(raceId);
+    tx.objectStore(GPX_STORE).delete(raceId);
+
+    const listStore = tx.objectStore(LIST_STORE);
+    const getRequest = listStore.get(raceId);
+    getRequest.onsuccess = () => {
+      const existing = getRequest.result as StoredRaceListItem | undefined;
+      if (existing) {
+        listStore.put({
+          ...existing,
+          offlineReady: false,
+          downloadedRevision: null,
+          downloadedChecksum: null,
+        });
+      }
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error("Failed to invalidate stale bundle."));
+  });
+  const activeId = localStorage.getItem(ACTIVE_KEY);
+  if (activeId === raceId) {
+    localStorage.removeItem(ACTIVE_KEY);
+  }
+  db.close();
+}
+
 export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promise<void> {
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {

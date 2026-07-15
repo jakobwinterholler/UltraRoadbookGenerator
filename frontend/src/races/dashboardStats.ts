@@ -1,6 +1,6 @@
 import type { ResupplyZone, RoadbookResult } from "../api";
 import type { VerifiedStopRecord } from "../planning/stopVerification/types";
-import { verifiedStopKey } from "../planning/stopVerification/types";
+import { lookupVerifiedStopRecord } from "../planning/stopVerification/types";
 import { analyzeUnsupportedSections } from "../planning/unsupportedSections";
 import {
   buildDashboardStats,
@@ -25,8 +25,12 @@ function primaryPoi(zone: ResupplyZone) {
   return zone.categories.find((group) => group.primary)?.primary ?? null;
 }
 
-function isVerified(zoneId: number, verifiedStops: Record<string, VerifiedStopRecord>): boolean {
-  return verifiedStops[verifiedStopKey(zoneId)]?.status === "verified";
+function isVerified(
+  zoneId: number,
+  verifiedStops: Record<string, VerifiedStopRecord>,
+  poiId?: string | null,
+): boolean {
+  return lookupVerifiedStopRecord(verifiedStops, zoneId, poiId)?.status === "verified";
 }
 
 function lastVerificationAt(verifiedStops: Record<string, VerifiedStopRecord>): string | null {

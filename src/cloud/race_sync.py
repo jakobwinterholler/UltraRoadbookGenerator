@@ -346,7 +346,12 @@ def _push_bundle_for_preparation(
         if not isinstance(stop, dict):
             continue
         zone_key = str(stop.get("zoneId") or "")
-        record = verified_stops.get(zone_key)
+        poi_id = str(stop.get("poiId") or stop.get("poi_id") or "")
+        record = None
+        if poi_id:
+            record = verified_stops.get(poi_id)
+        if not isinstance(record, dict):
+            record = verified_stops.get(zone_key)
         if not isinstance(record, dict):
             continue
         status = record.get("status")
@@ -493,12 +498,15 @@ def review_companion_verification(
     if action == "accept":
         updates = record.get("updates") if isinstance(record.get("updates"), dict) else {}
         zone_id = str(record.get("zoneId") or record.get("zone_id") or "")
+        poi_id = str(record.get("poiId") or record.get("poi_id") or "")
+        key = poi_id or zone_id
         verified = dict(preparation.get("verified_stops") or {})
-        verified[zone_id] = {
+        verified[key] = {
             "status": updates.get("status") or "verified",
             "reject_reason": updates.get("rejectReason") or updates.get("reject_reason"),
             "reject_notes": updates.get("notes"),
             "updated_at": record.get("submittedAt") or record.get("submitted_at") or _utc_now(),
+            "poi_id": poi_id or None,
         }
         preparation["verified_stops"] = verified
 

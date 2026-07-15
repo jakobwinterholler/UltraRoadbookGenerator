@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bundle_checksum import compute_bundle_checksum
+from poi_id import compute_poi_id, migrate_verified_stops_to_poi_ids, resolve_verified_stop_record
 from race_dashboard import compute_race_dashboard_stats
 from resupply_intelligence import build_resupply_reason, planning_score
 from significant_climbs import significant_climbs
@@ -101,9 +102,17 @@ def _alternative_payload(
     category_label: str,
     verified_stops: dict[str, Any],
     zone_id: int | str,
+    race_id: str,
 ) -> dict[str, Any]:
     category = str(poi.get("poi_category") or category_label)
+    poi_id = compute_poi_id(race_id, poi, category=category)
+    record, _ = resolve_verified_stop_record(
+        verified_stops,
+        zone_id=zone_id,
+        poi_id=poi_id,
+    )
     return {
+        "poiId": poi_id,
         "osmId": poi.get("osm_id"),
         "osmType": poi.get("osm_type"),
         "name": _format_poi_name(poi, {"name": f"KM {zone_id}"}),
@@ -113,17 +122,17 @@ def _alternative_payload(
         "distanceOffRouteM": poi.get("distance_off_route_m"),
         "distanceAlongKm": poi.get("distance_along_km"),
         "score": poi.get("score"),
-        "verificationStatus": _verification_status(
-            verified_stops.get(_verified_stop_key(zone_id))
-            if isinstance(verified_stops.get(_verified_stop_key(zone_id)), dict)
-            else None
-        ),
+        "confidenceScore": poi.get("score"),
+        "verificationStatus": _verification_status(record),
         "openingHours": poi.get("opening_hours"),
         "lat": poi.get("lat"),
         "lon": poi.get("lon"),
         "phone": poi.get("phone"),
         "website": poi.get("website"),
         "placeId": _poi_place_id(poi),
+        "hasFood": category_key == "food" or "supermarket" in category.lower(),
+        "hasWater": category_key == "water" or "water" in category.lower(),
+        "hasFuel": category_key == "fuel" or "gas" in category.lower(),
     }
 
 
@@ -322,15 +331,26 @@ def build_companion_bundle(
         poi_lon = (poi or {}).get("lon")
         stop_lat = float(poi_lat if poi_lat is not None else zone.get("lat") or 0)
         stop_lon = float(poi_lon if poi_lon is not None else zone.get("lon") or 0)
-        record = verified_stops.get(_verified_stop_key(zone_id))
+        record, _ = resolve_verified_stop_record(
+            verified_stops,
+            zone_id=zone_id,
+            poi_id=compute_poi_id(race_id, poi, category=category) if poi else None,
+        )
         status = _verification_status(record if isinstance(record, dict) else None)
         notes = str((record or {}).get("reject_notes") or (record or {}).get("rejectNotes") or "").strip() or None
         alternatives = [
-            _alternative_payload(alt_poi, alt_key, alt_label, verified_stops, zone_id)
+            _alternative_payload(alt_poi, alt_key, alt_label, verified_stops, zone_id, race_id)
             for alt_poi, alt_key, alt_label in ranked[1:6]
         ]
+        nearby_alternatives = alternatives
         zone_km = float(zone.get("distance_along_km") or 0)
         primary_key = ranked[0][1] if ranked else ""
+        poi_id = compute_poi_id(race_id, poi, category=category, distance_along_km=zone_km) if poi else compute_poi_id(
+            race_id,
+            {"poi_category": category, "distance_along_km": zone_km},
+            category=category,
+            distance_along_km=zone_km,
+        )
         resupply_reason = (
             build_resupply_reason(
                 poi,
@@ -345,6 +365,7 @@ def build_companion_bundle(
         )
         stops.append(
             {
+                "poiId": poi_id,
                 "zoneId": zone_id,
                 "osmId": (poi or {}).get("osm_id"),
                 "osmType": (poi or {}).get("osm_type"),
@@ -369,6 +390,7 @@ def build_companion_bundle(
                 "verificationDate": (record or {}).get("updated_at") if status == "verified" else None,
                 "placeId": _poi_place_id(poi),
                 "alternatives": alternatives,
+                "nearbyAlternatives": nearby_alternatives,
                 "resupplyReason": resupply_reason,
             }
         )

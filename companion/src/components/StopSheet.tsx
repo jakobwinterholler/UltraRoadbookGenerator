@@ -55,6 +55,7 @@ function alternativeToStop(anchor: CompanionStop, alternative: StopAlternativeVi
   return {
     ...anchor,
     zoneId: anchor.zoneId,
+    poiId: alternative.alternative?.poiId ?? anchor.poiId,
     osmId: alternative.alternative!.osmId,
     osmType: alternative.alternative!.osmType,
     name: alternative.alternative!.name,

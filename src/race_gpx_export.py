@@ -18,10 +18,10 @@ from companion_bundle import (
     _format_poi_name,
     _is_coffee_category,
     _rank_zone_pois,
-    _verified_stop_key,
     _zone_has_category,
 )
 from gpx_parser import load_gpx
+from poi_id import compute_poi_id, resolve_verified_stop_record
 from resupply_intelligence import build_resupply_reason
 from significant_climbs import significant_climbs
 from stop_confidence import compute_stop_confidence, is_high_confidence_stop
@@ -420,17 +420,38 @@ def _verification_status(record: dict[str, Any] | None) -> str:
     return "unverified"
 
 
+def _zone_primary_poi(zone: dict[str, Any]) -> dict[str, Any] | None:
+    ranked = _rank_zone_pois(zone)
+    return ranked[0][0] if ranked else None
+
+
+def _zone_verification_record(
+    zone: dict[str, Any],
+    verified_stops: dict[str, Any],
+    race_id: str | None = None,
+) -> dict[str, Any] | None:
+    zone_id = zone.get("zone_id")
+    poi = _zone_primary_poi(zone)
+    poi_id = compute_poi_id(race_id or "", poi) if poi else None
+    record, _ = resolve_verified_stop_record(
+        verified_stops,
+        zone_id=zone_id,
+        poi_id=poi_id,
+    )
+    return record if isinstance(record, dict) else None
+
+
 def _count_verified_zones(
     roadbook: dict[str, Any],
     verified_stops: dict[str, Any],
+    race_id: str | None = None,
 ) -> int:
     count = 0
     for zone in roadbook.get("resupply_zones") or []:
         if not isinstance(zone, dict):
             continue
-        zone_id = zone.get("zone_id")
-        record = verified_stops.get(_verified_stop_key(zone_id))
-        if _verification_status(record if isinstance(record, dict) else None) == "verified":
+        record = _zone_verification_record(zone, verified_stops, race_id)
+        if _verification_status(record) == "verified":
             count += 1
     return count
 
@@ -439,10 +460,10 @@ def _zone_should_export(
     zone: dict[str, Any],
     verified_stops: dict[str, Any],
     options: GpsGpxExportOptions,
+    race_id: str | None = None,
 ) -> bool:
-    zone_id = zone.get("zone_id")
-    record = verified_stops.get(_verified_stop_key(zone_id))
-    status = _verification_status(record if isinstance(record, dict) else None)
+    record = _zone_verification_record(zone, verified_stops, race_id)
+    status = _verification_status(record)
     if status == "verified":
         return True
     if options.include_high_confidence and options.device_profile != "coros":
@@ -465,6 +486,7 @@ def _collect_waypoints(
     roadbook: dict[str, Any],
     verified_stops: dict[str, Any],
     options: GpsGpxExportOptions,
+    race_id: str | None = None,
 ) -> list[GpsWaypoint]:
     zones = roadbook.get("resupply_zones") or []
     waypoints: list[GpsWaypoint] = []
@@ -477,12 +499,12 @@ def _collect_waypoints(
     for zone in zones:
         if not isinstance(zone, dict):
             continue
-        if not _zone_should_export(zone, verified_stops, options):
+        if not _zone_should_export(zone, verified_stops, options, race_id):
             continue
 
         zone_id = zone.get("zone_id")
-        record = verified_stops.get(_verified_stop_key(zone_id))
-        verification_status = _verification_status(record if isinstance(record, dict) else None)
+        record = _zone_verification_record(zone, verified_stops, race_id)
+        verification_status = _verification_status(record)
         ranked = _rank_zone_pois(zone)
         if not ranked:
             continue
@@ -688,8 +710,9 @@ def export_race_gpx_for_gps(
 
     original_bytes = original_gpx_path.read_bytes()
     before = fingerprint_gpx_bytes(original_bytes)
-    verified_poi_count = _count_verified_zones(roadbook, verified_stops)
-    waypoints = _collect_waypoints(roadbook, verified_stops, opts)
+    race_id = str(roadbook.get("race_id") or (roadbook.get("summary") or {}).get("race_id") or "")
+    verified_poi_count = _count_verified_zones(roadbook, verified_stops, race_id or None)
+    waypoints = _collect_waypoints(roadbook, verified_stops, opts, race_id or None)
     _validate_export_quality(
         waypoints,
         device_profile=opts.device_profile,

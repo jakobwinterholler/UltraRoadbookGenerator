@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../auth/supabaseClient";
+import { resolveVerifiedStopRecord } from "../race/poiId";
 import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
 import { isCompanionBundle } from "../types/sync";
 import { validateCompanionBundle } from "../sync/bundleValidation";
@@ -27,11 +28,13 @@ function applyVerificationToPreparation(
     ...(preparation.companion_verification_history as Record<string, unknown> | undefined),
   };
   const { updates } = submission;
-  verifiedStops[String(submission.zoneId)] = {
+  const key = submission.poiId ?? String(submission.zoneId);
+  verifiedStops[key] = {
     status: updates.status,
     reject_reason: updates.rejectReason ?? null,
     reject_notes: updates.notes ?? null,
     updated_at: submission.submittedAt,
+    poi_id: submission.poiId ?? null,
   };
   history[submission.id] = {
     ...submission,
@@ -56,7 +59,11 @@ function patchBundleFromPreparation(
     { status?: string; reject_notes?: string; updated_at?: string }
   >;
   const stops = bundle.stops.map((stop) => {
-    const record = verifiedStops[String(stop.zoneId)];
+    const { record } = resolveVerifiedStopRecord(
+      verifiedStops as Record<string, unknown>,
+      stop.zoneId,
+      stop.poiId,
+    );
     if (!record) {
       return stop;
     }
@@ -64,14 +71,14 @@ function patchBundleFromPreparation(
       return {
         ...stop,
         verificationStatus: "verified" as const,
-        verificationDate: record.updated_at ?? null,
+        verificationDate: (record.updated_at as string | undefined) ?? null,
       };
     }
     if (record.status === "rejected" || record.status === "deferred") {
       return {
         ...stop,
         verificationStatus: "needs_review" as const,
-        notes: record.reject_notes?.trim() || stop.notes,
+        notes: (record.reject_notes as string | undefined)?.trim() || stop.notes,
       };
     }
     return stop;

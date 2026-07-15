@@ -38,7 +38,7 @@ function embeddedAlternativeView(
     return null;
   }
   return {
-    key: `${alternative.osmType}-${alternative.osmId}`,
+    key: alternative.poiId ?? `${alternative.osmType}-${alternative.osmId}`,
     name: alternative.name,
     category: alternative.category,
     categoryLabel: alternative.categoryLabel,
@@ -88,7 +88,7 @@ export function buildStopAlternatives(
   anchor: CompanionStop,
   allStops: CompanionStop[],
 ): StopAlternativeView[] {
-  const embedded = (anchor.alternatives ?? [])
+  const embedded = (anchor.alternatives ?? anchor.nearbyAlternatives ?? [])
     .map((alternative) => embeddedAlternativeView(alternative, anchor.km))
     .filter((item): item is StopAlternativeView => item != null);
   const embeddedKeys = new Set(embedded.map((item) => item.key));

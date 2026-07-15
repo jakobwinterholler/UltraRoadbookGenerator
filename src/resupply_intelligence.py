@@ -2,7 +2,49 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
+
+
+def _opening_hours_bonus(poi: dict[str, Any]) -> float:
+    """Favour stops with reliable or 24/7 opening hours."""
+    hours = str(poi.get("opening_hours") or "").strip().lower()
+    if not hours:
+        return 0.0
+    if "24/7" in hours or hours.startswith("24"):
+        return 8.0
+    if re.search(r"mo|tu|we|th|fr|sa|su", hours):
+        if "00:00-24:00" in hours or "00:00-23:59" in hours:
+            return 6.0
+        return 4.0
+    return 2.0
+
+
+def _highway_only_penalty(poi: dict[str, Any], category_key: str) -> float:
+    """Penalize fuel stations that are motorway-only and hard to reach by bike."""
+    if category_key != "fuel":
+        return 0.0
+    tags = poi.get("tags") or {}
+    if not isinstance(tags, dict):
+        return 0.0
+    highway = str(tags.get("highway") or "").lower()
+    if highway in {"motorway", "motorway_link", "trunk", "trunk_link"}:
+        return 18.0
+    access = str(tags.get("access") or tags.get("motorcycle") or "").lower()
+    if access in {"no", "private", "customers"}:
+        return 10.0
+    return 0.0
+
+
+def _on_route_bonus(detour_m: float) -> float:
+    """Reward minimal detour — on-route stops are easier during ultras."""
+    if detour_m <= 30:
+        return 6.0
+    if detour_m <= 80:
+        return 3.0
+    if detour_m <= 150:
+        return 1.0
+    return 0.0
 
 
 def _poi_category_key(poi: dict[str, Any], category_key: str) -> str:
@@ -145,6 +187,9 @@ def planning_score(
 
     score = base
     score -= min(detour / 8.0, 35.0)
+    score += _on_route_bonus(detour)
+    score += _opening_hours_bonus(poi)
+    score -= _highway_only_penalty(poi, category_key)
     score += stop_type_priority_boost(poi, category_key)
     score += climb_position_bonus(
         poi_km,

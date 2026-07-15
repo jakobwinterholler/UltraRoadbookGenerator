@@ -19,6 +19,7 @@ import { acceptGpxFile, onIncomingGpxFile } from "../lib/incomingGpx";
 import { buildRaceListSections, formatLastUpdated } from "../lib/raceListSections";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
+import { useAutoCloudSync } from "../sync/useAutoCloudSync";
 import { useCompanionSync } from "../sync/useCompanionSync";
 import type { CompanionTab } from "../components/BottomNav";
 
@@ -124,6 +125,7 @@ function RaceCard({
 export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: HomeScreenProps) {
   const { accessToken, user } = useAuth();
   const { races, loading, error, refresh } = useCloudRaceList();
+  const { autoSyncing, autoSyncMessage, dismissAutoSyncMessage } = useAutoCloudSync();
   const {
     checking,
     updatesAvailable,
@@ -253,7 +255,9 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         <div className="min-w-0 flex-1">
           <p className="text-2xl font-semibold tracking-tight text-white">{greeting}</p>
           <p className="mt-1 text-sm text-white/45">Your races</p>
-          {updatesAvailable > 0 ? (
+          {autoSyncing ? (
+            <p className="mt-1 text-xs font-medium text-sky-300">Checking cloud for updates…</p>
+          ) : updatesAvailable > 0 ? (
             <p className="mt-1 text-xs font-medium text-orange-300">
               {updatesAvailable} update{updatesAvailable === 1 ? "" : "s"} available
             </p>
@@ -323,7 +327,19 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
         {syncError ? <p className="mb-3 text-sm text-red-300">{syncError}</p> : null}
         {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
-        {checkMessage ? (
+        {autoSyncMessage ? (
+          <div className="mb-3 flex items-start justify-between gap-2 rounded-xl bg-emerald-500/10 px-3 py-2">
+            <p className="text-sm text-emerald-200">{autoSyncMessage}</p>
+            <button
+              type="button"
+              onClick={dismissAutoSyncMessage}
+              className="shrink-0 text-xs font-medium text-emerald-200/70 hover:text-emerald-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        ) : null}
+        {checkMessage && !autoSyncMessage ? (
           <p className="mb-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
             {checkMessage}
           </p>
