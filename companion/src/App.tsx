@@ -17,6 +17,7 @@ import ShareScreen from "./screens/ShareScreen";
 import VerificationScreen from "./screens/VerificationScreen";
 import WelcomeScreen from "./screens/WelcomeScreen";
 import { saveCompanionBundle } from "./db";
+import { clearCompanionDeepLinkParams, parseCompanionDeepLink } from "./lib/deepLink";
 import { useRaceGps } from "./lib/useRaceGps";
 import { useVerificationSync } from "./sync/useVerificationSync";
 
@@ -30,6 +31,27 @@ export default function App() {
   const [bundle, setBundle] = useState<CompanionBundle | null>(null);
   const [bootLoading, setBootLoading] = useState(true);
   const [tab, setTab] = useState<CompanionTab>("map");
+  const [autoExportDevice, setAutoExportDevice] = useState<"coros" | "garmin" | "wahoo" | null>(
+    null,
+  );
+  const [deepLink, setDeepLink] = useState<{
+    raceId: string;
+    tab?: CompanionTab;
+    autoExport?: "coros" | "garmin" | "wahoo";
+  } | null>(() => {
+    if (typeof window === "undefined") {
+      return null;
+    }
+    const link = parseCompanionDeepLink(window.location.search);
+    if (!link.raceId) {
+      return null;
+    }
+    return {
+      raceId: link.raceId,
+      tab: link.tab ?? undefined,
+      autoExport: link.autoExport ?? undefined,
+    };
+  });
   const [selectedStop, setSelectedStop] = useState<CompanionStop | null>(null);
   const [showUnverified, setShowUnverified] = useState(false);
   const [followGps, setFollowGps] = useState(true);
@@ -82,7 +104,44 @@ export default function App() {
     setBootLoading(false);
   }, [isRestoring, session]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    const link = parseCompanionDeepLink(window.location.search);
+    if (link.raceId) {
+      setDeepLink({
+        raceId: link.raceId,
+        tab: link.tab ?? undefined,
+        autoExport: link.autoExport ?? undefined,
+      });
+    }
+    if (link.tab) {
+      setTab(link.tab);
+    }
+    if (link.autoExport) {
+      setAutoExportDevice(link.autoExport);
+    }
+    if (link.raceId || link.tab || link.autoExport) {
+      clearCompanionDeepLinkParams();
+    }
+  }, []);
+
+  function openRace(
+    next: CompanionBundle,
+    options?: { tab?: CompanionTab; autoExport?: "coros" | "garmin" | "wahoo" },
+  ) {
+    setBundle(next);
+    setSelectedStop(null);
+    setTab(options?.tab ?? "map");
+    if (options?.autoExport) {
+      setAutoExportDevice(options.autoExport);
+    }
+    setView("race");
+  }
+
   const clearRace = useCallback(async () => {
+    setAutoExportDevice(null);
     setBundle(null);
     setSelectedStop(null);
     setTab("map");
@@ -175,12 +234,8 @@ export default function App() {
     return (
       <HomeScreen
         onOpenAccount={() => setHomeTab("account")}
-        onOpenRace={(next) => {
-          setBundle(next);
-          setSelectedStop(null);
-          setTab("map");
-          setView("race");
-        }}
+        onOpenRace={openRace}
+        deepLink={deepLink}
       />
     );
   }
@@ -189,12 +244,8 @@ export default function App() {
     return (
       <HomeScreen
         onOpenAccount={() => setHomeTab("account")}
-        onOpenRace={(next) => {
-          setBundle(next);
-          setSelectedStop(null);
-          setTab("map");
-          setView("race");
-        }}
+        onOpenRace={openRace}
+        deepLink={deepLink}
       />
     );
   }
@@ -221,7 +272,7 @@ export default function App() {
           ) : tab === "verify" ? (
             <VerificationScreen />
           ) : tab === "share" ? (
-            <ShareScreen />
+            <ShareScreen autoExportDevice={autoExportDevice} onAutoExportHandled={() => setAutoExportDevice(null)} />
           ) : (
             <AccountScreen />
           )}

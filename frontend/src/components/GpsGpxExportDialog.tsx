@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { VerifiedStopRecord } from "../planning/stopVerification/types";
 import { downloadGpsExport, type GpsGpxExportReport } from "../api";
 import { raceGpsExportEndpoint } from "../races/api";
+import GpsExportQrPanel from "./GpsExportQrPanel";
 
 export type GpsGpxDeviceProfile = "original" | "coros" | "garmin" | "wahoo";
 
@@ -23,7 +24,7 @@ interface GpsGpxExportDialogProps {
 
 const DEVICE_OPTIONS: Array<{ id: GpsGpxDeviceProfile; label: string; hint: string }> = [
   { id: "original", label: "GPX (Original)", hint: "Full waypoint names and metadata" },
-  { id: "coros", label: "GPX for Coros", hint: "Native icons and short names for Dura screens" },
+  { id: "coros", label: "GPX for Coros", hint: "Emoji names, native icons, QR for iPhone" },
   { id: "garmin", label: "GPX for Garmin", hint: "Balanced names for Edge devices" },
   { id: "wahoo", label: "GPX for Wahoo", hint: "Balanced names for ELEMNT devices" },
 ];
@@ -197,6 +198,9 @@ export default function GpsGpxExportDialog({
           <>
             <p className="mt-3 text-sm text-muted">Export complete. Your GPX file has been downloaded.</p>
             <ExportReportPanel report={report} />
+            {device === "coros" ? (
+              <GpsExportQrPanel raceId={raceId} raceName={raceName} device="coros" />
+            ) : null}
           </>
         )}
 

@@ -360,7 +360,7 @@ export default function AccountSection({ account }: AccountSectionProps) {
                   }
                 >
                   {result.status === "success"
-                    ? `Uploaded v${result.companionRevision ?? "?"}`
+                    ? `Uploaded v${result.companionRevision ?? "?"} ✓`
                     : result.error ?? "Failed"}
                 </span>
               </li>
@@ -380,7 +380,7 @@ export default function AccountSection({ account }: AccountSectionProps) {
           onClick={() => void syncToCompanion().catch(() => undefined)}
           className="mt-5 w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {syncing ? "Syncing to Companion…" : "Sync to Companion"}
+          {syncing ? "Syncing to phone…" : "Sync to Phone"}
         </button>
 
         {!account.cloud_sync_enabled ? (

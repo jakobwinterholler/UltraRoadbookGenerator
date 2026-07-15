@@ -20,6 +20,7 @@ export const COROS_WPT_ICONS = [
   "Bathroom",
   "Hut",
   "Campsite",
+  "Trailfork",
   "Pin",
 ] as const;
 
@@ -110,7 +111,63 @@ export function resolveCorosWptIcon(input: {
   if (category.includes("camp")) {
     return "Campsite";
   }
+  if (
+    category.includes("crossroad") ||
+    category.includes("cross road") ||
+    category.includes("junction") ||
+    category.includes("trail fork")
+  ) {
+    return "Trailfork";
+  }
+  if (category.includes("bike") && category.includes("shop")) {
+    return "Supplies";
+  }
   return "Pin";
+}
+
+/** Emoji prefix for Coros `<name>` — icons use `<sym>` separately. */
+export function corosWaypointEmoji(input: {
+  category: string;
+  hasFuel?: boolean;
+  hasWater?: boolean;
+  hasFood?: boolean;
+}): string {
+  const sym = resolveCorosWptIcon(input);
+  const map: Record<CorosWptIcon, string> = {
+    Water: "💧",
+    Supplies: input.hasFuel ? "⛽" : input.hasFood ? "🛒" : "📦",
+    Hazard: "⚠️",
+    Bathroom: "🚻",
+    Hut: "🏠",
+    Campsite: "⛺",
+    Trailfork: "🔀",
+    Pin: "📍",
+  };
+  return map[sym] ?? "📍";
+}
+
+export function formatCorosWaypointName(input: {
+  name?: string | null;
+  brand?: string | null;
+  category: string;
+  hasFuel?: boolean;
+  hasWater?: boolean;
+  hasFood?: boolean;
+  zoneName?: string | null;
+  km?: number;
+  resupplyReason?: string | null;
+  isPrimary?: boolean;
+}): string {
+  const prefix = input.isPrimary === false ? "ALT " : "";
+  const emoji = corosWaypointEmoji(input);
+  const label = smartPoiLabel(input);
+  if (label === "Fuel" && input.resupplyReason?.toLowerCase().includes("last")) {
+    return `${prefix}${emoji} Last fuel`.trim().slice(0, 32);
+  }
+  if (label === "Water" && input.km != null && Number.isFinite(input.km)) {
+    return `${prefix}${emoji} Water km ${Math.round(input.km)}`.trim().slice(0, 32);
+  }
+  return `${prefix}${emoji} ${label}`.trim().slice(0, 32);
 }
 
 export function smartPoiLabel(input: {

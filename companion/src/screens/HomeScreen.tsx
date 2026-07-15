@@ -7,7 +7,7 @@ import {
   SyncStatusBadge,
 } from "@shared/ui/SyncStatusBadge";
 import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   loadCompanionBundle,
   setActiveRaceId,
@@ -16,10 +16,16 @@ import {
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { useCompanionSync } from "../sync/useCompanionSync";
+import type { CompanionTab } from "../components/BottomNav";
 
 interface HomeScreenProps {
-  onOpenRace: (bundle: CompanionBundle) => void;
+  onOpenRace: (bundle: CompanionBundle, options?: { tab?: CompanionTab; autoExport?: "coros" | "garmin" | "wahoo" }) => void;
   onOpenAccount: () => void;
+  deepLink?: {
+    raceId: string;
+    tab?: CompanionTab;
+    autoExport?: "coros" | "garmin" | "wahoo";
+  } | null;
 }
 
 function RaceCardSkeleton() {
@@ -43,7 +49,7 @@ function EmptyRaces() {
   );
 }
 
-export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProps) {
+export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: HomeScreenProps) {
   const { accessToken, user } = useAuth();
   const { races, loading, error, refresh } = useCloudRaceList();
   const {
@@ -59,10 +65,29 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const deepLinkHandledRef = useRef(false);
 
   const greeting = getGreeting(getDisplayName(user));
 
-  async function handleOpenRace(race: StoredRaceListItem) {
+  useEffect(() => {
+    if (!deepLink?.raceId || loading || races.length === 0 || deepLinkHandledRef.current) {
+      return;
+    }
+    const target = races.find((race) => race.id === deepLink.raceId);
+    if (!target) {
+      return;
+    }
+    deepLinkHandledRef.current = true;
+    void handleOpenRace(target, {
+      tab: deepLink.tab ?? "share",
+      autoExport: deepLink.autoExport,
+    });
+  }, [deepLink, loading, races]);
+
+  async function handleOpenRace(
+    race: StoredRaceListItem,
+    options?: { tab?: CompanionTab; autoExport?: "coros" | "garmin" | "wahoo" },
+  ) {
     setActionError(null);
     const needsDownload =
       !race.offlineReady ||
@@ -72,7 +97,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
       const bundle = await loadCompanionBundle(race.id);
       if (bundle) {
         await setActiveRaceId(race.id);
-        onOpenRace(bundle);
+        onOpenRace(bundle, options);
         return;
       }
     }
@@ -102,7 +127,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
       setDownloadProgress(100);
       await refresh();
       await setActiveRaceId(race.id);
-      onOpenRace(bundle);
+      onOpenRace(bundle, options);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Download failed.");
     } finally {
@@ -133,7 +158,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
             onClick={() => void checkForUpdates().catch(() => undefined)}
             className="min-h-[40px] rounded-full border border-white/15 bg-white/5 px-3 text-xs font-semibold text-white/85 disabled:opacity-50"
           >
-            {checking ? "Checking…" : "Check for updates"}
+            {checking ? "Refreshing…" : "Refresh routes"}
           </button>
           <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
             <Avatar

@@ -5,9 +5,9 @@ import {
   isExcludedExportCategory,
   isInvalidExportName,
   MAX_WAYPOINT_OFF_ROUTE_M,
+  formatCorosWaypointName,
   resolveCorosWptIcon,
   ROUTE_INTEGRITY_FAILED_MESSAGE,
-  smartPoiLabel,
 } from "./gpsGpxExportConstants";
 
 export type GpsGpxDeviceProfile = "original" | "coros" | "garmin" | "wahoo";
@@ -230,23 +230,31 @@ function serviceLabels(stop: CompanionStop): string {
 function waypointName(
   stop: Pick<
     CompanionStop,
-    "name" | "category" | "categoryLabel" | "hasFuel" | "hasWater" | "hasFood" | "hasCoffee"
+    | "name"
+    | "category"
+    | "categoryLabel"
+    | "hasFuel"
+    | "hasWater"
+    | "hasFood"
+    | "hasCoffee"
+    | "resupplyReason"
   >,
   km: number,
   deviceProfile: GpsGpxDeviceProfile,
   isPrimary: boolean,
 ): string {
   if (deviceProfile === "coros") {
-    const prefix = isPrimary ? "" : "ALT ";
-    const label = smartPoiLabel({
+    return formatCorosWaypointName({
       name: stop.name,
       brand: stop.name,
       category: stop.category,
       hasFuel: stop.hasFuel,
       hasWater: stop.hasWater,
       hasFood: stop.hasFood,
+      km,
+      resupplyReason: stop.resupplyReason,
+      isPrimary,
     });
-    return `${prefix}${label}`.trim().slice(0, 32);
   }
   const kmLabel = formatKmLabel(km);
   const base = isPrimary ? stop.name : `ALT ${stop.name}`;

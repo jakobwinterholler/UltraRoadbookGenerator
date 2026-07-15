@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { fetchOriginalGpx } from "@shared/api/sync";
 import {
@@ -56,6 +56,9 @@ interface GpsGpxExportPanelProps {
   onSuccess?: () => void;
   showCancel?: boolean;
   onCancel?: () => void;
+  initialDevice?: GpsGpxDeviceProfile;
+  autoStartExport?: boolean;
+  onAutoStartHandled?: () => void;
 }
 
 export default function GpsGpxExportPanel({
@@ -63,9 +66,12 @@ export default function GpsGpxExportPanel({
   onSuccess,
   showCancel = false,
   onCancel,
+  initialDevice,
+  autoStartExport = false,
+  onAutoStartHandled,
 }: GpsGpxExportPanelProps) {
   const { accessToken, user } = useAuth();
-  const [device, setDevice] = useState<GpsGpxDeviceProfile>("coros");
+  const [device, setDevice] = useState<GpsGpxDeviceProfile>(initialDevice ?? "coros");
   const [verifiedOnly, setVerifiedOnly] = useState(true);
   const [includeHighConfidence, setIncludeHighConfidence] = useState(false);
   const [includeAlternatives, setIncludeAlternatives] = useState(false);
@@ -74,6 +80,7 @@ export default function GpsGpxExportPanel({
   const [report, setReport] = useState<GpsGpxExportReport | null>(null);
 
   const verifiedCount = useMemo(() => countVerifiedStops(bundle), [bundle]);
+  const autoStartedRef = useRef(false);
 
   async function resolveOriginalGpx(): Promise<ArrayBuffer> {
     const cached = await loadOriginalGpx(bundle.race.id);
@@ -123,6 +130,14 @@ export default function GpsGpxExportPanel({
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!autoStartExport || autoStartedRef.current) {
+      return;
+    }
+    autoStartedRef.current = true;
+    void handleExport().finally(() => onAutoStartHandled?.());
+  }, [autoStartExport, onAutoStartHandled]);
 
   return (
     <div>

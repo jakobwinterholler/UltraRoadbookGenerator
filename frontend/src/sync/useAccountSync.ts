@@ -144,6 +144,7 @@ export function useAccountSync() {
       const failed = results.filter((entry) => entry.status === "failed");
       const succeeded = results.filter((entry) => entry.status === "success");
       setHasPending(hasPendingSyncRaces(userId));
+      const now = new Date().toISOString();
 
       if (failed.length > 0 && succeeded.length === 0) {
         setSyncError(
@@ -160,11 +161,10 @@ export function useAccountSync() {
         clearPendingSyncRaces(userId);
         setHasPending(false);
         setSyncMessage(
-          `Uploaded ${succeeded.length} race${succeeded.length === 1 ? "" : "s"} to Companion.`,
+          `Uploaded successfully at ${new Date(now).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} · ${succeeded.length} race${succeeded.length === 1 ? "" : "s"} · bundle v${Math.max(...succeeded.map((entry) => entry.companionRevision ?? 0))}`,
         );
       }
 
-      const now = new Date().toISOString();
       setLastSyncAt(userId, now);
       setLastSyncAtState(now);
       await refreshCloudStats();

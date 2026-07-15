@@ -22,13 +22,16 @@ from companion_bundle import (
     _zone_has_category,
 )
 from gpx_parser import load_gpx
+from resupply_intelligence import build_resupply_reason
+from significant_climbs import significant_climbs
 from stop_confidence import compute_stop_confidence, is_high_confidence_stop
+from unsupported_sections import analyze_unsupported_sections
 
 DEVICE_PROFILES = ("original", "coros", "garmin", "wahoo")
 GPS_GPX_EXPORT_VERSION = "3.0"
 INTEGRITY_FAILED_MSG = "Route integrity verification failed. Export cancelled."
 MAX_WAYPOINT_OFF_ROUTE_M = 500.0
-_COROS_WPT_ICONS = frozenset({"Water", "Supplies", "Hazard", "Bathroom", "Hut", "Campsite", "Pin"})
+_COROS_WPT_ICONS = frozenset({"Water", "Supplies", "Hazard", "Bathroom", "Hut", "Campsite", "Trailfork", "Pin"})
 _EXCLUDED_EXPORT_CATEGORY_KEYWORDS = (
     "climb",
     "summit",
@@ -148,7 +151,46 @@ def _resolve_coros_wpt_sym(*, category: str, zone: dict[str, Any]) -> str:
         return "Hut"
     if "camp" in cat:
         return "Campsite"
+    if any(token in cat for token in ("crossroad", "cross road", "junction", "trail fork")):
+        return "Trailfork"
+    if "bike" in cat and "shop" in cat:
+        return "Supplies"
     return "Pin"
+
+
+def _coros_waypoint_emoji(*, category: str, zone: dict[str, Any]) -> str:
+    sym = _resolve_coros_wpt_sym(category=category, zone=zone)
+    mapping = {
+        "Water": "💧",
+        "Supplies": "⛽" if _zone_has_category(zone, "fuel") else ("🛒" if _zone_has_category(zone, "food") else "📦"),
+        "Hazard": "⚠️",
+        "Bathroom": "🚻",
+        "Hut": "🏠",
+        "Campsite": "⛺",
+        "Trailfork": "🔀",
+        "Pin": "📍",
+    }
+    return mapping.get(sym, "📍")
+
+
+def _format_coros_waypoint_name(
+    *,
+    zone: dict[str, Any],
+    poi: dict[str, Any] | None,
+    category: str,
+    km: float,
+    is_primary: bool,
+    resupply_reason: str | None = None,
+) -> str:
+    prefix = "" if is_primary else "ALT "
+    emoji = _coros_waypoint_emoji(category=category, zone=zone)
+    label = _smart_poi_label(poi, zone, category)
+    reason = str(resupply_reason or "").lower()
+    if label == "Fuel" and "last" in reason:
+        return f"{prefix}{emoji} Last fuel".strip()[:32]
+    if label == "Water":
+        return f"{prefix}{emoji} Water km {round(km)}".strip()[:32]
+    return f"{prefix}{emoji} {label}".strip()[:32]
 
 
 def _category_fallback_label(category: str, zone: dict[str, Any]) -> str:
@@ -300,11 +342,17 @@ def _waypoint_name(
     category: str,
     km: float,
     is_primary: bool,
+    resupply_reason: str | None = None,
 ) -> str:
     if device_profile == "coros":
-        prefix = "" if is_primary else "ALT "
-        label = _smart_poi_label(poi, zone, category)
-        return f"{prefix}{label}".strip()[:32]
+        return _format_coros_waypoint_name(
+            zone=zone,
+            poi=poi,
+            category=category,
+            km=km,
+            is_primary=is_primary,
+            resupply_reason=resupply_reason,
+        )
 
     km_label = _format_km_label(km)
     full_name = _format_poi_name(poi, zone)
@@ -415,6 +463,9 @@ def _collect_waypoints(
     waypoints: list[GpsWaypoint] = []
     seen_osm: set[str] = set()
     seen_zone_primary: set[str] = set()
+    total_km = float((roadbook.get("summary") or {}).get("distance_km") or 0)
+    climbs = significant_climbs(roadbook.get("climbs") or [])
+    unsupported = analyze_unsupported_sections(zones, total_km)
 
     for zone in zones:
         if not isinstance(zone, dict):
@@ -467,6 +518,18 @@ def _collect_waypoints(
                 website=poi.get("website"),
                 phone=poi.get("phone"),
             )
+            resupply_reason = (
+                build_resupply_reason(
+                    poi,
+                    category_key=_category_key,
+                    zone_km=float(zone.get("distance_along_km") or 0),
+                    climbs=climbs,
+                    unsupported_sections=unsupported,
+                    peer_pois=[entry[0] for entry in ranked],
+                )
+                if is_primary
+                else None
+            )
             waypoints.append(
                 GpsWaypoint(
                     lat=lat,
@@ -479,6 +542,7 @@ def _collect_waypoints(
                         category=category,
                         km=km,
                         is_primary=is_primary,
+                        resupply_reason=resupply_reason,
                     ),
                     desc=_waypoint_desc(
                         zone=zone,
