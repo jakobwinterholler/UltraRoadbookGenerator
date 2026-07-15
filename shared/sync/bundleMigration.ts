@@ -2,10 +2,10 @@ import type { CompanionBundle, CompanionStop } from "../types/sync";
 import { computePoiId } from "../race/poiId";
 import { computeBundleChecksumSync } from "./bundleChecksum";
 import {
-  CURRENT_COMPANION_SCHEMA_VERSION,
-  diagnoseCompanionBundle,
-  validateCompanionBundle,
-} from "./bundleValidation";
+  applyBundleVersionFields,
+  CURRENT_SCHEMA_VERSION,
+} from "./bundleContract";
+import { diagnoseCompanionBundle, validateCompanionBundle } from "./bundleValidation";
 
 export interface BundlePrepareResult {
   bundle: CompanionBundle | null;
@@ -139,12 +139,15 @@ function migrateLegacyBundle(raw: unknown): {
     }
   }
 
-  if (previousSchema == null || previousSchema < CURRENT_COMPANION_SCHEMA_VERSION) {
-    record.schemaVersion = CURRENT_COMPANION_SCHEMA_VERSION;
+  if (previousSchema == null || previousSchema < CURRENT_SCHEMA_VERSION) {
+    record.schemaVersion = CURRENT_SCHEMA_VERSION;
     notes.push(
-      `Upgraded schema ${previousSchema ?? "unknown"} → ${CURRENT_COMPANION_SCHEMA_VERSION}`,
+      `Upgraded schema ${previousSchema ?? "unknown"} → ${CURRENT_SCHEMA_VERSION}`,
     );
   }
+
+  applyBundleVersionFields(record);
+  notes.push("Applied bundle version contract fields");
 
   const bundle = record as unknown as CompanionBundle;
   if (!bundle.bundleChecksum) {

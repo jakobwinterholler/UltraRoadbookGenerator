@@ -1,4 +1,5 @@
 import type { SyncRaceSummary } from "../types/sync";
+import { CURRENT_SCHEMA_VERSION } from "./bundleContract";
 
 /** Normalized race version fields (companion_revision is the source of truth). */
 export interface RaceVersionFields {
@@ -42,6 +43,10 @@ export function needsCompanionDownload(
     downloadedChecksum &&
     cloud.bundle_checksum !== downloadedChecksum
   ) {
+    return true;
+  }
+  const cloudSchema = cloud.bundle_schema_version;
+  if (cloudSchema != null && cloudSchema < CURRENT_SCHEMA_VERSION) {
     return true;
   }
   return false;

@@ -1,8 +1,6 @@
 import type { CompanionBundle } from "../types/sync";
 import { computeBundleChecksumSync } from "./bundleChecksum";
-
-export const CURRENT_COMPANION_SCHEMA_VERSION = 5;
-export const MIN_COMPANION_SCHEMA_VERSION = 5;
+import { CURRENT_SCHEMA_VERSION } from "./bundleContract";
 
 export interface BundleValidationResult {
   valid: boolean;
@@ -26,9 +24,9 @@ export function diagnoseCompanionBundle(bundle: unknown): string[] {
 
   if (typeof record.schemaVersion !== "number") {
     issues.push('Missing field "schemaVersion"');
-  } else if (record.schemaVersion < MIN_COMPANION_SCHEMA_VERSION) {
+  } else if (record.schemaVersion < CURRENT_SCHEMA_VERSION) {
     issues.push(
-      `Unsupported schema version ${record.schemaVersion} (need ${MIN_COMPANION_SCHEMA_VERSION}+)`,
+      `Unsupported schema version ${record.schemaVersion} (need ${CURRENT_SCHEMA_VERSION}+)`,
     );
   }
 

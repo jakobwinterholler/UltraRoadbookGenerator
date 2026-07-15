@@ -6,13 +6,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from bundle_checksum import compute_bundle_checksum
+from bundle_contract import CURRENT_SCHEMA_VERSION, apply_bundle_version_fields
 from poi_id import compute_poi_id, migrate_verified_stops_to_poi_ids, resolve_verified_stop_record
 from race_dashboard import compute_race_dashboard_stats
 from resupply_intelligence import build_resupply_reason, planning_score
 from significant_climbs import significant_climbs
 from unsupported_sections import analyze_unsupported_sections
 
-COMPANION_SCHEMA_VERSION = 5
+COMPANION_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION
 
 POI_ICONS: dict[str, str] = {
     "water": "💧",
@@ -448,7 +449,7 @@ def build_companion_bundle(
         ]
 
     generated_at = _utc_now()
-    bundle: dict[str, Any] = {
+    bundle: dict[str, Any] = apply_bundle_version_fields({
         "schemaVersion": COMPANION_SCHEMA_VERSION,
         "revision": revision,
         "bundle_version": revision,
@@ -468,6 +469,6 @@ def build_companion_bundle(
         "unsupportedSections": unsupported,
         "dashboardStats": dashboard_stats,
         "riderAssumptions": assumptions,
-    }
+    })
     bundle["bundleChecksum"] = compute_bundle_checksum(bundle)
     return bundle

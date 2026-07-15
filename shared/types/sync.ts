@@ -138,7 +138,13 @@ export interface CompanionDashboardStats {
 }
 
 export interface CompanionBundle {
+  /** Semantic bundle format version, e.g. "1.0.0". */
+  bundleVersion?: string;
   schemaVersion: number;
+  /** Minimum Companion app version that can read this bundle. */
+  minimumCompanionVersion?: string;
+  /** Minimum Desktop app version that produced this bundle. */
+  minimumDesktopVersion?: string;
   revision?: number;
   /** Alias for revision. */
   bundle_version?: number;

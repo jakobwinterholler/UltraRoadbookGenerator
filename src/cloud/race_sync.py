@@ -10,6 +10,8 @@ import httpx
 
 from cloud.config import cloud_config
 from bundle_checksum import compute_bundle_checksum
+from bundle_contract import CURRENT_SCHEMA_VERSION, apply_bundle_version_fields
+from bundle_validate import validate_companion_bundle
 from companion_bundle import build_companion_bundle
 from race_project import race_store
 
@@ -113,6 +115,7 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
 
     roadbook = race_store.load_analysis(race_id)
     has_bundle = False
+    bundle: dict[str, Any] | None = None
     analyzed_at = race.analysis.get("analyzed_at")
     if roadbook is not None:
         analysis_bytes = json.dumps(roadbook, separators=(",", ":")).encode("utf-8")
@@ -128,6 +131,11 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
             race.preparation.to_dict(),
             revision=next_revision,
         )
+        valid, validation_errors = validate_companion_bundle(bundle)
+        if not valid:
+            raise CloudSyncError(
+                "Refusing to upload invalid companion bundle: " + "; ".join(validation_errors)
+            )
         bundle_bytes = json.dumps(bundle, separators=(",", ":")).encode("utf-8")
         _upload_bytes(
             _storage_path(user_id, race_id, "companion-bundle.json"),
@@ -142,6 +150,7 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
             "gpx_fingerprint": race.meta.gpx_fingerprint,
             "bundle_checksum": bundle.get("bundleChecksum"),
             "bundle_schema_version": bundle.get("schemaVersion"),
+            "bundle_semantic_version": bundle.get("bundleVersion"),
             "bundle_generated_at": bundle.get("generatedAt"),
         }
     else:
@@ -173,6 +182,8 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
         "companion_revision": revision,
         "version": revision,
         "bundle_version": revision,
+        "bundle_checksum": bundle.get("bundleChecksum") if bundle else None,
+        "bundle_schema_version": bundle.get("schemaVersion") if bundle else None,
         "has_bundle": has_bundle,
         "synced_at": _utc_now(),
     }
@@ -189,6 +200,10 @@ def _race_needs_upload(
     if existing is None:
         return True
     if not existing.get("has_bundle"):
+        return True
+    preparation = existing.get("preparation") or {}
+    cloud_schema = preparation.get("bundle_schema_version")
+    if isinstance(cloud_schema, int) and cloud_schema < CURRENT_SCHEMA_VERSION:
         return True
     summary = race_store.get_summary(race_id)
     local_updated = summary.updated_at
@@ -316,6 +331,11 @@ def regenerate_cloud_bundle(user_id: str, race_id: str, access_token: str | None
         preparation,
         revision=next_revision,
     )
+    valid, validation_errors = validate_companion_bundle(bundle)
+    if not valid:
+        raise CloudSyncError(
+            "Regenerated bundle failed validation: " + "; ".join(validation_errors)
+        )
     bundle_bytes = json.dumps(bundle, separators=(",", ":")).encode("utf-8")
     _upload_bytes(
         _storage_path(user_id, race_id, "companion-bundle.json"),
@@ -328,6 +348,7 @@ def regenerate_cloud_bundle(user_id: str, race_id: str, access_token: str | None
         **preparation,
         "bundle_checksum": bundle.get("bundleChecksum"),
         "bundle_schema_version": bundle.get("schemaVersion"),
+        "bundle_semantic_version": bundle.get("bundleVersion"),
         "bundle_generated_at": bundle.get("generatedAt"),
     }
     updated_row = _upsert_race_row(
