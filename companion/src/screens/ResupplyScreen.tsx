@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
 import { readResupplyFilter, writeResupplyFilter, type ResupplyFilter } from "../lib/resupplyFilter";
 import StopSheet from "../components/StopSheet";
 import UnsupportedSectionSheet from "../components/UnsupportedSectionSheet";
+import ResupplyElevationProfile from "../components/ResupplyElevationProfile";
 import { GpsStatusBadge } from "../components/GpsStatusBadge";
-import type { CompanionUnsupportedSection } from "../types";
+import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 function VerificationBadge({ status }: { status: string }) {
   if (status === "verified") {
@@ -25,11 +27,43 @@ function VerificationBadge({ status }: { status: string }) {
   return null;
 }
 
+
+function ResupplyGapRow({
+  gap,
+  onUnsupportedClick,
+}: {
+  gap: NonNullable<ReturnType<typeof buildResupplyCards>[number]["gapBefore"]>;
+  onUnsupportedClick: () => void;
+}) {
+  return (
+    <div className="my-2 flex flex-col items-center gap-0.5 py-1 text-center text-xs text-white/35">
+      <div className="h-px w-full max-w-[12rem] bg-white/10" aria-hidden />
+      <p className="tabular-nums">{formatKm(gap.distanceKm)}</p>
+      <p className="tabular-nums">+{gap.elevationGainM} m</p>
+      <p className="tabular-nums">-{gap.elevationLossM} m</p>
+      <p className="tabular-nums">{formatRidingTime(gap.ridingTimeHours)}</p>
+      {gap.unsupportedLabel ? (
+        <button
+          type="button"
+          onClick={onUnsupportedClick}
+          className="mt-0.5 text-amber-300/80 underline-offset-2 hover:underline"
+        >
+          Unsupported section
+        </button>
+      ) : null}
+      <div className="h-px w-full max-w-[12rem] bg-white/10" aria-hidden />
+    </div>
+  );
+}
+
 export default function ResupplyScreen() {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const { bundle, currentKm, selectedStop, selectStop } = useCompanion();
+  const userScrollingRef = useRef(false);
+  const scrollIdleTimerRef = useRef<number | null>(null);
+  const { bundle, currentKm, gps, selectedStop, selectStop } = useCompanion();
   const [filter, setFilter] = useState<ResupplyFilter>(() => readResupplyFilter());
   const [selectedSection, setSelectedSection] = useState<CompanionUnsupportedSection | null>(null);
+  const [focusedStop, setFocusedStop] = useState<CompanionStop | null>(null);
 
   const cards = useMemo(
     () => buildResupplyCards(bundle, filter === "verified"),
@@ -41,17 +75,117 @@ export default function ResupplyScreen() {
     [cards, currentKm],
   );
 
+  const riderKm = useMemo(() => {
+    const gpsActive =
+      gps.status === "active" ||
+      (gps.status === "degraded" && Number.isFinite(gps.currentKm));
+    if (gpsActive) {
+      return currentKm;
+    }
+    if (selectedStop) {
+      return selectedStop.km;
+    }
+    return currentKm;
+  }, [currentKm, gps.currentKm, gps.status, selectedStop]);
+
+  const focusKm = focusedStop?.km ?? null;
+
   useEffect(() => {
     writeResupplyFilter(filter);
   }, [filter]);
 
   useEffect(() => {
-    if (nextIndex < 0 || !listRef.current) {
+    if (cards.length === 0) {
+      setFocusedStop(null);
       return;
     }
-    const row = listRef.current.querySelector(`[data-index="${nextIndex}"]`);
+    if (nextIndex >= 0) {
+      setFocusedStop(cards[nextIndex].stop);
+    }
+  }, [cards, nextIndex]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || cards.length === 0) {
+      return;
+    }
+
+    const rows = Array.from(list.querySelectorAll<HTMLElement>("[data-stop-index]"));
+    if (rows.length === 0) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
+        if (visible.length === 0) {
+          return;
+        }
+        const index = Number(visible[0].target.getAttribute("data-stop-index"));
+        const stop = cards[index]?.stop;
+        if (stop) {
+          setFocusedStop(stop);
+        }
+      },
+      {
+        root: list,
+        threshold: [0.35, 0.5, 0.65],
+        rootMargin: "-20% 0px -45% 0px",
+      },
+    );
+
+    for (const row of rows) {
+      observer.observe(row);
+    }
+
+    return () => observer.disconnect();
+  }, [cards]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list) {
+      return;
+    }
+
+    const markUserScroll = () => {
+      userScrollingRef.current = true;
+      if (scrollIdleTimerRef.current != null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
+      scrollIdleTimerRef.current = window.setTimeout(() => {
+        userScrollingRef.current = false;
+      }, 4000);
+    };
+
+    list.addEventListener("scroll", markUserScroll, { passive: true });
+    list.addEventListener("touchstart", markUserScroll, { passive: true });
+
+    return () => {
+      list.removeEventListener("scroll", markUserScroll);
+      list.removeEventListener("touchstart", markUserScroll);
+      if (scrollIdleTimerRef.current != null) {
+        window.clearTimeout(scrollIdleTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (nextIndex < 0 || !listRef.current || userScrollingRef.current) {
+      return;
+    }
+    const row = listRef.current.querySelector(`[data-stop-index="${nextIndex}"]`);
     row?.scrollIntoView({ block: "center", behavior: "smooth" });
   }, [currentKm, nextIndex]);
+
+  const handleStopTap = useCallback(
+    (stop: CompanionStop) => {
+      setFocusedStop(stop);
+      selectStop(stop);
+    },
+    [selectStop],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -88,46 +222,36 @@ export default function ResupplyScreen() {
         ) : null}
       </header>
 
+      <ResupplyElevationProfile bundle={bundle} riderKm={riderKm} focusKm={focusKm} />
+
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {cards.map((entry, index) => {
           const { stop, gapBefore } = entry;
           const isPast = stop.km < currentKm - 0.25;
           const isNext = index === nextIndex;
+          const isFocused = focusedStop?.zoneId === stop.zoneId;
 
           return (
-            <div key={`card-${stop.zoneId}`} data-index={index}>
+            <div key={`card-${stop.zoneId}`} data-stop-index={index}>
               {gapBefore ? (
-                <div className="mb-2 flex items-center gap-2 px-1 py-1 text-xs text-white/40">
-                  <span className="tabular-nums">{formatKm(gapBefore.distanceKm)}</span>
-                  <span aria-hidden>·</span>
-                  <span className="tabular-nums">+{gapBefore.elevationGainM} m</span>
-                  {gapBefore.unsupportedLabel ? (
-                    <>
-                      <span aria-hidden>·</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const section = bundle.unsupportedSections.find(
-                            (item) => item.displayLabel === gapBefore.unsupportedLabel,
-                          );
-                          if (section) {
-                            setSelectedSection(section);
-                          }
-                        }}
-                        className="text-left text-amber-300/90 underline-offset-2 hover:underline"
-                      >
-                        Unsupported section
-                      </button>
-                    </>
-                  ) : null}
-                </div>
+                <ResupplyGapRow
+                  gap={gapBefore}
+                  onUnsupportedClick={() => {
+                    const section = bundle.unsupportedSections.find(
+                      (item) => item.displayLabel === gapBefore.unsupportedLabel,
+                    );
+                    if (section) {
+                      setSelectedSection(section);
+                    }
+                  }}
+                />
               ) : null}
 
               <button
                 type="button"
-                onClick={() => selectStop(stop)}
+                onClick={() => handleStopTap(stop)}
                 className={`mb-3 flex min-h-[72px] w-full flex-col rounded-2xl border px-4 py-4 text-left transition ${
-                  isNext
+                  isNext || isFocused
                     ? "border-sky-400/35 bg-sky-500/12"
                     : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                 } ${isPast ? "opacity-60" : ""}`}

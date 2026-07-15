@@ -359,4 +359,15 @@ body {
       transform: translateY(0);
     }
   }
+
+  .profile-marker circle,
+  .profile-marker line {
+    transition:
+      cx 0.35s ease,
+      cy 0.35s ease,
+      x1 0.35s ease,
+      x2 0.35s ease,
+      y1 0.35s ease,
+      y2 0.35s ease;
+  }
 }

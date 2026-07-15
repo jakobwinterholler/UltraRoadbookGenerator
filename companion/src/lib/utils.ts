@@ -4,10 +4,13 @@ import {
   googleStreetViewUrl as sharedGoogleStreetViewUrl,
   type StreetViewUrlOptions,
 } from "@shared/race/streetViewUrl";
+import { estimatedRidingToStop } from "./raceExecution";
 
 export interface ResupplyGapInfo {
   distanceKm: number;
   elevationGainM: number;
+  elevationLossM: number;
+  ridingTimeHours: number;
   unsupportedLabel?: string;
 }
 
@@ -49,6 +52,37 @@ export function elevationGainBetweenKm(
   return Math.round(gain);
 }
 
+export function elevationLossBetweenKm(
+  bundle: CompanionBundle,
+  fromKm: number,
+  toKm: number,
+): number {
+  const elevations = bundle.route.elevationsM;
+  const coordinates = bundle.route.coordinates;
+  if (
+    !elevations?.length ||
+    elevations.length !== coordinates.length ||
+    toKm <= fromKm
+  ) {
+    return 0;
+  }
+
+  const total = bundle.race.distanceKm;
+  let loss = 0;
+  for (let index = 1; index < elevations.length; index += 1) {
+    const startKm = total * ((index - 1) / Math.max(elevations.length - 1, 1));
+    const endKm = total * (index / Math.max(elevations.length - 1, 1));
+    if (endKm <= fromKm || startKm >= toKm) {
+      continue;
+    }
+    const delta = elevations[index] - elevations[index - 1];
+    if (delta < 0) {
+      loss += Math.abs(delta);
+    }
+  }
+  return Math.round(loss);
+}
+
 export function unsupportedLabelBetweenKm(
   bundle: CompanionBundle,
   fromKm: number,
@@ -80,6 +114,8 @@ export function buildResupplyCards(
       gapBefore: {
         distanceKm: Math.max(0, toKm - fromKm),
         elevationGainM: elevationGainBetweenKm(bundle, fromKm, toKm),
+        elevationLossM: elevationLossBetweenKm(bundle, fromKm, toKm),
+        ridingTimeHours: estimatedRidingToStop(bundle, fromKm, toKm),
         unsupportedLabel: unsupportedLabelBetweenKm(bundle, fromKm, toKm),
       },
     };
