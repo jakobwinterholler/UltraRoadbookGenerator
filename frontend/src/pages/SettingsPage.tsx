@@ -200,6 +200,7 @@ export default function SettingsPage({ roadbook, onBack, onReanalysed }: Setting
             >
               <DeveloperDiagnostics
                 roadbook={roadbook}
+                raceId={activeRaceId}
                 raceName={activeRace?.name}
                 climbConfig={settings.planning.climb_config}
                 onClimbConfigChange={(config) => {

@@ -56,6 +56,8 @@ class CompanionBundleTests(unittest.TestCase):
         self.assertEqual(bundle["schemaVersion"], COMPANION_SCHEMA_VERSION)
         self.assertEqual(bundle["revision"], 3)
         self.assertEqual(bundle["bundle_version"], 3)
+        self.assertTrue(bundle.get("bundleChecksum"))
+        self.assertTrue(bundle.get("generatedAt"))
         self.assertEqual(bundle["race"]["name"], "Test Route")
         self.assertEqual(len(bundle["stops"]), 1)
         self.assertEqual(bundle["stops"][0]["verificationStatus"], "verified")

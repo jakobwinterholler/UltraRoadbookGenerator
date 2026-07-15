@@ -9,6 +9,10 @@ export interface SyncRaceSummary {
   version?: number;
   /** Alias for companion_revision — embedded bundle revision. */
   bundle_version?: number;
+  /** SHA-256 checksum of canonical bundle content. */
+  bundle_checksum?: string | null;
+  /** Schema version of the cloud bundle. */
+  bundle_schema_version?: number | null;
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean;
@@ -81,6 +85,8 @@ export interface CompanionStop {
   verificationDate?: string | null;
   /** Ranked POI alternatives within the same resupply area. */
   alternatives?: CompanionStopAlternative[];
+  /** Rider-oriented reasoning for this stop choice. */
+  resupplyReason?: string | null;
 }
 
 export interface CompanionClimb {
@@ -126,6 +132,10 @@ export interface CompanionBundle {
   revision?: number;
   /** Alias for revision. */
   bundle_version?: number;
+  /** SHA-256 checksum of canonical bundle content. */
+  bundleChecksum?: string;
+  /** UTC ISO timestamp when bundle was generated. */
+  generatedAt?: string;
   syncedAt?: string;
   exportedAt: string;
   race: {
@@ -168,6 +178,8 @@ export function isCompanionBundle(value: unknown): value is CompanionBundle {
     typeof bundle.schemaVersion === "number" &&
     !!bundle.race?.name &&
     Array.isArray(bundle.stops) &&
-    Array.isArray(bundle.route?.coordinates)
+    Array.isArray(bundle.route?.coordinates) &&
+    typeof bundle.bundleChecksum === "string" &&
+    bundle.bundleChecksum.length > 0
   );
 }

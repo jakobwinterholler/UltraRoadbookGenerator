@@ -5,11 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+from bundle_checksum import compute_bundle_checksum
 from race_dashboard import compute_race_dashboard_stats
+from resupply_intelligence import build_resupply_reason, planning_score
 from significant_climbs import significant_climbs
 from unsupported_sections import analyze_unsupported_sections
 
-COMPANION_SCHEMA_VERSION = 4
+COMPANION_SCHEMA_VERSION = 5
 
 POI_ICONS: dict[str, str] = {
     "water": "💧",
@@ -54,25 +56,16 @@ def _primary_poi(zone: dict[str, Any]) -> dict[str, Any] | None:
     return ranked[0] if ranked else None
 
 
-def _primary_category_boost(category_key: str) -> float:
-    return {
-        "fuel": 10.0,
-        "food": 5.0,
-        "water": 2.0,
-        "dining": 0.0,
-    }.get(category_key, 0.0)
-
-
-def _planning_score(poi: dict[str, Any], category_key: str = "") -> float:
-    score = float(poi.get("score") or 0)
-    detour = float(poi.get("distance_off_route_m") or 0)
-    return score - min(detour / 8.0, 35.0) + _primary_category_boost(category_key)
-
-
-def _rank_zone_pois(zone: dict[str, Any]) -> list[tuple[dict[str, Any], str, str]]:
+def _rank_zone_pois(
+    zone: dict[str, Any],
+    *,
+    climbs: list[dict[str, Any]] | None = None,
+    unsupported_sections: list[dict[str, Any]] | None = None,
+) -> list[tuple[dict[str, Any], str, str]]:
     """Flatten and rank all POIs in a zone. Returns (poi, category_key, category_label)."""
     seen: set[str] = set()
     items: list[tuple[dict[str, Any], str, str]] = []
+    zone_km = float(zone.get("distance_along_km") or 0)
     for group in zone.get("categories") or []:
         category_key = str(group.get("key") or "")
         category_label = str(group.get("label") or category_key)
@@ -84,7 +77,21 @@ def _rank_zone_pois(zone: dict[str, Any]) -> list[tuple[dict[str, Any], str, str
                 continue
             seen.add(osm_key)
             items.append((option, category_key, category_label))
-    items.sort(key=lambda entry: _planning_score(entry[0], entry[1]), reverse=True)
+    peer_kms = [
+        float(poi.get("distance_along_km") or zone_km)
+        for poi, _, _ in items
+    ]
+    items.sort(
+        key=lambda entry: planning_score(
+            entry[0],
+            category_key=entry[1],
+            zone_km=zone_km,
+            climbs=climbs,
+            unsupported_sections=unsupported_sections,
+            peer_kms=peer_kms,
+        ),
+        reverse=True,
+    )
     return items
 
 
@@ -296,10 +303,18 @@ def build_companion_bundle(
     total_km = float(summary.get("distance_km") or 0)
     assumptions = {**DEFAULT_RIDER_ASSUMPTIONS, **(rider_assumptions or {})}
 
+    raw_sections = analyze_unsupported_sections(zones, total_km)
+    climb_candidates = roadbook.get("climbs") or []
+    significant = significant_climbs(climb_candidates)
+
     stops: list[dict[str, Any]] = []
     for zone in zones:
         zone_id = zone.get("zone_id")
-        ranked = _rank_zone_pois(zone)
+        ranked = _rank_zone_pois(
+            zone,
+            climbs=significant,
+            unsupported_sections=raw_sections,
+        )
         poi = ranked[0][0] if ranked else None
         poi_category_label = ranked[0][2] if ranked else "Resupply"
         category = str((poi or {}).get("poi_category") or poi_category_label or "Resupply")
@@ -314,6 +329,20 @@ def build_companion_bundle(
             _alternative_payload(alt_poi, alt_key, alt_label, verified_stops, zone_id)
             for alt_poi, alt_key, alt_label in ranked[1:6]
         ]
+        zone_km = float(zone.get("distance_along_km") or 0)
+        primary_key = ranked[0][1] if ranked else ""
+        resupply_reason = (
+            build_resupply_reason(
+                poi,
+                category_key=primary_key,
+                zone_km=zone_km,
+                climbs=significant,
+                unsupported_sections=raw_sections,
+                peer_pois=[entry[0] for entry in ranked],
+            )
+            if poi
+            else None
+        )
         stops.append(
             {
                 "zoneId": zone_id,
@@ -340,11 +369,11 @@ def build_companion_bundle(
                 "verificationDate": (record or {}).get("updated_at") if status == "verified" else None,
                 "placeId": _poi_place_id(poi),
                 "alternatives": alternatives,
+                "resupplyReason": resupply_reason,
             }
         )
 
     stops.sort(key=lambda stop: float(stop.get("km") or 0))
-    raw_sections = analyze_unsupported_sections(zones, total_km)
     unsupported: list[dict[str, Any]] = []
     for section in raw_sections:
         start_km = float(section["startKm"])
@@ -396,12 +425,14 @@ def build_companion_bundle(
             value if value is not None else 0.0 for value in elevation_samples
         ]
 
-    return {
+    generated_at = _utc_now()
+    bundle: dict[str, Any] = {
         "schemaVersion": COMPANION_SCHEMA_VERSION,
         "revision": revision,
         "bundle_version": revision,
-        "syncedAt": _utc_now(),
-        "exportedAt": _utc_now(),
+        "generatedAt": generated_at,
+        "syncedAt": generated_at,
+        "exportedAt": generated_at,
         "race": {
             "id": race_id,
             "name": summary.get("route_name") or "Untitled race",
@@ -416,3 +447,5 @@ def build_companion_bundle(
         "dashboardStats": dashboard_stats,
         "riderAssumptions": assumptions,
     }
+    bundle["bundleChecksum"] = compute_bundle_checksum(bundle)
+    return bundle

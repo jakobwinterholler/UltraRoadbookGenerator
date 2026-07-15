@@ -1,6 +1,8 @@
 import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
 import { fetchCompanionBundleDirect, fetchOriginalGpxDirect, fetchSyncRacesDirect } from "./cloudDirect";
 import type { AuthProfile, CompanionBundle, SyncPushAllResult, SyncPushRaceResult, SyncRaceSummary } from "../types/sync";
+import { isCompanionBundle } from "../types/sync";
+import { validateCompanionBundle } from "../sync/bundleValidation";
 
 export async function fetchAuthProfile(accessToken: string): Promise<AuthProfile> {
   const response = await fetchWithAuth("/api/auth/me", accessToken);
@@ -24,7 +26,20 @@ export async function fetchSyncRaces(accessToken: string): Promise<SyncRaceSumma
     ...race,
     version: race.version ?? race.companion_revision,
     bundle_version: race.bundle_version ?? race.companion_revision,
+    bundle_checksum: race.bundle_checksum ?? null,
+    bundle_schema_version: race.bundle_schema_version ?? null,
   }));
+}
+
+function parseCompanionBundle(payload: unknown): CompanionBundle {
+  if (!isCompanionBundle(payload)) {
+    throw new Error("Invalid companion bundle from cloud.");
+  }
+  const validation = validateCompanionBundle(payload);
+  if (!validation.valid) {
+    throw new Error(`Bundle validation failed: ${validation.errors.join(", ")}`);
+  }
+  return payload;
 }
 
 export async function fetchCompanionBundle(
@@ -38,11 +53,16 @@ export async function fetchCompanionBundle(
     }
     return fetchCompanionBundleDirect(userId, raceId);
   }
-  const response = await fetchWithAuth(`/api/sync/races/${raceId}/bundle`, accessToken);
+  const cacheBust = Date.now();
+  const response = await fetchWithAuth(
+    `/api/sync/races/${raceId}/bundle?_=${cacheBust}`,
+    accessToken,
+    { cache: "no-store" },
+  );
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to download race."));
   }
-  return response.json();
+  return parseCompanionBundle(await response.json());
 }
 
 export async function fetchOriginalGpx(

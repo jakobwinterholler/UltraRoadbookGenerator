@@ -10,29 +10,82 @@ import {
 import { normalizeSyncListError } from "@shared/api/supabaseErrors";
 import { fetchSyncRaces } from "@shared/api/sync";
 import type { SyncRaceSummary } from "@shared/types/sync";
+import { needsCompanionDownload } from "@shared/sync/raceVersion";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { logSyncDebug } from "@shared/sync/syncDebugLog";
-import { loadRaceList, saveRaceList, type StoredRaceListItem } from "../db";
+import {
+  hasValidCompanionBundle,
+  loadRaceList,
+  saveRaceList,
+  type StoredRaceListItem,
+} from "../db";
 
-function mergeRaceLists(
+async function resolveOfflineReady(
+  race: SyncRaceSummary,
+  existing: StoredRaceListItem | undefined,
+): Promise<{
+  downloadedRevision: number | null;
+  downloadedChecksum: string | null;
+  offlineReady: boolean;
+}> {
+  const downloadedRevision = existing?.downloadedRevision ?? null;
+  const downloadedChecksum = existing?.downloadedChecksum ?? null;
+
+  if (!existing?.offlineReady || downloadedRevision === null) {
+    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+  }
+
+  const bundleExists = await hasValidCompanionBundle(race.id);
+  if (!bundleExists) {
+    logSyncDebug("stale-cache", `${race.name} — bundle missing or invalid in IndexedDB`, {
+      raceId: race.id,
+      downloadedRevision,
+      downloadedChecksum,
+    });
+    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+  }
+
+  const needsUpdate = needsCompanionDownload(
+    race,
+    downloadedRevision,
+    true,
+    downloadedChecksum,
+  );
+  if (needsUpdate) {
+    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+  }
+
+  if (
+    race.bundle_checksum &&
+    downloadedChecksum &&
+    race.bundle_checksum !== downloadedChecksum
+  ) {
+    logSyncDebug("checksum-mismatch", `${race.name} — checksum drift detected`, {
+      raceId: race.id,
+      cloud: race.bundle_checksum,
+      local: downloadedChecksum,
+    });
+    return { downloadedRevision, downloadedChecksum, offlineReady: false };
+  }
+
+  return { downloadedRevision, downloadedChecksum, offlineReady: true };
+}
+
+async function mergeRaceLists(
   cloud: SyncRaceSummary[],
   local: StoredRaceListItem[],
-): StoredRaceListItem[] {
+): Promise<StoredRaceListItem[]> {
   const localById = new Map(local.map((race) => [race.id, race]));
-  return cloud.map((race) => {
+  const merged: StoredRaceListItem[] = [];
+  for (const race of cloud) {
     const existing = localById.get(race.id);
-    const downloadedRevision = existing?.downloadedRevision ?? null;
-    const offlineReady = Boolean(
-      existing?.offlineReady &&
-        downloadedRevision !== null &&
-        downloadedRevision >= race.companion_revision,
-    );
-    return {
+    const status = await resolveOfflineReady(race, existing);
+    merged.push({
       ...race,
-      downloadedRevision,
-      offlineReady,
-    };
-  });
+      ...status,
+    });
+  }
+  return merged;
 }
 
 interface CloudRaceListContextValue {
@@ -62,7 +115,7 @@ export function CloudRaceListProvider({ children }: { children: ReactNode }) {
       }
       const cloud = await fetchSyncRaces(accessToken);
       logSyncDebug("race-list", `Cloud race list refreshed (${cloud.length} races)`, cloud);
-      const merged = mergeRaceLists(cloud, local);
+      const merged = await mergeRaceLists(cloud, local);
       await saveRaceList(merged);
       setRaces(merged);
       logSyncDebug("race-list", `IndexedDB race list saved (${merged.length} races)`);

@@ -85,6 +85,7 @@ class CompanionBundleAlternativeTests(unittest.TestCase):
         self.assertEqual(bundle["schemaVersion"], COMPANION_SCHEMA_VERSION)
         self.assertEqual(bundle["revision"], 5)
         self.assertEqual(bundle["bundle_version"], 5)
+        self.assertTrue(bundle.get("bundleChecksum"))
         stop = bundle["stops"][0]
         self.assertEqual(stop["osmId"], 3)
         self.assertEqual(stop["name"], "Fountain")

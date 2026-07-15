@@ -3,7 +3,6 @@ import { verificationStatsLine } from "@shared/race/applyVerificationToBundle";
 import { ReadinessReasonsList, ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
 import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
-import GpsGpxExportSheet from "../components/GpsGpxExportSheet";
 import {
   estimatedRidingToStop,
   formatEstimatedArrival,
@@ -30,8 +29,6 @@ export default function DashboardScreen() {
   const [selectedSection, setSelectedSection] = useState<
     import("../types").CompanionUnsupportedSection | null
   >(null);
-  const [gpsExportOpen, setGpsExportOpen] = useState(false);
-
   const nextStop = useMemo(
     () => nextResupplyStop(bundle, currentKm, showUnverified),
     [bundle, currentKm, showUnverified],
@@ -208,26 +205,6 @@ export default function DashboardScreen() {
         </ul>
       </section>
 
-      <section className="border-b border-white/10 px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-white/40">
-              GPS export
-            </p>
-            <p className="mt-1 text-sm text-white/55">
-              Share original GPX with Coros waypoints from this phone.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setGpsExportOpen(true)}
-            className="shrink-0 rounded-xl bg-sky-500 px-4 py-2.5 text-sm font-semibold text-white"
-          >
-            Export
-          </button>
-        </div>
-      </section>
-
       <section className="px-4 py-4">
         <p className="mb-3 text-xs font-semibold uppercase tracking-[0.14em] text-white/40">Map</p>
         <div className="h-56 overflow-hidden rounded-2xl border border-white/10">
@@ -245,11 +222,6 @@ export default function DashboardScreen() {
         section={selectedSection}
         bundle={bundle}
         onClose={() => setSelectedSection(null)}
-      />
-      <GpsGpxExportSheet
-        bundle={bundle}
-        open={gpsExportOpen}
-        onClose={() => setGpsExportOpen(false)}
       />
     </div>
   );

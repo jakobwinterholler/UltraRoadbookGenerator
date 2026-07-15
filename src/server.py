@@ -11,7 +11,7 @@ from pathlib import Path
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from climb_config import ClimbDetectionConfig, DEFAULT_CLIMB_DETECTION_CONFIG
@@ -37,6 +37,7 @@ from cloud.config import cloud_config
 from cloud.race_sync import (
     CloudSyncError,
     add_companion_verifications,
+    compare_desktop_companion,
     get_companion_bundle,
     list_companion_verifications,
     list_sync_races,
@@ -1032,10 +1033,25 @@ def sync_list_races(
                 "updated_at": race.get("updated_at"),
                 "analyzed_at": race.get("analyzed_at"),
                 "has_bundle": bool(race.get("has_bundle")),
+                "bundle_checksum": race.get("bundle_checksum"),
+                "bundle_schema_version": race.get("bundle_schema_version"),
             }
             for race in races
         ]
     }
+
+
+@app.get("/api/sync/races/{race_id}/compare")
+def sync_compare_race(
+    race_id: str,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    _require_race(race_id)
+    try:
+        return compare_desktop_companion(user.id, race_id, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/sync/races/{race_id}/bundle")
@@ -1043,13 +1059,22 @@ def sync_get_bundle(
     race_id: str,
     user: AuthUser = Depends(require_user),
     access_token: str | None = Depends(get_bearer_token),
-) -> dict:
+) -> JSONResponse:
     try:
-        return get_companion_bundle(user.id, race_id, access_token)
+        bundle = get_companion_bundle(user.id, race_id, access_token)
     except CloudSyncError as exc:
         message = str(exc)
         status = 404 if "not found" in message.lower() or "not been analyzed" in message.lower() else 502
         raise HTTPException(status_code=status, detail=message) from exc
+    checksum = bundle.get("bundleChecksum") or ""
+    revision = bundle.get("revision") or bundle.get("bundle_version") or 0
+    return JSONResponse(
+        content=bundle,
+        headers={
+            **PREVIEW_NO_CACHE_HEADERS,
+            "ETag": f'"{revision}-{checksum[:16]}"' if checksum else f'"{revision}"',
+        },
+    )
 
 
 @app.get("/api/sync/races/{race_id}/gpx")

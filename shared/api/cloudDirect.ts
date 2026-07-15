@@ -1,6 +1,7 @@
 import { getSupabaseClient } from "../auth/supabaseClient";
 import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
 import { isCompanionBundle } from "../types/sync";
+import { validateCompanionBundle } from "../sync/bundleValidation";
 import type { CompanionVerificationSubmission } from "../types/verification";
 
 interface CloudRaceRow {
@@ -102,7 +103,7 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
   const { data, error } = await supabase
     .from("races")
     .select(
-      "id,name,distance_km,elevation_gain_m,companion_revision,updated_at,analyzed_at,has_bundle",
+      "id,name,distance_km,elevation_gain_m,companion_revision,updated_at,analyzed_at,has_bundle,preparation",
     )
     .is("deleted_at", null)
     .order("updated_at", { ascending: false });
@@ -111,18 +112,23 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
     throw new Error(error.message);
   }
 
-  return (data ?? []).map((race: CloudRaceRow) => ({
-    id: race.id,
-    name: race.name,
-    distance_km: race.distance_km,
-    elevation_gain_m: race.elevation_gain_m,
-    companion_revision: race.companion_revision ?? 0,
-    version: race.companion_revision ?? 0,
-    bundle_version: race.companion_revision ?? 0,
-    updated_at: race.updated_at,
-    analyzed_at: race.analyzed_at,
-    has_bundle: Boolean(race.has_bundle),
-  }));
+  return (data ?? []).map((race: CloudRaceRow) => {
+    const preparation = (race.preparation ?? {}) as Record<string, unknown>;
+    return {
+      id: race.id,
+      name: race.name,
+      distance_km: race.distance_km,
+      elevation_gain_m: race.elevation_gain_m,
+      companion_revision: race.companion_revision ?? 0,
+      version: race.companion_revision ?? 0,
+      bundle_version: race.companion_revision ?? 0,
+      updated_at: race.updated_at,
+      analyzed_at: race.analyzed_at,
+      has_bundle: Boolean(race.has_bundle),
+      bundle_checksum: (preparation.bundle_checksum as string | undefined) ?? null,
+      bundle_schema_version: (preparation.bundle_schema_version as number | undefined) ?? null,
+    };
+  });
 }
 
 /** Download companion bundle from Supabase Storage. */
@@ -141,6 +147,10 @@ export async function fetchCompanionBundleDirect(
   const parsed: unknown = JSON.parse(await data.text());
   if (!isCompanionBundle(parsed)) {
     throw new Error("Invalid companion bundle from cloud.");
+  }
+  const validation = validateCompanionBundle(parsed);
+  if (!validation.valid) {
+    throw new Error(`Bundle validation failed: ${validation.errors.join(", ")}`);
   }
   return parsed;
 }

@@ -1,15 +1,18 @@
 import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
+import { validateCompanionBundle, verifyStoredChecksum } from "@shared/sync/bundleValidation";
 
 const DB_NAME = "race-companion";
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const BUNDLE_STORE = "bundles";
 const LIST_STORE = "raceList";
 const META_STORE = "meta";
 const GPX_STORE = "gpx";
 const ACTIVE_KEY = "active-race-id";
+const RESUPPLY_FILTER_KEY = "companion-resupply-filter";
 
-interface StoredRaceListItem extends SyncRaceSummary {
+export interface StoredRaceListItem extends SyncRaceSummary {
   downloadedRevision: number | null;
+  downloadedChecksum: string | null;
   offlineReady: boolean;
 }
 
@@ -61,7 +64,13 @@ export async function loadRaceList(): Promise<StoredRaceListItem[]> {
   const races = await new Promise<StoredRaceListItem[]>((resolve, reject) => {
     const tx = db.transaction(LIST_STORE, "readonly");
     const request = tx.objectStore(LIST_STORE).getAll();
-    request.onsuccess = () => resolve((request.result as StoredRaceListItem[]) ?? []);
+    request.onsuccess = () =>
+      resolve(
+        ((request.result as StoredRaceListItem[]) ?? []).map((race) => ({
+          ...race,
+          downloadedChecksum: race.downloadedChecksum ?? null,
+        })),
+      );
     request.onerror = () => reject(request.error ?? new Error("Failed to load race list."));
   });
   db.close();
@@ -71,6 +80,14 @@ export async function loadRaceList(): Promise<StoredRaceListItem[]> {
 }
 
 export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void> {
+  const validation = validateCompanionBundle(bundle);
+  if (!validation.valid) {
+    throw new Error(`Invalid bundle: ${validation.errors.join(", ")}`);
+  }
+  if (!verifyStoredChecksum(bundle)) {
+    throw new Error("Bundle checksum mismatch — refusing to cache stale data.");
+  }
+
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([BUNDLE_STORE, LIST_STORE], "readwrite");
@@ -81,10 +98,12 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
     getRequest.onsuccess = () => {
       const existing = getRequest.result as StoredRaceListItem | undefined;
       const revision = bundle.revision ?? bundle.bundle_version ?? existing?.companion_revision ?? 0;
+      const checksum = bundle.bundleChecksum ?? null;
       if (existing) {
         listStore.put({
           ...existing,
           downloadedRevision: revision,
+          downloadedChecksum: checksum,
           offlineReady: true,
           readiness_score: bundle.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
         });
@@ -98,10 +117,12 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
         companion_revision: revision,
         version: revision,
         bundle_version: revision,
+        bundle_checksum: checksum,
         updated_at: bundle.syncedAt ?? bundle.exportedAt,
         analyzed_at: bundle.race.analyzedAt ?? null,
         has_bundle: true,
         downloadedRevision: revision,
+        downloadedChecksum: checksum,
         offlineReady: true,
         readiness_score: bundle.dashboardStats?.readinessScore ?? null,
       });
@@ -131,7 +152,19 @@ export async function loadCompanionBundle(raceId: string): Promise<CompanionBund
     request.onerror = () => reject(request.error ?? new Error("Failed to load race."));
   });
   db.close();
+  if (!bundle) {
+    return null;
+  }
+  const validation = validateCompanionBundle(bundle);
+  if (!validation.valid || !verifyStoredChecksum(bundle)) {
+    return null;
+  }
   return bundle;
+}
+
+export async function hasValidCompanionBundle(raceId: string): Promise<boolean> {
+  const bundle = await loadCompanionBundle(raceId);
+  return bundle !== null;
 }
 
 export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promise<void> {
@@ -163,17 +196,39 @@ export async function loadOriginalGpx(raceId: string): Promise<ArrayBuffer | nul
 
 export async function clearCompanionData(): Promise<void> {
   localStorage.removeItem(ACTIVE_KEY);
+  localStorage.removeItem(RESUPPLY_FILTER_KEY);
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([BUNDLE_STORE, LIST_STORE, META_STORE, GPX_STORE], "readwrite");
+    const tx = db.transaction(
+      [BUNDLE_STORE, LIST_STORE, META_STORE, GPX_STORE, "verifications"],
+      "readwrite",
+    );
     tx.objectStore(BUNDLE_STORE).clear();
     tx.objectStore(LIST_STORE).clear();
     tx.objectStore(META_STORE).clear();
     tx.objectStore(GPX_STORE).clear();
+    if (tx.objectStoreNames.contains("verifications")) {
+      tx.objectStore("verifications").clear();
+    }
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Failed to clear data."));
   });
   db.close();
+}
+
+/** Developer tool: wipe all local race caches and service worker caches. */
+export async function resetLocalRaceCache(): Promise<void> {
+  await clearCompanionData();
+
+  if (typeof caches !== "undefined") {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((key) => caches.delete(key)));
+  }
+
+  if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+  }
 }
 
 export async function setActiveRaceId(raceId: string): Promise<void> {
@@ -193,5 +248,3 @@ export async function estimateCompanionStorageBytes(): Promise<number | null> {
   }
   return null;
 }
-
-export type { StoredRaceListItem };

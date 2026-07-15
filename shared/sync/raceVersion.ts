@@ -25,6 +25,7 @@ export function needsCompanionDownload(
   cloud: SyncRaceSummary,
   downloadedRevision: number | null,
   offlineReady: boolean,
+  downloadedChecksum?: string | null,
 ): boolean {
   if (!cloud.has_bundle) {
     return false;
@@ -33,7 +34,17 @@ export function needsCompanionDownload(
     return true;
   }
   const { version } = raceVersionFields(cloud);
-  return version > downloadedRevision;
+  if (version > downloadedRevision) {
+    return true;
+  }
+  if (
+    cloud.bundle_checksum &&
+    downloadedChecksum &&
+    cloud.bundle_checksum !== downloadedChecksum
+  ) {
+    return true;
+  }
+  return false;
 }
 
 export function needsDesktopUpload(

@@ -28,13 +28,13 @@ class PoiScoreWeights:
 
     category_weight: dict[str, float] = field(
         default_factory=lambda: {
+            "Gas station": 40.0,
             "Small supermarket": 36.0,
             "Mini supermarket": 32.0,
+            "Drinking water": 26.0,
             "Supermarket": 20.0,
-            "Gas station": 28.0,
             "Convenience store": 22.0,
             "Bakery": 18.0,
-            "Drinking water": 14.0,
             "Fast food": 10.0,
             "Café": 8.0,
             "Restaurant": 6.0,

@@ -69,7 +69,12 @@ export function useCompanionSync() {
       downloadedRevisions.length > 0 ? Math.max(...downloadedRevisions) : null,
     );
     const pending = races.filter((race) =>
-      needsCompanionDownload(race, race.downloadedRevision, race.offlineReady),
+      needsCompanionDownload(
+        race,
+        race.downloadedRevision,
+        race.offlineReady,
+        race.downloadedChecksum,
+      ),
     );
     setUpdatesAvailable(pending.length);
   }, []);
@@ -170,7 +175,12 @@ export function useCompanionSync() {
           continue;
         }
         const cloudVersion = raceVersionFields(cloudRace).version;
-        const needsUpdate = needsCompanionDownload(cloudRace, local.downloadedRevision, local.offlineReady);
+        const needsUpdate = needsCompanionDownload(
+          cloudRace,
+          local.downloadedRevision,
+          local.offlineReady,
+          local.downloadedChecksum,
+        );
         if (needsUpdate) {
           const reason = `download: cloud v${cloudVersion} > local v${local.downloadedRevision ?? 0}`;
           logSyncDebug("filter", `${cloudRace.name} — ${reason}`, { raceId: cloudRace.id });

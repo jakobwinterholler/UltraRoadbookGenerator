@@ -8,10 +8,12 @@ import { CompanionContext } from "./context/CompanionContext";
 import BottomNav, { type CompanionTab } from "./components/BottomNav";
 import AppUpdateBanner from "./components/AppUpdateBanner";
 import ExecutionHeader from "./components/ExecutionHeader";
+import RaceDataBanner from "./components/RaceDataBanner";
 import AccountScreen from "./screens/AccountScreen";
 import HomeScreen from "./screens/HomeScreen";
 import MapScreen from "./screens/MapScreen";
 import ResupplyScreen from "./screens/ResupplyScreen";
+import ShareScreen from "./screens/ShareScreen";
 import VerificationScreen from "./screens/VerificationScreen";
 import WelcomeScreen from "./screens/WelcomeScreen";
 import { saveCompanionBundle } from "./db";
@@ -197,7 +199,8 @@ export default function App() {
     );
   }
 
-  const showExecutionHeader = tab !== "account" && tab !== "verify";
+  const showExecutionHeader = tab !== "account" && tab !== "verify" && tab !== "share";
+  const showRaceDataBanner = tab === "map" || tab === "resupply" || tab === "share";
 
   return (
     <CompanionContext.Provider value={contextValue}>
@@ -205,6 +208,9 @@ export default function App() {
         <AppUpdateBanner />
         {showExecutionHeader ? (
           <ExecutionHeader trailing={headerTrailing} />
+        ) : null}
+        {showRaceDataBanner ? (
+          <RaceDataBanner bundle={bundle} onBundleUpdate={updateBundle} />
         ) : null}
 
         <main className="min-h-0 flex-1 animate-tab-in" key={tab}>
@@ -214,6 +220,8 @@ export default function App() {
             <ResupplyScreen />
           ) : tab === "verify" ? (
             <VerificationScreen />
+          ) : tab === "share" ? (
+            <ShareScreen />
           ) : (
             <AccountScreen />
           )}

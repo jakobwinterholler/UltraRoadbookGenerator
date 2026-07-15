@@ -14,7 +14,7 @@ import {
   desktopConnectionLabel,
 } from "@shared/ui/accountDevices";
 import { formatStorage } from "@shared/ui/formatStorage";
-import { estimateCompanionStorageBytes, clearCompanionData } from "../db";
+import { estimateCompanionStorageBytes, clearCompanionData, resetLocalRaceCache } from "../db";
 import { useCompanionSync } from "../sync/useCompanionSync";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { usePwaUpdate } from "../pwa/PwaUpdateProvider";
@@ -161,6 +161,8 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
   const [error, setError] = useState<string | null>(null);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
+  const [resettingCache, setResettingCache] = useState(false);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
   const deviceRecorded = useRef(false);
 
   const displayName = getDisplayName(user);
@@ -183,6 +185,22 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
   useEffect(() => {
     void estimateCompanionStorageBytes().then(setStorageBytes);
   }, [downloadedCount, checking]);
+
+  async function handleResetLocalCache() {
+    setResettingCache(true);
+    setResetMessage(null);
+    setError(null);
+    try {
+      await resetLocalRaceCache();
+      setResetMessage("Local race cache cleared. Tap Check for updates to re-download.");
+      const bytes = await estimateCompanionStorageBytes();
+      setStorageBytes(bytes);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Cache reset failed.");
+    } finally {
+      setResettingCache(false);
+    }
+  }
 
   async function handleSignOut() {
     setError(null);
@@ -362,6 +380,27 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
           className="mt-5 min-h-[48px] w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black disabled:opacity-50"
         >
           {checking ? "Checking for updates…" : "Check for updates"}
+        </button>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/40">Developer</h2>
+        <p className="mt-2 text-xs leading-relaxed text-white/45">
+          Reset IndexedDB, cached bundles, service worker caches, and route metadata without a
+          Safari hard refresh.
+        </p>
+        {resetMessage ? (
+          <p className="mt-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+            {resetMessage}
+          </p>
+        ) : null}
+        <button
+          type="button"
+          disabled={resettingCache}
+          onClick={() => void handleResetLocalCache()}
+          className="mt-4 min-h-[44px] rounded-xl border border-amber-400/30 px-5 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-50"
+        >
+          {resettingCache ? "Resetting…" : "Reset Local Race Cache"}
         </button>
       </section>
 

@@ -20,13 +20,13 @@ const PRIORITY_WEIGHT: Record<number, number> = {
 };
 
 const CATEGORY_WEIGHT: Record<string, number> = {
+  "Gas station": 40,
   "Small supermarket": 36,
   "Mini supermarket": 32,
+  "Drinking water": 26,
   Supermarket: 20,
-  "Gas station": 28,
   "Convenience store": 22,
   Bakery: 18,
-  "Drinking water": 14,
   "Fast food": 10,
   "Café": 8,
   Restaurant: 6,

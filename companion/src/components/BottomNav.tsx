@@ -31,6 +31,14 @@ function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
       </svg>
     );
   }
+  if (tab === "share") {
+    return (
+      <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
+        <path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M12 3v12M8 7l4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  }
   return (
     <svg className={`h-6 w-6 ${color}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden>
       <circle cx="12" cy="8" r="4" />
@@ -44,6 +52,7 @@ export default function BottomNav({ active, onChange }: BottomNavProps) {
     { id: "map", label: "Map" },
     { id: "resupply", label: "Resupply" },
     { id: "verify", label: "Verify", accent: true },
+    { id: "share", label: "Share" },
     { id: "account", label: "Account" },
   ];
 
@@ -52,7 +61,7 @@ export default function BottomNav({ active, onChange }: BottomNavProps) {
       className="shrink-0 border-t border-white/8 bg-[#0a0a0a]/92 backdrop-blur-xl"
       style={{ paddingBottom: "max(6px, env(safe-area-inset-bottom))" }}
     >
-      <div className="relative grid grid-cols-4">
+      <div className="relative grid grid-cols-5">
         {items.map((item) => {
           const isActive = active === item.id;
           const activeClass =
@@ -88,4 +97,4 @@ export default function BottomNav({ active, onChange }: BottomNavProps) {
   );
 }
 
-export type CompanionTab = "map" | "resupply" | "verify" | "account";
+export type CompanionTab = "map" | "resupply" | "verify" | "share" | "account";

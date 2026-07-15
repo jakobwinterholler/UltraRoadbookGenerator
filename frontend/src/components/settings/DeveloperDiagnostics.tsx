@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import type { RoadbookResult } from "../../api";
 import ClimbCandidateTable from "../ClimbCandidateTable";
+import DesktopCompanionCompare from "./DesktopCompanionCompare";
 import MapStyleEvaluation from "../maps/MapStyleEvaluation";
 import PerformanceReport from "../PerformanceReport";
 import PoiTable from "../PoiTable";
@@ -20,6 +21,7 @@ interface DeveloperDiagnosticsProps {
   onRecalculateClimbs?: () => void;
   recalculating?: boolean;
   raceName?: string;
+  raceId?: string | null;
 }
 
 export default function DeveloperDiagnostics({
@@ -29,6 +31,7 @@ export default function DeveloperDiagnostics({
   onRecalculateClimbs,
   recalculating = false,
   raceName,
+  raceId = null,
 }: DeveloperDiagnosticsProps) {
   const { settings, updatePlanning } = useSettings();
 
@@ -51,6 +54,8 @@ export default function DeveloperDiagnostics({
 
   return (
     <div className="space-y-8">
+      <DesktopCompanionCompare raceId={raceId} raceName={raceName} />
+
       {roadbook && roadbook.route.track_points.length >= 2 && (
         <MapStyleEvaluation
           route={roadbook.route}
