@@ -76,14 +76,31 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
     const getRequest = listStore.get(bundle.race.id);
     getRequest.onsuccess = () => {
       const existing = getRequest.result as StoredRaceListItem | undefined;
+      const revision = bundle.revision ?? bundle.bundle_version ?? existing?.companion_revision ?? 0;
       if (existing) {
         listStore.put({
           ...existing,
-          downloadedRevision: bundle.revision ?? existing.companion_revision,
+          downloadedRevision: revision,
           offlineReady: true,
           readiness_score: bundle.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
         });
+        return;
       }
+      listStore.put({
+        id: bundle.race.id,
+        name: bundle.race.name,
+        distance_km: bundle.race.distanceKm,
+        elevation_gain_m: bundle.race.elevationGainM,
+        companion_revision: revision,
+        version: revision,
+        bundle_version: revision,
+        updated_at: bundle.syncedAt ?? bundle.exportedAt,
+        analyzed_at: bundle.race.analyzedAt ?? null,
+        has_bundle: true,
+        downloadedRevision: revision,
+        offlineReady: true,
+        readiness_score: bundle.dashboardStats?.readinessScore ?? null,
+      });
     };
 
     tx.oncomplete = () => resolve();

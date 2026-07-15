@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import threading
 from dataclasses import asdict
 from typing import Any
@@ -64,6 +65,7 @@ EXCEL_PATH = EXPORT_DIR / "Roadbook.xlsx"
 VALIDATION_GPX_PATH = EXPORT_DIR / "surface_validation.gpx"
 
 app = FastAPI(title="Ultra Roadbook Generator", version="0.15")
+logger = logging.getLogger(__name__)
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,7 +101,7 @@ def _safe_push_race(user_id: str, race_id: str, access_token: str | None = None)
     try:
         push_race(user_id, race_id, access_token)
     except Exception:
-        pass
+        logger.exception("Background cloud push failed for race %s (user %s)", race_id, user_id)
 
 
 def _schedule_cloud_sync(
