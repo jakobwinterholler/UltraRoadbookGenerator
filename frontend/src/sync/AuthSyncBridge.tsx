@@ -31,12 +31,7 @@ export function AuthSyncBridge() {
     importedRef.current = true;
     void updateDeviceLastActive("desktop");
     void getFreshAccessToken(accessToken)
-      .then((token) => {
-        if (!token) {
-          throw new Error("Sign in required.");
-        }
-        return pushAllLocalRaces(token);
-      })
+      .then((token) => pushAllLocalRaces(token, user?.id))
       .then((result) => {
         localStorage.setItem(`${IMPORTED_KEY}:${user.id}`, "1");
         recordSyncSuccess(user.id);

@@ -362,32 +362,28 @@ export async function analyzeRaceStream(
     throw new Error("Analysis finished without a result.");
   }
 
+  const userId = getSyncUserId();
   const token = await getFreshAccessToken();
-  if (token) {
+  if (userId) {
     try {
-      await pushRaceNow(token, raceId);
-      const userId = getSyncUserId();
-      if (userId) {
-        removePendingSyncRace(userId, raceId);
-      }
+      await pushRaceNow(token, raceId, userId);
+      removePendingSyncRace(userId, raceId);
     } catch (err) {
-      const userId = getSyncUserId();
-      if (token && userId) {
-        try {
-          const [localRaces, cloudRaces] = await Promise.all([fetchRaces(), fetchSyncRaces(token)]);
-          const local = localRaces.find((race) => race.id === raceId);
-          const cloud = local ? resolveCloudRaceForLocal(local, cloudRaces) : undefined;
-          if (local && isDesktopCloudCurrent(local, cloud)) {
-            removePendingSyncRace(userId, raceId);
-            return result;
-          }
-        } catch {
-          // Ignore reconcile errors — fall through to pending + user message.
+      try {
+        const [localRaces, cloudRaces] = await Promise.all([
+          fetchRaces(),
+          fetchSyncRaces(token ?? ""),
+        ]);
+        const local = localRaces.find((race) => race.id === raceId);
+        const cloud = local ? resolveCloudRaceForLocal(local, cloudRaces) : undefined;
+        if (local && isDesktopCloudCurrent(local, cloud)) {
+          removePendingSyncRace(userId, raceId);
+          return result;
         }
+      } catch {
+        // Ignore reconcile errors — fall through to pending + user message.
       }
-      if (userId) {
-        addPendingSyncRace(userId, raceId);
-      }
+      addPendingSyncRace(userId, raceId);
       const message = err instanceof Error ? err.message : "Cloud upload failed.";
       throw new Error(`Analysis saved locally but cloud upload failed: ${message}`);
     }

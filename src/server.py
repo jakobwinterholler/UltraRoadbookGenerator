@@ -8,7 +8,7 @@ from dataclasses import asdict
 from typing import Any
 from pathlib import Path
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
@@ -31,7 +31,7 @@ from app_settings import AppSettings, app_settings_store
 from race_project import RaceSettings, race_store
 from route_preview_render import get_preview_status, start_preview_generation, start_preview_prepare
 from race_open_trace import race_open_trace
-from auth.dependencies import get_bearer_token, get_optional_user, require_user
+from auth.dependencies import get_bearer_token, get_optional_user, require_user, resolve_sync_user
 from auth.jwt import AuthUser
 from cloud.config import cloud_config
 from cloud.race_sync import (
@@ -1062,6 +1062,11 @@ def export_validation_gpx() -> FileResponse:
 
 class SyncPushBody(BaseModel):
     race_id: str
+    user_id: str | None = None
+
+
+class SyncPushAllBody(BaseModel):
+    user_id: str | None = None
 
 
 class CompanionVerificationsBody(BaseModel):
@@ -1297,9 +1302,11 @@ def sync_push_race(
 @app.post("/api/sync/push-now")
 def sync_push_race_now(
     body: SyncPushBody,
-    user: AuthUser = Depends(require_user),
+    request: Request,
+    authorization: str | None = Header(default=None),
     access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
+    user = resolve_sync_user(request, authorization, body.user_id)
     _require_race(body.race_id)
     try:
         return push_race(user.id, body.race_id, access_token)
@@ -1309,9 +1316,12 @@ def sync_push_race_now(
 
 @app.post("/api/sync/push-all")
 def sync_push_all(
-    user: AuthUser = Depends(require_user),
+    request: Request,
+    body: SyncPushAllBody | None = None,
+    authorization: str | None = Header(default=None),
     access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
+    user = resolve_sync_user(request, authorization, body.user_id if body else None)
     try:
         return push_all_local_races(user.id, access_token)
     except CloudSyncError as exc:

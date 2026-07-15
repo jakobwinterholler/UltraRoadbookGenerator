@@ -5,8 +5,7 @@ const REFRESH_MARGIN_SEC = 120;
 
 /**
  * Returns a valid Supabase access token, refreshing the session when needed.
- * Use before long-running work (analysis, multi-race sync) where the in-memory
- * token from React state may have gone stale.
+ * Returns null when the session is missing or cannot be refreshed.
  */
 export async function getFreshAccessToken(
   fallback: string | null = null,
@@ -31,10 +30,10 @@ export async function getFreshAccessToken(
   }
 
   const { data, error } = await supabase.auth.refreshSession();
-  if (error) {
-    return session.access_token;
+  if (error || !data.session?.access_token) {
+    return null;
   }
-  return data.session?.access_token ?? session.access_token;
+  return data.session.access_token;
 }
 
 /** Force-refresh the session — used after a 401 from the API. */
@@ -45,8 +44,8 @@ export async function forceRefreshAccessToken(): Promise<string | null> {
 
   const supabase = getSupabaseClient();
   const { data, error } = await supabase.auth.refreshSession();
-  if (error) {
+  if (error || !data.session?.access_token) {
     return null;
   }
-  return data.session?.access_token ?? null;
+  return data.session.access_token;
 }

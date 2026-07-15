@@ -86,7 +86,7 @@ export function useAccountSync() {
 
   const syncToCompanion = useCallback(async () => {
     const token = await getFreshAccessToken(accessToken);
-    if (!token || !userId) {
+    if (!userId) {
       throw new Error("Sign in required to sync races.");
     }
     setSyncError(null);
@@ -98,7 +98,7 @@ export function useAccountSync() {
     try {
       const [localRaces, cloudRaces] = await Promise.all([
         fetchRaces(),
-        fetchSyncRaces(token),
+        fetchSyncRaces(token ?? accessToken ?? ""),
       ]);
       const pending = getPendingSyncRaces(userId);
       for (const race of localRaces) {
@@ -138,11 +138,8 @@ export function useAccountSync() {
           raceName: race.name,
         });
         try {
-          const uploadToken = await getFreshAccessToken(token);
-          if (!uploadToken) {
-            throw new Error("Sign in required to sync races.");
-          }
-          const pushed: SyncPushRaceResult = await pushRaceNow(uploadToken, race.id);
+          const uploadToken = await getFreshAccessToken(token ?? accessToken);
+          const pushed: SyncPushRaceResult = await pushRaceNow(uploadToken, race.id, userId);
           removePendingSyncRace(userId, race.id);
           results.push({
             raceId: race.id,

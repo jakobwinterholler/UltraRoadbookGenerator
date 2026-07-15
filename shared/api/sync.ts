@@ -63,11 +63,15 @@ export async function fetchOriginalGpx(
   return response.arrayBuffer();
 }
 
-export async function pushRaceNow(accessToken: string, raceId: string): Promise<SyncPushRaceResult> {
+export async function pushRaceNow(
+  accessToken: string | null,
+  raceId: string,
+  userId?: string | null,
+): Promise<SyncPushRaceResult> {
   const response = await fetchWithAuth("/api/sync/push-now", accessToken, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ race_id: raceId }),
+    body: JSON.stringify({ race_id: raceId, user_id: userId ?? undefined }),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to sync race."));
@@ -79,9 +83,14 @@ export async function pushRaceNow(accessToken: string, raceId: string): Promise<
   };
 }
 
-export async function pushAllLocalRaces(accessToken: string): Promise<SyncPushAllResult> {
+export async function pushAllLocalRaces(
+  accessToken: string | null,
+  userId?: string | null,
+): Promise<SyncPushAllResult> {
   const response = await fetchWithAuth("/api/sync/push-all", accessToken, {
     method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user_id: userId ?? undefined }),
   });
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to sync local races."));
