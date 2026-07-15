@@ -10,6 +10,7 @@ from resupply_intelligence import (
     build_resupply_reason,
     planning_score,
 )
+from significant_climbs import significant_climbs
 from unsupported_sections import analyze_unsupported_sections
 
 DEDUP_DISTANCE_KM = 0.3
@@ -179,6 +180,40 @@ def _select_planning_zones(zones: list[dict[str, Any]], total_km: float) -> list
     return sorted(picked, key=_zone_km)
 
 
+def _zone_has_fuel_primary(zone: dict[str, Any]) -> bool:
+    for group in zone.get("categories") or []:
+        if group.get("key") == "fuel" and isinstance(group.get("primary"), dict):
+            return True
+    return False
+
+
+def _merge_climb_fuel_zones(
+    zones: list[dict[str, Any]],
+    selected: list[dict[str, Any]],
+    climbs: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Always include fuel stops that sit on a significant climb."""
+    significant = significant_climbs(climbs)
+    if not significant:
+        return selected
+
+    selected_ids = {int(zone.get("zone_id") or 0) for zone in selected}
+    merged = list(selected)
+    for zone in zones:
+        zone_id = int(zone.get("zone_id") or 0)
+        if zone_id in selected_ids or not _zone_has_fuel_primary(zone):
+            continue
+        zone_km = _zone_km(zone)
+        for climb in significant:
+            start_km = float(climb.get("start_km") or climb.get("startKm") or 0)
+            end_km = float(climb.get("end_km") or climb.get("endKm") or 0)
+            if start_km <= zone_km <= end_km:
+                merged.append(zone)
+                selected_ids.add(zone_id)
+                break
+    return sorted(merged, key=_zone_km)
+
+
 def _rank_zone_pois(
     zone: dict[str, Any],
     *,
@@ -245,6 +280,27 @@ def _violates_dedup(
     return False
 
 
+def resolve_planning_zones(
+    roadbook: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return resupply zones that match suggested stops, with migration fallback."""
+    zones = roadbook.get("resupply_zones") or []
+    if not zones:
+        return []
+
+    suggested = roadbook.get("suggested_stops")
+    total_km = float((roadbook.get("summary") or {}).get("distance_km") or 0)
+    climbs = roadbook.get("climbs") or []
+
+    if suggested:
+        zone_ids = {int(stop.get("zone_id") or 0) for stop in suggested}
+    else:
+        computed = build_suggested_stops(zones, climbs=climbs, total_km=total_km)
+        zone_ids = {int(stop.get("zone_id") or 0) for stop in computed}
+
+    return [zone for zone in zones if int(zone.get("zone_id") or 0) in zone_ids]
+
+
 def build_suggested_stops(
     zones: list[dict[str, Any]],
     *,
@@ -257,7 +313,11 @@ def build_suggested_stops(
 
     climb_rows = climbs or []
     unsupported = analyze_unsupported_sections(zones, total_km)
-    selected_zones = _select_planning_zones(zones, total_km)
+    selected_zones = _merge_climb_fuel_zones(
+        zones,
+        _select_planning_zones(zones, total_km),
+        climb_rows,
+    )
 
     candidates: list[SuggestedStop] = []
     for zone in selected_zones:

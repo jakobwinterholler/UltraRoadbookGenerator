@@ -1,4 +1,5 @@
 import type { ResupplyZone, RoadbookResult, SuggestedStop } from "../api";
+import { buildStopRecommendations } from "./stopRecommendations";
 import { selectPlanningStops } from "./planningHubSelection";
 import { applyTimeModeFilter } from "./zonePresentation";
 import type { TimeMode } from "./types";
@@ -32,26 +33,8 @@ function isSupermarketKind(kind: string): boolean {
 }
 
 function bestPoiInZone(zone: ResupplyZone): SuggestedStop | null {
-  let best: { poi: import("../api").ZonePoiOption; key: string; label: string; score: number } | null =
-    null;
-
-  for (const group of zone.categories) {
-    for (const option of [group.primary, ...group.alternatives]) {
-      if (!option) {
-        continue;
-      }
-      const score = option.score;
-      if (!best || score > best.score) {
-        best = {
-          poi: option,
-          key: group.key,
-          label: group.label,
-          score,
-        };
-      }
-    }
-  }
-
+  const summary = buildStopRecommendations(zone);
+  const best = summary.best;
   if (!best) {
     return null;
   }
@@ -62,13 +45,13 @@ function bestPoiInZone(zone: ResupplyZone): SuggestedStop | null {
     osm_type: best.poi.osm_type,
     name: best.poi.name,
     poi_category: best.poi.poi_category,
-    category_key: best.key,
-    category_label: best.label,
+    category_key: best.categoryKey,
+    category_label: best.categoryLabel,
     distance_along_km: best.poi.distance_along_km,
     distance_off_route_m: best.poi.distance_off_route_m,
     lat: best.poi.lat,
     lon: best.poi.lon,
-    score: best.score,
+    score: best.poi.score,
     reason: null,
   };
 }

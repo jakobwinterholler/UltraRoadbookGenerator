@@ -398,7 +398,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 zones={presentedZones}
                 climbs={sortedClimbs}
                 rejectedClimbs={result.climb_candidates ?? []}
-                showRejectedClimbs={timelineLayers.rejectedClimbs}
+                showRejectedClimbs={developerMode && timelineLayers.rejectedClimbs}
                 zoneDensity="planning"
                 overlay={overlay}
                 timeMode={timeMode}
@@ -522,7 +522,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
           <PlanningDetailSheet
             open={selection.detailSelection !== null}
             title={hubSheetTitle}
-            subtitle="Resupply hub"
+            subtitle="Resupply stop"
             onClose={selection.handleCloseDetail}
           >
             {selection.detailSelection && activeSegmentSummary && (

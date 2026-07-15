@@ -11,6 +11,7 @@ from poi_id import compute_poi_id, migrate_verified_stops_to_poi_ids, resolve_ve
 from race_dashboard import compute_race_dashboard_stats
 from resupply_intelligence import build_resupply_reason, planning_score
 from significant_climbs import significant_climbs
+from suggested_stops import resolve_planning_zones
 from unsupported_sections import analyze_unsupported_sections
 
 COMPANION_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION
@@ -308,12 +309,13 @@ def build_companion_bundle(
     summary = roadbook.get("summary") or {}
     route = roadbook.get("route") or {}
     track_points = route.get("track_points") or []
-    zones = roadbook.get("resupply_zones") or []
+    zones = resolve_planning_zones(roadbook)
+    all_zones = roadbook.get("resupply_zones") or []
     verified_stops = (preparation or {}).get("verified_stops") or {}
     total_km = float(summary.get("distance_km") or 0)
     assumptions = {**DEFAULT_RIDER_ASSUMPTIONS, **(rider_assumptions or {})}
 
-    raw_sections = analyze_unsupported_sections(zones, total_km)
+    raw_sections = analyze_unsupported_sections(all_zones, total_km)
     climb_candidates = roadbook.get("climbs") or []
     significant = significant_climbs(climb_candidates)
 

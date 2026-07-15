@@ -143,8 +143,8 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
   );
 
   const stopConfidence = useMemo(
-    () => stopConfidenceInputs(result.resupply_zones, verifiedStops),
-    [result.resupply_zones, verifiedStops],
+    () => stopConfidenceInputs(presentedZones, verifiedStops),
+    [presentedZones, verifiedStops],
   );
 
   const hardestClimb = keyClimbs[0] ?? null;

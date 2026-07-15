@@ -57,7 +57,7 @@ export default function ResupplyZoneCard({
               <span className="text-xs text-muted">· Suggested stop</span>
             </div>
             <h3 className="mt-0.5 text-lg font-semibold text-ink">{zone.name}</h3>
-            <p className="mt-1 text-xs tracking-tight text-muted">{summary.hubStarDisplay}</p>
+            <p className="mt-1 text-xs tracking-tight text-muted">{summary.stopStarDisplay}</p>
           </div>
           <span className="shrink-0 text-xs tabular-nums text-muted">
             {formatKm(zone.distance_along_km, 1)}

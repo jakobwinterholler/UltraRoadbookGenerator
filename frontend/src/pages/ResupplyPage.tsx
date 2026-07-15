@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ResupplyZone, RouteVisualization, RoadbookResult } from "../api";
+import type { ResupplyZone, RoadbookResult } from "../api";
 import ResupplyZoneCard from "../components/ResupplyZoneCard";
 import PlanningDetailSheet from "../components/planning/PlanningDetailSheet";
 import ResupplyHubDetailContent from "../components/resupply/ResupplyHubDetailContent";
@@ -15,9 +15,7 @@ import type { StopSelection } from "../planning/stopSelection";
 import { zoneAvailability } from "../planning/stopAvailability";
 
 interface ResupplyPageProps {
-  zones: ResupplyZone[];
-  route: RouteVisualization;
-  totalKm: number;
+  result: RoadbookResult;
 }
 
 const CATEGORY_OPTIONS: { id: ResupplyCategoryFilter; label: string }[] = [
@@ -46,7 +44,7 @@ function toggleValue<T>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
 }
 
-export default function ResupplyPage({ zones, route, totalKm }: ResupplyPageProps) {
+export default function ResupplyPage({ result }: ResupplyPageProps) {
   const {
     resupplyFilters,
     setResupplyFilters,
@@ -59,12 +57,8 @@ export default function ResupplyPage({ zones, route, totalKm }: ResupplyPageProp
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
 
   const planningZones = useMemo(
-    () =>
-      presentSuggestedStops(
-        { resupply_zones: zones, route, summary: { distance_km: totalKm } } as RoadbookResult,
-        timeMode,
-      ),
-    [zones, route, totalKm, timeMode],
+    () => presentSuggestedStops(result, timeMode),
+    [result, timeMode],
   );
 
   const visibleZones = useMemo(() => {
@@ -87,18 +81,18 @@ export default function ResupplyPage({ zones, route, totalKm }: ResupplyPageProp
       ? detailSelection.zone.name
       : detailSelection?.kind === "poi"
         ? detailSelection.poi.name ?? detailSelection.poi.brand ?? "Stop detail"
-        : "Resupply hub";
+        : "Resupply stop";
 
   return (
     <div className="mx-auto max-w-3xl space-y-8 px-8 py-12 sm:px-10">
       <div>
         <h2 className="text-display font-semibold tracking-tight text-ink">Resupply</h2>
         <p className="mt-2 text-sm text-muted">
-          {visibleZones.length} planning hubs along your route
-          {zones.length !== visibleZones.length && (
+          {visibleZones.length} suggested stops along your route
+          {result.resupply_zones.length !== visibleZones.length && (
             <>
               {" "}
-              · {zones.length} total in dataset
+              · {result.resupply_zones.length} total in dataset
             </>
           )}
         </p>
@@ -202,13 +196,13 @@ export default function ResupplyPage({ zones, route, totalKm }: ResupplyPageProp
       <PlanningDetailSheet
         open={detailSelection !== null}
         title={sheetTitle}
-        subtitle="Resupply hub"
+        subtitle="Resupply stop"
         onClose={handleCloseDetail}
       >
         {detailSelection && (
           <ResupplyHubDetailContent
             selection={detailSelection}
-            route={route}
+            route={result.route}
             timeWindowId={arrivalTimeWindow}
             timeMode={timeMode}
             onSelectPoi={(poi) =>

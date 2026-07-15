@@ -277,13 +277,7 @@ function AppContent() {
       case "surface":
         return <SurfacePage result={roadbook} onNavigate={setActiveTab} />;
       case "resupply":
-        return (
-          <ResupplyPage
-            zones={roadbook.resupply_zones}
-            route={roadbook.route}
-            totalKm={roadbook.summary.distance_km}
-          />
-        );
+        return <ResupplyPage result={roadbook} />;
       case "preview":
         return (
           <RoutePreviewPage

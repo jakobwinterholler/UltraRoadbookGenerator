@@ -397,7 +397,7 @@ export default function StopVerificationPage({ result, onNavigate }: StopVerific
     }
     const anchor = effectiveCurrent;
     const zoneId = anchor.zone.zone_id;
-    await persistDecision(zoneId, "verified");
+    await persistDecision(zoneId, "verified", undefined, undefined, currentIndex);
     const updatedStops = {
       ...verifiedStops,
       [verifiedStopKey(zoneId)]: {
@@ -427,7 +427,7 @@ export default function StopVerificationPage({ result, onNavigate }: StopVerific
     }
     const anchor = effectiveCurrent;
     const zoneId = anchor.zone.zone_id;
-    await persistDecision(zoneId, "deferred");
+    await persistDecision(zoneId, "deferred", undefined, undefined, currentIndex);
     const updatedStops = {
       ...verifiedStops,
       [verifiedStopKey(zoneId)]: {
@@ -506,10 +506,10 @@ export default function StopVerificationPage({ result, onNavigate }: StopVerific
       }
       const zoneId = rejectingZoneId;
       setRejectingZoneId(null);
-      await persistDecision(zoneId, "rejected", reason, notes);
+      const batchIndex = alternativeBranch ? alternativeBranch.resumeBatchIndex : currentIndex;
+      await persistDecision(zoneId, "rejected", reason, notes, batchIndex);
       const zone = suggestedStops.find((entry) => entry.zone_id === zoneId);
       const best = zone ? buildHubRecommendations(zone).best : null;
-      const batchIndex = alternativeBranch ? alternativeBranch.resumeBatchIndex : currentIndex;
       const updatedStops = {
         ...verifiedStops,
         [verifiedStopKey(zoneId)]: {
