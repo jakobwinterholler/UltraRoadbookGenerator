@@ -1,4 +1,5 @@
-import { apiFetch, getAuthAccessToken } from "../api/authFetch";
+import { apiFetch } from "../api/authFetch";
+import { getFreshAccessToken } from "@shared/auth/accessToken";
 import type {
   AnalysisStreamEvent,
   ProgressStepDefinition,
@@ -360,7 +361,7 @@ export async function analyzeRaceStream(
     throw new Error("Analysis finished without a result.");
   }
 
-  const token = getAuthAccessToken();
+  const token = await getFreshAccessToken();
   if (token) {
     try {
       await pushRaceNow(token, raceId);
