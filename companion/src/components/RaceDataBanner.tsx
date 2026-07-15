@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { fetchSyncRaces } from "@shared/api/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
 import type { CompanionBundle } from "@shared/types/sync";
 import { bundleNeedsUpdate } from "@shared/sync/bundleValidation";
@@ -19,6 +20,8 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
   const { races, refresh } = useCloudRaceList();
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [dismissed, setDismissed] = useState(false);
 
   const cloudRace = useMemo(
     () => races.find((race) => race.id === bundle.race.id),
@@ -26,7 +29,7 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
   );
 
   const updateAvailable = useMemo(() => {
-    if (!cloudRace) {
+    if (!cloudRace || dismissed) {
       return false;
     }
     return bundleNeedsUpdate({
@@ -36,7 +39,7 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
       localChecksum: bundle.bundleChecksum,
       offlineReady: true,
     });
-  }, [bundle, cloudRace]);
+  }, [bundle, cloudRace, dismissed]);
 
   if (!updateAvailable || !cloudRace) {
     return null;
@@ -51,10 +54,41 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
     }
     setUpdating(true);
     setError(null);
+    setSuccess(null);
     try {
+      const beforeRevision = bundleRevision(bundle);
+      const beforeChecksum = bundle.bundleChecksum ?? null;
+
       const next = await downloadRaceAssets(accessToken, bundle.race.id, user?.id);
       onBundleUpdate(next);
       await refresh();
+
+      const cloudRaces = await fetchSyncRaces(accessToken);
+      const cloudAfter = cloudRaces.find((race) => race.id === bundle.race.id);
+      const stillNeedsUpdate =
+        cloudAfter != null &&
+        bundleNeedsUpdate({
+          cloudRevision: cloudAfter.companion_revision,
+          cloudChecksum: cloudAfter.bundle_checksum,
+          localRevision: bundleRevision(next),
+          localChecksum: next.bundleChecksum,
+          offlineReady: true,
+        });
+
+      if (stillNeedsUpdate) {
+        const unchanged =
+          bundleRevision(next) === beforeRevision &&
+          (next.bundleChecksum ?? null) === beforeChecksum;
+        setError(
+          unchanged
+            ? "Cloud bundle is still outdated. Open Desktop, open this race, and sync to upload the latest analysis."
+            : "Downloaded the latest cloud bundle, but Desktop still has newer analysis. Sync from Desktop, then tap Update again.",
+        );
+        return;
+      }
+
+      setSuccess("Race data updated.");
+      setDismissed(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed.");
     } finally {
@@ -78,13 +112,14 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
             Revision {localRevision} → {cloudRace.companion_revision}
             {checksumDrift ? " · checksum mismatch" : ""}
           </p>
+          {success ? <p className="mt-1 text-xs text-emerald-300">{success}</p> : null}
           {error ? <p className="mt-1 text-xs text-red-300">{error}</p> : null}
         </div>
         <button
           type="button"
           disabled={updating}
           onClick={() => void handleUpdate()}
-          className="min-h-[40px] shrink-0 rounded-xl bg-amber-400 px-4 text-sm font-semibold text-[#1a1200] disabled:opacity-60"
+          className="min-h-[44px] shrink-0 rounded-xl bg-amber-400 px-4 text-sm font-semibold text-[#1a1200] disabled:opacity-60"
         >
           {updating ? "Updating…" : "Update now"}
         </button>
