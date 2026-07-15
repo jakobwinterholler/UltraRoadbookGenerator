@@ -1,8 +1,11 @@
 import { getSupabaseClient } from "../auth/supabaseClient";
 import { resolveVerifiedStopRecord } from "../race/poiId";
 import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
-import { isCompanionBundle } from "../types/sync";
-import { validateCompanionBundle } from "../sync/bundleValidation";
+import {
+  formatBundlePrepareFailure,
+  prepareCompanionBundle,
+} from "../sync/bundleMigration";
+import { logSyncDebug } from "../sync/syncDebugLog";
 import type { CompanionVerificationSubmission } from "../types/verification";
 
 interface CloudRaceRow {
@@ -152,14 +155,20 @@ export async function fetchCompanionBundleDirect(
   }
 
   const parsed: unknown = JSON.parse(await data.text());
-  if (!isCompanionBundle(parsed)) {
-    throw new Error("Invalid companion bundle from cloud.");
+  const prepared = prepareCompanionBundle(parsed);
+  if (!prepared.bundle) {
+    logSyncDebug("bundle-validation", "Cloud bundle rejected", {
+      raceId,
+      errors: prepared.errors,
+      diagnostics: prepared.diagnostics,
+      migrationNotes: prepared.migrationNotes,
+    });
+    throw new Error(formatBundlePrepareFailure(prepared));
   }
-  const validation = validateCompanionBundle(parsed);
-  if (!validation.valid) {
-    throw new Error(`Bundle validation failed: ${validation.errors.join(", ")}`);
+  if (prepared.migrated) {
+    logSyncDebug("bundle-migration", `Migrated cloud bundle for ${raceId}`, prepared.migrationNotes);
   }
-  return parsed;
+  return prepared.bundle;
 }
 
 /** Download original route GPX from Supabase Storage. */
@@ -220,10 +229,11 @@ export async function submitCompanionVerificationsDirect(
       throw new Error(bundleError.message);
     }
     const parsed: unknown = JSON.parse(await bundleBlob.text());
-    if (!isCompanionBundle(parsed)) {
-      throw new Error("Invalid companion bundle from cloud.");
+    const prepared = prepareCompanionBundle(parsed);
+    if (!prepared.bundle) {
+      throw new Error(formatBundlePrepareFailure(prepared));
     }
-    const patched = patchBundleFromPreparation(parsed, preparation, nextRevision);
+    const patched = patchBundleFromPreparation(prepared.bundle, preparation, nextRevision);
     const { error: uploadError } = await supabase.storage
       .from("race-assets")
       .upload(bundlePath, JSON.stringify(patched), {

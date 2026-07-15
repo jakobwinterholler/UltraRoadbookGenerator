@@ -44,6 +44,8 @@ from cloud.race_sync import (
     list_sync_races,
     push_all_local_races,
     push_race,
+    regenerate_all_cloud_bundles,
+    regenerate_cloud_bundle,
     review_companion_verification,
     soft_delete_race,
 )
@@ -1092,6 +1094,29 @@ def sync_get_bundle(
             "ETag": f'"{revision}-{checksum[:16]}"' if checksum else f'"{revision}"',
         },
     )
+
+
+@app.post("/api/sync/races/{race_id}/regenerate-bundle")
+def sync_regenerate_bundle(
+    race_id: str,
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    try:
+        return regenerate_cloud_bundle(user.id, race_id, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@app.post("/api/sync/regenerate-all-bundles")
+def sync_regenerate_all_bundles(
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    try:
+        return regenerate_all_cloud_bundles(user.id, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @app.get("/api/sync/races/{race_id}/gpx")

@@ -1,8 +1,11 @@
 import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
 import { fetchCompanionBundleDirect, fetchOriginalGpxDirect, fetchSyncRacesDirect } from "./cloudDirect";
 import type { AuthProfile, CompanionBundle, SyncPushAllResult, SyncPushRaceResult, SyncRaceSummary } from "../types/sync";
-import { isCompanionBundle } from "../types/sync";
-import { validateCompanionBundle } from "../sync/bundleValidation";
+import {
+  formatBundlePrepareFailure,
+  prepareCompanionBundle,
+} from "../sync/bundleMigration";
+import { logSyncDebug } from "../sync/syncDebugLog";
 
 export async function fetchAuthProfile(accessToken: string): Promise<AuthProfile> {
   const response = await fetchWithAuth("/api/auth/me", accessToken);
@@ -31,15 +34,21 @@ export async function fetchSyncRaces(accessToken: string): Promise<SyncRaceSumma
   }));
 }
 
-function parseCompanionBundle(payload: unknown): CompanionBundle {
-  if (!isCompanionBundle(payload)) {
-    throw new Error("Invalid companion bundle from cloud.");
+function parseCompanionBundle(payload: unknown, raceId?: string): CompanionBundle {
+  const prepared = prepareCompanionBundle(payload);
+  if (!prepared.bundle) {
+    logSyncDebug("bundle-validation", "API bundle rejected", {
+      raceId,
+      errors: prepared.errors,
+      diagnostics: prepared.diagnostics,
+      migrationNotes: prepared.migrationNotes,
+    });
+    throw new Error(formatBundlePrepareFailure(prepared));
   }
-  const validation = validateCompanionBundle(payload);
-  if (!validation.valid) {
-    throw new Error(`Bundle validation failed: ${validation.errors.join(", ")}`);
+  if (prepared.migrated) {
+    logSyncDebug("bundle-migration", `Migrated API bundle${raceId ? ` for ${raceId}` : ""}`, prepared.migrationNotes);
   }
-  return payload;
+  return prepared.bundle;
 }
 
 export async function fetchCompanionBundle(
@@ -62,7 +71,7 @@ export async function fetchCompanionBundle(
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to download race."));
   }
-  return parseCompanionBundle(await response.json());
+  return parseCompanionBundle(await response.json(), raceId);
 }
 
 export async function fetchOriginalGpx(

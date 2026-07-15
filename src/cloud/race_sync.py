@@ -291,6 +291,93 @@ def get_companion_bundle(user_id: str, race_id: str, access_token: str | None = 
     return _download_json(path, access_token)
 
 
+def regenerate_cloud_bundle(user_id: str, race_id: str, access_token: str | None = None) -> dict[str, Any]:
+    """Rebuild companion bundle from cloud analysis.json and re-upload."""
+    if not cloud_config.sync_enabled and not access_token:
+        raise CloudSyncError("Cloud sync is not configured.")
+
+    row = _get_race_row(user_id, race_id, access_token)
+    if row is None:
+        raise CloudSyncError("Race not found.")
+
+    analysis_path = _storage_path(user_id, race_id, "analysis.json")
+    try:
+        roadbook = _download_json(analysis_path, access_token)
+    except CloudSyncError as exc:
+        raise CloudSyncError(
+            "Cannot regenerate bundle — analysis.json missing in cloud. Re-analyze on Desktop and Sync to Phone."
+        ) from exc
+
+    preparation = dict(row.get("preparation") or {})
+    next_revision = int(row.get("companion_revision") or 0) + 1
+    bundle = build_companion_bundle(
+        race_id,
+        roadbook,
+        preparation,
+        revision=next_revision,
+    )
+    bundle_bytes = json.dumps(bundle, separators=(",", ":")).encode("utf-8")
+    _upload_bytes(
+        _storage_path(user_id, race_id, "companion-bundle.json"),
+        bundle_bytes,
+        "application/json",
+        access_token,
+    )
+
+    updated_preparation = {
+        **preparation,
+        "bundle_checksum": bundle.get("bundleChecksum"),
+        "bundle_schema_version": bundle.get("schemaVersion"),
+        "bundle_generated_at": bundle.get("generatedAt"),
+    }
+    updated_row = _upsert_race_row(
+        {
+            "id": race_id,
+            "user_id": user_id,
+            "name": row.get("name"),
+            "distance_km": row.get("distance_km"),
+            "elevation_gain_m": row.get("elevation_gain_m"),
+            "preparation": updated_preparation,
+            "companion_revision": next_revision,
+            "has_bundle": True,
+            "analyzed_at": row.get("analyzed_at") or _utc_now(),
+            "updated_at": _utc_now(),
+            "deleted_at": None,
+        },
+        access_token,
+    )
+    revision = int(updated_row.get("companion_revision", next_revision))
+    return {
+        "race_id": race_id,
+        "name": row.get("name"),
+        "companion_revision": revision,
+        "bundle_checksum": bundle.get("bundleChecksum"),
+        "bundle_schema_version": bundle.get("schemaVersion"),
+        "regenerated_at": _utc_now(),
+    }
+
+
+def regenerate_all_cloud_bundles(user_id: str, access_token: str | None = None) -> dict[str, Any]:
+    regenerated: list[dict[str, Any]] = []
+    failed: list[dict[str, str]] = []
+    races = list_sync_races(user_id, access_token)
+    for race in races:
+        if not race.get("has_bundle"):
+            continue
+        race_id = str(race.get("id") or "")
+        if not race_id:
+            continue
+        try:
+            regenerated.append(regenerate_cloud_bundle(user_id, race_id, access_token))
+        except Exception as exc:  # pragma: no cover - surfaced to client
+            failed.append({
+                "race_id": race_id,
+                "name": str(race.get("name") or race_id),
+                "error": str(exc),
+            })
+    return {"regenerated": regenerated, "failed": failed}
+
+
 def soft_delete_race(user_id: str, race_id: str, access_token: str | None = None) -> None:
     url = f"{cloud_config.url}/rest/v1/races"
     response = httpx.patch(

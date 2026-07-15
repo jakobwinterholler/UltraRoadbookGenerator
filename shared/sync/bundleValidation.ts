@@ -1,6 +1,7 @@
 import type { CompanionBundle } from "../types/sync";
 import { computeBundleChecksumSync } from "./bundleChecksum";
 
+export const CURRENT_COMPANION_SCHEMA_VERSION = 5;
 export const MIN_COMPANION_SCHEMA_VERSION = 5;
 
 export interface BundleValidationResult {
@@ -8,44 +9,87 @@ export interface BundleValidationResult {
   errors: string[];
 }
 
-export function validateCompanionBundle(bundle: unknown): BundleValidationResult {
-  const errors: string[] = [];
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+/** Detailed diagnostics before migration — used in sync debug logs. */
+export function diagnoseCompanionBundle(bundle: unknown): string[] {
+  const issues: string[] = [];
   if (!bundle || typeof bundle !== "object") {
-    return { valid: false, errors: ["Bundle is not an object"] };
+    return ["Bundle is not an object"];
   }
   const record = bundle as CompanionBundle;
 
   if (typeof record.schemaVersion !== "number") {
-    errors.push("Missing schemaVersion");
+    issues.push('Missing field "schemaVersion"');
   } else if (record.schemaVersion < MIN_COMPANION_SCHEMA_VERSION) {
-    errors.push(`Schema version ${record.schemaVersion} is outdated (need ${MIN_COMPANION_SCHEMA_VERSION}+)`);
+    issues.push(
+      `Unsupported schema version ${record.schemaVersion} (need ${MIN_COMPANION_SCHEMA_VERSION}+)`,
+    );
   }
 
   if (!record.generatedAt && !record.exportedAt) {
-    errors.push("Missing generatedAt timestamp");
+    issues.push('Missing field "generatedAt"');
   }
-
   if (!record.bundleChecksum) {
-    errors.push("Missing bundleChecksum");
+    issues.push('Missing field "bundleChecksum"');
   }
 
-  if (!record.race?.id || !record.race?.name) {
-    errors.push("Missing race metadata");
+  const race = asRecord(record.race);
+  if (!race?.id) {
+    issues.push('Missing field "race.id"');
+  }
+  if (!race?.name) {
+    issues.push('Missing field "race.name"');
+  }
+  if (race?.distanceKm == null && race?.distance_km == null) {
+    issues.push('Missing field "race.distanceKm"');
   }
 
   if (!Array.isArray(record.stops)) {
-    errors.push("Missing stops array");
+    issues.push('Missing field "stops" (array)');
+  } else {
+    record.stops.forEach((stop, index) => {
+      if (stop.lat == null || stop.lon == null) {
+        issues.push(`Stop ${index + 1} missing coordinates`);
+      }
+      if (!stop.name) {
+        issues.push(`Stop ${index + 1} missing name`);
+      }
+      if (stop.zoneId == null) {
+        issues.push(`Stop ${index + 1} missing zoneId`);
+      }
+    });
   }
 
   if (!Array.isArray(record.route?.coordinates)) {
-    errors.push("Missing route coordinates");
+    issues.push('Missing field "route.coordinates"');
+  } else if (record.route.coordinates.length === 0) {
+    issues.push("Route coordinates array is empty");
+  }
+
+  if (!Array.isArray(record.climbs)) {
+    issues.push('Missing field "climbs" (array)');
+  }
+
+  if (!Array.isArray(record.unsupportedSections)) {
+    issues.push('Missing field "unsupportedSections" (array)');
   }
 
   const revision = record.revision ?? record.bundle_version;
   if (revision == null || revision < 0) {
-    errors.push("Missing revision");
+    issues.push('Missing field "revision"');
   }
 
+  return issues;
+}
+
+export function validateCompanionBundle(bundle: unknown): BundleValidationResult {
+  const errors = diagnoseCompanionBundle(bundle);
   return { valid: errors.length === 0, errors };
 }
 

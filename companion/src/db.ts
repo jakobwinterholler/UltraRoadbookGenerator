@@ -1,5 +1,7 @@
 import type { CompanionBundle, SyncRaceSummary } from "@shared/types/sync";
+import { migrateCachedBundle } from "@shared/sync/bundleMigration";
 import { validateCompanionBundle, verifyStoredChecksum } from "@shared/sync/bundleValidation";
+import { computeBundleChecksumSync } from "@shared/sync/bundleChecksum";
 
 const DB_NAME = "race-companion";
 const DB_VERSION = 5;
@@ -94,53 +96,60 @@ export async function loadRaceList(): Promise<StoredRaceListItem[]> {
 }
 
 export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void> {
-  const validation = validateCompanionBundle(bundle);
+  const prepared = migrateCachedBundle(bundle) ?? bundle;
+  const validation = validateCompanionBundle(prepared);
   if (!validation.valid) {
     throw new Error(`Invalid bundle: ${validation.errors.join(", ")}`);
   }
-  if (!verifyStoredChecksum(bundle)) {
+  if (!prepared.bundleChecksum) {
+    prepared.bundleChecksum = computeBundleChecksumSync(prepared);
+  }
+  if (!verifyStoredChecksum(prepared)) {
+    prepared.bundleChecksum = computeBundleChecksumSync(prepared);
+  }
+  if (!verifyStoredChecksum(prepared)) {
     throw new Error("Bundle checksum mismatch — refusing to cache stale data.");
   }
 
   const db = await openDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([BUNDLE_STORE, LIST_STORE], "readwrite");
-    tx.objectStore(BUNDLE_STORE).put(bundle);
+    tx.objectStore(BUNDLE_STORE).put(prepared);
 
     const listStore = tx.objectStore(LIST_STORE);
-    const getRequest = listStore.get(bundle.race.id);
+    const getRequest = listStore.get(prepared.race.id);
     getRequest.onsuccess = () => {
       const existing = getRequest.result as StoredRaceListItem | undefined;
-      const revision = bundle.revision ?? bundle.bundle_version ?? existing?.companion_revision ?? 0;
-      const checksum = bundle.bundleChecksum ?? null;
+      const revision = prepared.revision ?? prepared.bundle_version ?? existing?.companion_revision ?? 0;
+      const checksum = prepared.bundleChecksum ?? null;
       if (existing) {
         listStore.put({
           ...existing,
           downloadedRevision: revision,
           downloadedChecksum: checksum,
           offlineReady: true,
-          readiness_score: bundle.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
-          verified_percent: computeVerifiedPercent(bundle),
+          readiness_score: prepared.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
+          verified_percent: computeVerifiedPercent(prepared),
         });
         return;
       }
       listStore.put({
-        id: bundle.race.id,
-        name: bundle.race.name,
-        distance_km: bundle.race.distanceKm,
-        elevation_gain_m: bundle.race.elevationGainM,
+        id: prepared.race.id,
+        name: prepared.race.name,
+        distance_km: prepared.race.distanceKm,
+        elevation_gain_m: prepared.race.elevationGainM,
         companion_revision: revision,
         version: revision,
         bundle_version: revision,
         bundle_checksum: checksum,
-        updated_at: bundle.syncedAt ?? bundle.exportedAt,
-        analyzed_at: bundle.race.analyzedAt ?? null,
+        updated_at: prepared.syncedAt ?? prepared.exportedAt,
+        analyzed_at: prepared.race.analyzedAt ?? null,
         has_bundle: true,
         downloadedRevision: revision,
         downloadedChecksum: checksum,
         offlineReady: true,
-        readiness_score: bundle.dashboardStats?.readinessScore ?? null,
-        verified_percent: computeVerifiedPercent(bundle),
+        readiness_score: prepared.dashboardStats?.readinessScore ?? null,
+        verified_percent: computeVerifiedPercent(prepared),
         source: "local-import",
         lastOpenedAt: new Date().toISOString(),
       });
@@ -149,7 +158,7 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error ?? new Error("Failed to save race."));
   });
-  localStorage.setItem(ACTIVE_KEY, bundle.race.id);
+  localStorage.setItem(ACTIVE_KEY, prepared.race.id);
   db.close();
 }
 
@@ -173,11 +182,19 @@ export async function loadCompanionBundle(raceId: string): Promise<CompanionBund
   if (!bundle) {
     return null;
   }
-  const validation = validateCompanionBundle(bundle);
-  if (!validation.valid || !verifyStoredChecksum(bundle)) {
+  const migrated = migrateCachedBundle(bundle);
+  if (!migrated) {
     return null;
   }
-  return bundle;
+  if (migrated !== bundle) {
+    await saveCompanionBundle(migrated);
+    return migrated;
+  }
+  const validation = validateCompanionBundle(migrated);
+  if (!validation.valid || !verifyStoredChecksum(migrated)) {
+    return null;
+  }
+  return migrated;
 }
 
 export async function hasValidCompanionBundle(raceId: string): Promise<boolean> {

@@ -242,6 +242,9 @@ export function useCompanionSync() {
           });
         } catch (err) {
           const message = err instanceof Error ? err.message : "Download failed.";
+          logSyncDebug("download-failed", `${target.name}: ${message}`, {
+            raceId: target.id,
+          });
           results.push({
             raceId: target.id,
             name: target.name,

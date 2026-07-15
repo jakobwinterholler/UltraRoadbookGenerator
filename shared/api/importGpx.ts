@@ -1,7 +1,9 @@
 import type { CompanionBundle } from "../types/sync";
 import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
-import { isCompanionBundle } from "../types/sync";
-import { validateCompanionBundle } from "../sync/bundleValidation";
+import {
+  formatBundlePrepareFailure,
+  prepareCompanionBundle,
+} from "../sync/bundleMigration";
 
 export interface ImportStageEvent {
   type: "import_stage";
@@ -85,14 +87,11 @@ function parseImportEvent(raw: string): ImportGpxEvent | null {
 }
 
 function parseCompanionBundle(payload: unknown): CompanionBundle {
-  if (!isCompanionBundle(payload)) {
-    throw new Error("Invalid companion bundle from import.");
+  const prepared = prepareCompanionBundle(payload);
+  if (!prepared.bundle) {
+    throw new Error(formatBundlePrepareFailure(prepared).replace("from cloud", "from import"));
   }
-  const validation = validateCompanionBundle(payload);
-  if (!validation.valid) {
-    throw new Error(`Bundle validation failed: ${validation.errors.join(", ")}`);
-  }
-  return payload;
+  return prepared.bundle;
 }
 
 export async function importGpxStream(
