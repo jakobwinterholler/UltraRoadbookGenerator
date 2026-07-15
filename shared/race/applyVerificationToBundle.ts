@@ -1,5 +1,6 @@
 import type { CompanionBundle, CompanionStop } from "../types/sync";
 import type { CompanionVerificationSubmission } from "../types/verification";
+import { stopMatchesSubmission } from "./stopMatching";
 
 function stopStatusFromSubmission(
   updates: CompanionVerificationSubmission["updates"],
@@ -57,7 +58,7 @@ export function applyVerificationToBundle(
   submission: CompanionVerificationSubmission,
 ): CompanionBundle {
   const stops = bundle.stops.map((stop) =>
-    stop.zoneId === submission.zoneId ? patchStop(stop, submission) : stop,
+    stopMatchesSubmission(stop, submission) ? patchStop(stop, submission) : stop,
   );
   const next: CompanionBundle = {
     ...bundle,
@@ -101,17 +102,19 @@ export function applySyncedVerificationsToBundle(
   if (synced.length === 0) {
     return bundle;
   }
-  const syncedByZone = new Map(
+  const syncedByPoi = new Map(
     synced
       .filter((item) => item.updates.status === "verified")
-      .map((item) => [item.zoneId, item] as const),
+      .map((item) => [item.poiId ?? `zone-${item.zoneId}`, item] as const),
   );
-  if (syncedByZone.size === 0) {
+  if (syncedByPoi.size === 0) {
     return bundle;
   }
 
   const stops = bundle.stops.map((stop) => {
-    const submission = syncedByZone.get(stop.zoneId);
+    const submission =
+      (stop.poiId ? syncedByPoi.get(stop.poiId) : undefined) ??
+      syncedByPoi.get(`zone-${stop.zoneId}`);
     if (!submission || stop.verificationStatus !== "pending") {
       return stop;
     }

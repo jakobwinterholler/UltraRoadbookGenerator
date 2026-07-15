@@ -52,26 +52,38 @@ function alternativeToStop(anchor: CompanionStop, alternative: StopAlternativeVi
   if (alternative.stop) {
     return alternative.stop;
   }
+  const alt = alternative.alternative!;
   return {
-    ...anchor,
+    poiId: alt.poiId ?? anchor.poiId,
     zoneId: anchor.zoneId,
-    poiId: alternative.alternative?.poiId ?? anchor.poiId,
-    osmId: alternative.alternative!.osmId,
-    osmType: alternative.alternative!.osmType,
-    name: alternative.alternative!.name,
-    category: alternative.alternative!.category,
-    categoryLabel: alternative.alternative!.categoryLabel,
-    icon: alternative.alternative!.icon,
-    lat: alternative.alternative!.lat,
-    lon: alternative.alternative!.lon,
-    distanceOffRouteM: alternative.alternative!.distanceOffRouteM,
-    confidenceScore: alternative.alternative!.score,
-    verificationStatus: alternative.alternative!.verificationStatus,
-    openingHours: alternative.alternative!.openingHours,
-    phone: alternative.alternative!.phone,
-    website: alternative.alternative!.website,
-    placeId: alternative.alternative!.placeId,
-    alternatives: anchor.alternatives,
+    osmId: alt.osmId,
+    osmType: alt.osmType,
+    km:
+      alt.distanceAlongKm != null && Number.isFinite(alt.distanceAlongKm)
+        ? alt.distanceAlongKm
+        : anchor.km,
+    lat: alt.lat,
+    lon: alt.lon,
+    name: alt.name,
+    category: alt.category,
+    categoryLabel: alt.categoryLabel,
+    icon: alt.icon,
+    distanceOffRouteM: alt.distanceOffRouteM,
+    confidenceScore: alt.score,
+    verificationStatus: alt.verificationStatus,
+    openingHours: alt.openingHours,
+    notes: null,
+    phone: alt.phone,
+    website: alt.website,
+    placeId: alt.placeId,
+    hasFood: alt.hasFood ?? anchor.hasFood,
+    hasWater: alt.hasWater ?? anchor.hasWater,
+    hasFuel: alt.hasFuel ?? anchor.hasFuel,
+    hasCoffee: anchor.hasCoffee,
+    verificationDate: null,
+    resupplyReason: null,
+    alternatives: [],
+    nearbyAlternatives: [],
   };
 }
 

@@ -1,4 +1,5 @@
 import type { CompanionBundle, CompanionStop, CompanionStopAlternative } from "@shared/types/sync";
+import { findStopByIdentity, sameStop, stopIdentity } from "./stopMatching";
 
 export interface BundlePoiEntry {
   poiId: string;
@@ -11,12 +12,17 @@ function alternativeToStop(
   anchor: CompanionStop,
   alternative: CompanionStopAlternative,
 ): CompanionStop {
+  const km =
+    alternative.distanceAlongKm != null && Number.isFinite(alternative.distanceAlongKm)
+      ? alternative.distanceAlongKm
+      : anchor.km;
+
   return {
-    ...anchor,
-    poiId: alternative.poiId ?? anchor.poiId,
+    poiId: alternative.poiId ?? (alternative.osmId != null ? `poi_${alternative.osmId}` : anchor.poiId),
+    zoneId: anchor.zoneId,
     osmId: alternative.osmId,
     osmType: alternative.osmType,
-    km: alternative.distanceAlongKm ?? anchor.km,
+    km,
     lat: alternative.lat,
     lon: alternative.lon,
     name: alternative.name,
@@ -30,10 +36,13 @@ function alternativeToStop(
     phone: alternative.phone,
     website: alternative.website,
     placeId: alternative.placeId,
-    hasFood: alternative.hasFood,
-    hasWater: alternative.hasWater,
-    hasFuel: alternative.hasFuel,
+    hasFood: alternative.hasFood ?? false,
+    hasWater: alternative.hasWater ?? false,
+    hasFuel: alternative.hasFuel ?? false,
+    hasCoffee: anchor.hasCoffee ?? false,
     confidenceScore: alternative.confidenceScore ?? alternative.score ?? null,
+    verificationDate: null,
+    resupplyReason: null,
     alternatives: [],
     nearbyAlternatives: [],
   };
@@ -45,7 +54,7 @@ export function collectAllBundlePois(bundle: CompanionBundle): BundlePoiEntry[] 
   const entries: BundlePoiEntry[] = [];
 
   for (const stop of bundle.stops) {
-    const primaryKey = stop.poiId ?? `zone-${stop.zoneId}`;
+    const primaryKey = stopIdentity(stop);
     if (!seen.has(primaryKey)) {
       seen.add(primaryKey);
       entries.push({
@@ -85,3 +94,19 @@ export function findBundlePoi(bundle: CompanionBundle, needle: string): BundlePo
     entry.stop.name.toLowerCase().includes(normalized),
   );
 }
+
+export function findBundlePoiByOsmId(bundle: CompanionBundle, osmId: number): BundlePoiEntry | null {
+  return (
+    collectAllBundlePois(bundle).find((entry) => entry.stop.osmId === osmId) ?? null
+  );
+}
+
+export function resolveRenderedStop(
+  bundle: CompanionBundle,
+  candidate: CompanionStop,
+): CompanionStop {
+  const flattened = collectAllBundlePois(bundle).map((entry) => entry.stop);
+  return findStopByIdentity(flattened, candidate) ?? candidate;
+}
+
+export { sameStop, stopIdentity };

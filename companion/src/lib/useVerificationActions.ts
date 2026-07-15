@@ -1,6 +1,8 @@
 import { useCallback } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { applyVerificationToBundle } from "@shared/race/applyVerificationToBundle";
+import { resolveRenderedStop } from "@shared/race/bundlePois";
+import { findStopByIdentity } from "@shared/race/stopMatching";
 import type { CompanionStop } from "@shared/types/sync";
 import type {
   CompanionVerificationSubmission,
@@ -17,16 +19,17 @@ export function useVerificationActions(userId: string | null) {
 
   const submitVerification = useCallback(
     async (stop: CompanionStop, updates: CompanionVerificationUpdates) => {
-      const priorStop = bundle.stops.find((item) => item.zoneId === stop.zoneId);
+      const rendered = resolveRenderedStop(bundle, stop);
+      const priorStop = findStopByIdentity(bundle.stops, rendered);
       if (!priorStop) {
         return;
       }
       const submission: CompanionVerificationSubmission = {
         id: crypto.randomUUID(),
         raceId: bundle.race.id,
-        zoneId: stop.zoneId,
-        poiId: stop.poiId,
-        stopName: stop.name,
+        zoneId: rendered.zoneId,
+        poiId: rendered.poiId,
+        stopName: rendered.name,
         submittedAt: new Date().toISOString(),
         source: "companion",
         reviewStatus: "pending",

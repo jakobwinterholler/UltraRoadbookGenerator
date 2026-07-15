@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { sameStop } from "@shared/race/stopMatching";
 import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
@@ -128,7 +129,7 @@ export default function ResupplyScreen() {
   const viewportRange = useMemo(() => {
     if (visibleStopIndices.length === 0) {
       if (focusKm != null) {
-        const focusIndex = cards.findIndex((entry) => entry.stop.zoneId === focusedStop?.zoneId);
+        const focusIndex = cards.findIndex((entry) => sameStop(entry.stop, focusedStop!));
         const previousKm = focusIndex > 0 ? cards[focusIndex - 1].stop.km : 0;
         return { startKm: previousKm, endKm: focusKm };
       }
@@ -140,7 +141,7 @@ export default function ResupplyScreen() {
     const startKm = minIndex > 0 ? cards[minIndex - 1].stop.km : 0;
     const endKm = cards[maxIndex]?.stop.km ?? startKm;
     return { startKm, endKm };
-  }, [cards, focusKm, focusedStop?.zoneId, visibleStopIndices]);
+  }, [cards, focusKm, focusedStop, visibleStopIndices]);
 
   useEffect(() => {
     writeResupplyFilter(filter);
@@ -342,7 +343,7 @@ export default function ResupplyScreen() {
           const { stop, gapBefore } = entry;
           const isPast = stop.km < currentKm - 0.25;
           const isNext = index === nextIndex;
-          const isFocused = focusedStop?.zoneId === stop.zoneId;
+          const isFocused = focusedStop ? sameStop(stop, focusedStop) : false;
 
           return (
             <div key={`card-${stop.zoneId}`} data-stop-index={index}>

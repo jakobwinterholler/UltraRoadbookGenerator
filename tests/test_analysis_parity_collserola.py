@@ -52,8 +52,44 @@ class CollserolaAnalysisParityTests(unittest.TestCase):
         ]
         self.assertEqual(len(oilprix), 1)
         self.assertEqual(oilprix[0].get("zoneId"), 4)
+        self.assertAlmostEqual(float(oilprix[0].get("km") or 0), 6.96, places=2)
+        self.assertEqual(oilprix[0].get("category"), "Gas station")
+        self.assertEqual(oilprix[0].get("osmId"), 287007125)
+        self.assertTrue(oilprix[0].get("hasFuel"))
         self.assertEqual(oilprix[0].get("verificationStatus"), "verified")
         self.assertTrue(bundle.get("bundleChecksum"))
+
+    def test_oilprix_km_uses_poi_projection_not_zone_km(self) -> None:
+        race = race_store.get_race(COLLserola_ID)
+        with patch("companion_bundle._utc_now", return_value="2026-07-15T12:00:00+00:00"):
+            bundle = build_companion_bundle(
+                COLLserola_ID,
+                self.roadbook,
+                race.preparation.to_dict(),
+                revision=1,
+            )
+        zone_4 = next(stop for stop in bundle.get("stops") or [] if stop.get("zoneId") == 4)
+        zone_km = 7.38
+        self.assertNotAlmostEqual(float(zone_4.get("km") or 0), zone_km, places=1)
+        self.assertAlmostEqual(float(zone_4.get("km") or 0), 6.96, places=2)
+        self.assertEqual(zone_4.get("name"), "Oilprix")
+
+    def test_super_fresco_is_separate_stop_not_oilprix(self) -> None:
+        race = race_store.get_race(COLLserola_ID)
+        bundle = build_companion_bundle(
+            COLLserola_ID,
+            self.roadbook,
+            race.preparation.to_dict(),
+            revision=1,
+        )
+        fresco = [
+            stop
+            for stop in bundle.get("stops") or []
+            if "super fresco" in str(stop.get("name") or "").lower()
+        ]
+        self.assertEqual(len(fresco), 1)
+        self.assertGreater(float(fresco[0].get("km") or 0), 30.0)
+        self.assertNotEqual(fresco[0].get("zoneId"), 4)
 
     def test_bundle_checksum_stable_for_collserola(self) -> None:
         race = race_store.get_race(COLLserola_ID)

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCompanion } from "../context/CompanionContext";
 import type { CompanionClimb } from "@shared/types/sync";
 import ClimbSheet from "../components/ClimbSheet";
@@ -21,6 +21,12 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
   const mapRef = useRef<RouteMapHandle | null>(null);
   const [showClimbs, setShowClimbs] = useState(Boolean(bundle.climbs?.length));
   const [selectedClimb, setSelectedClimb] = useState<CompanionClimb | null>(null);
+
+  useEffect(() => {
+    if ((bundle.climbs?.length ?? 0) > 0) {
+      setShowClimbs(true);
+    }
+  }, [bundle.race.id, bundle.climbs?.length]);
 
   const hasClimbs = (bundle.climbs?.length ?? 0) > 0;
   const gpsActive = gps.lat != null && gps.lon != null;

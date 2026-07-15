@@ -8,7 +8,7 @@ import {
 } from "react";
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import { buildRouteTrack, interpolateTrackAtKm } from "@shared/race/mapMatching";
-import { collectAllBundlePois } from "@shared/race/bundlePois";
+import { collectAllBundlePois, resolveRenderedStop } from "@shared/race/bundlePois";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
@@ -35,7 +35,6 @@ interface RouteMapViewProps {
 
 function stopsGeoJson(
   stops: CompanionStop[],
-  selectedZoneId: number | null,
   selectedPoiId: string | null,
 ): GeoJSON.FeatureCollection {
   return {
@@ -46,11 +45,7 @@ function stopsGeoJson(
         zoneId: stop.zoneId,
         poiId: stop.poiId ?? `zone-${stop.zoneId}`,
         verified: stop.verificationStatus === "verified" ? 1 : 0,
-        selected:
-          (selectedPoiId != null && stop.poiId === selectedPoiId) ||
-          (selectedPoiId == null && stop.zoneId === selectedZoneId)
-            ? 1
-            : 0,
+        selected: selectedPoiId != null && stop.poiId === selectedPoiId ? 1 : 0,
       },
       geometry: {
         type: "Point",
@@ -172,11 +167,15 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     setFollowGps,
   } = useCompanion();
 
-  const selectedZoneId = focusStop?.zoneId ?? selectedStop?.zoneId ?? null;
-  const selectedPoiId = selectedStop?.poiId ?? null;
   const climbs = bundle.climbs ?? [];
-
   const visibleStops = useMemo(() => collectAllBundlePois(bundle).map((entry) => entry.stop), [bundle]);
+  const selectedRenderedStop = useMemo(() => {
+    if (!selectedStop) {
+      return null;
+    }
+    return resolveRenderedStop(bundle, selectedStop);
+  }, [bundle, selectedStop]);
+  const selectedMarkerPoiId = selectedRenderedStop?.poiId ?? selectedStop?.poiId ?? null;
 
   stopsRef.current = visibleStops;
   onClimbSelectRef.current = onClimbSelect;
@@ -382,7 +381,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
 
       map.addSource("stops", {
         type: "geojson",
-        data: stopsGeoJson(visibleStops, selectedZoneId, selectedPoiId),
+        data: stopsGeoJson(visibleStops, selectedMarkerPoiId),
       });
 
       map.addLayer({
@@ -510,13 +509,10 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         return;
       }
       const poiId = stopFeatures[0].properties?.poiId;
-      const zoneId = Number(stopFeatures[0].properties?.zoneId);
-      const stop =
-        (typeof poiId === "string"
-          ? stopsRef.current.find((item) => item.poiId === poiId)
-          : null) ??
-        stopsRef.current.find((item) => item.zoneId === zoneId) ??
-        null;
+      if (typeof poiId !== "string") {
+        return;
+      }
+      const stop = stopsRef.current.find((item) => item.poiId === poiId) ?? null;
       selectStopRef.current(stop);
     });
 
@@ -542,9 +538,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       return;
     }
     (map.getSource("stops") as maplibregl.GeoJSONSource).setData(
-      stopsGeoJson(visibleStops, selectedZoneId, selectedPoiId),
+      stopsGeoJson(visibleStops, selectedMarkerPoiId),
     );
-  }, [visibleStops, selectedZoneId, selectedPoiId]);
+  }, [visibleStops, selectedMarkerPoiId]);
 
   useEffect(() => {
     const map = mapRef.current;
