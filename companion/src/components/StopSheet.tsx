@@ -18,7 +18,7 @@ import { checkStreetViewAvailability, normalizeWebsite } from "@shared/race/stre
 import { buildStopAlternatives, type StopAlternativeView } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import { useCompanion } from "../context/CompanionContext";
-import StopDetailMapPreview from "./StopDetailMapPreview";
+import StopDetailMap from "./StopDetailMap";
 import BottomSheet from "./BottomSheet";
 
 interface StopSheetProps {
@@ -276,7 +276,7 @@ export default function StopSheet({
           </dl>
 
           <div className="poi-sheet__map relative h-52 overflow-hidden rounded-2xl border border-sky-400/20 shadow-lg shadow-sky-500/10">
-            <StopDetailMapPreview
+            <StopDetailMap
               stop={stop}
               bundle={bundle}
               riderLat={gps.lat}
