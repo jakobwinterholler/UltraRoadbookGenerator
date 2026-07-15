@@ -57,7 +57,14 @@ from poi_profile import DEFAULT_ULTRA_POI_PROFILE, PoiPlanningProfile, profile_c
 from pipeline_watchdog import PipelineStalledError, StageWatchdog
 from progress import ProgressReporter, pipeline_step_catalog
 from surface_gpx_export import export_surface_validation_gpx
-from race_gpx_export import DEVICE_PROFILES, GpsGpxExportOptions, GpxTrackModifiedError, export_race_gpx_for_gps
+from race_gpx_export import (
+    DEVICE_PROFILES,
+    GpsGpxExportOptions,
+    GpxExportQualityError,
+    GpxTrackModifiedError,
+    export_race_gpx_for_gps,
+    export_report_json,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
@@ -85,6 +92,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Gps-Export-Summary"],
 )
 
 
@@ -843,7 +851,7 @@ def export_race_gps_gpx(
             key: record.to_dict()
             for key, record in race.preparation.verified_stops.items()
         }
-        export_race_gpx_for_gps(
+        report = export_race_gpx_for_gps(
             original_gpx_path=gpx_path,
             roadbook=roadbook,
             verified_stops=verified_stops,
@@ -852,6 +860,8 @@ def export_race_gps_gpx(
         )
     except GpxTrackModifiedError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except GpxExportQualityError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -860,6 +870,7 @@ def export_race_gps_gpx(
         export_path,
         filename=filename,
         media_type="application/gpx+xml",
+        headers={"X-Gps-Export-Summary": export_report_json(report)},
     )
 
 

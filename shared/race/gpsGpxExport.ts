@@ -1,5 +1,14 @@
 import { computeStopConfidence } from "./stopConfidence";
 import type { CompanionBundle, CompanionStop, CompanionStopAlternative } from "../types/sync";
+import {
+  GPS_GPX_EXPORT_VERSION,
+  isExcludedExportCategory,
+  isInvalidExportName,
+  MAX_WAYPOINT_OFF_ROUTE_M,
+  resolveCorosWptIcon,
+  ROUTE_INTEGRITY_FAILED_MESSAGE,
+  smartPoiLabel,
+} from "./gpsGpxExportConstants";
 
 export type GpsGpxDeviceProfile = "original" | "coros" | "garmin" | "wahoo";
 
@@ -21,22 +30,38 @@ export interface TrackFingerprint {
   trackPointCount: number;
   distanceKm: number;
   elevationGainM: number;
+  elevationDescentM: number;
   geometryChecksum: string;
   trackBytesChecksum: string;
 }
 
-export interface GpsGpxExportSummary {
+export interface GpsGpxExportReport {
+  exportVersion: string;
   deviceProfile: GpsGpxDeviceProfile;
-  waypointCount: number;
+  routeIntegrityPassed: boolean;
   trackPointCount: number;
   distanceKm: number;
   elevationGainM: number;
+  elevationDescentM: number;
+  verifiedPoiCount: number;
+  exportedPoiCount: number;
+  corosIconsAssigned: number | null;
+  corosIconsTotal: number | null;
+  integrityPercent: number;
+  waypointCount: number;
 }
 
 export class GpxTrackModifiedError extends Error {
-  constructor(message: string) {
+  constructor(message: string = ROUTE_INTEGRITY_FAILED_MESSAGE) {
     super(message);
     this.name = "GpxTrackModifiedError";
+  }
+}
+
+export class GpxExportQualityError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GpxExportQualityError";
   }
 }
 
@@ -50,6 +75,9 @@ interface GpsWaypoint {
   km: number;
   isPrimary: boolean;
   osmKey: string;
+  sym: string | null;
+  verificationStatus: string;
+  offRouteM: number | null;
 }
 
 const EARTH_RADIUS_M = 6_371_000;
@@ -69,15 +97,14 @@ function haversineM(lat1: number, lon1: number, lat2: number, lon2: number): num
 
 function escapeXml(value: string): string {
   return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }
 
 function sha256Hex(value: string): string {
-  // Lightweight sync hash for validation (stable across runtimes).
   let hash = 2166136261;
   for (let index = 0; index < value.length; index += 1) {
     hash ^= value.charCodeAt(index);
@@ -121,6 +148,24 @@ function parseTrackPoints(gpxText: string): Array<{ lat: number; lon: number; el
   return points;
 }
 
+function computeElevationDescentM(
+  points: Array<{ lat: number; lon: number; ele: number | null }>,
+): number {
+  let descent = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const previous = points[index - 1];
+    const current = points[index];
+    if (previous.ele == null || current.ele == null) {
+      continue;
+    }
+    const diff = previous.ele - current.ele;
+    if (diff > 0) {
+      descent += diff;
+    }
+  }
+  return descent;
+}
+
 export function fingerprintGpxBytes(bytes: ArrayBuffer | Uint8Array): TrackFingerprint {
   const gpxText = decodeGpx(bytes);
   const points = parseTrackPoints(gpxText);
@@ -142,74 +187,27 @@ export function fingerprintGpxBytes(bytes: ArrayBuffer | Uint8Array): TrackFinge
     trackPointCount: points.length,
     distanceKm,
     elevationGainM,
+    elevationDescentM: computeElevationDescentM(points),
     geometryChecksum: sha256Hex(geometryParts.join("|")),
     trackBytesChecksum: sha256Hex(trackBytes),
   };
 }
 
 function validateTrackUnchanged(before: TrackFingerprint, after: TrackFingerprint): void {
-  const failures: string[] = [];
-  if (before.trackPointCount !== after.trackPointCount) {
-    failures.push(
-      `Track point count changed (${before.trackPointCount} → ${after.trackPointCount}).`,
-    );
-  }
-  if (Math.abs(before.distanceKm - after.distanceKm) >= 0.001) {
-    failures.push("Route distance changed.");
-  }
-  if (Math.abs(before.elevationGainM - after.elevationGainM) >= 0.5) {
-    failures.push("Elevation gain changed.");
-  }
-  if (before.geometryChecksum !== after.geometryChecksum) {
-    failures.push("Route geometry checksum mismatch.");
-  }
-  if (before.trackBytesChecksum !== after.trackBytesChecksum) {
-    failures.push("Track section changed.");
-  }
-  if (failures.length > 0) {
-    throw new GpxTrackModifiedError(failures.join(" "));
+  const unchanged =
+    before.trackPointCount === after.trackPointCount &&
+    before.distanceKm === after.distanceKm &&
+    before.elevationGainM === after.elevationGainM &&
+    before.elevationDescentM === after.elevationDescentM &&
+    before.geometryChecksum === after.geometryChecksum &&
+    before.trackBytesChecksum === after.trackBytesChecksum;
+  if (!unchanged) {
+    throw new GpxTrackModifiedError();
   }
 }
 
 function formatKmLabel(km: number): string {
   return `KM${Math.round(km)}`;
-}
-
-function shortBrandLabel(name: string): string {
-  return name.trim().slice(0, 14) || "Stop";
-}
-
-function serviceIcons(stop: CompanionStop): string {
-  const icons: string[] = [];
-  if (stop.hasFuel) {
-    icons.push("⛽");
-  }
-  if (stop.hasWater) {
-    icons.push("💧");
-  }
-  if (stop.hasFood) {
-    icons.push("🛒");
-  }
-  if (stop.hasCoffee) {
-    icons.push("☕");
-  }
-  if (icons.length > 0) {
-    return [...new Set(icons)].join("");
-  }
-  const category = stop.category.toLowerCase();
-  if (category.includes("fuel") || category.includes("gas")) {
-    return "⛽";
-  }
-  if (category.includes("water")) {
-    return "💧";
-  }
-  if (category.includes("supermarket") || category.includes("convenience")) {
-    return "🛒";
-  }
-  if (category.includes("cafe") || category.includes("café") || category.includes("restaurant")) {
-    return "🍽";
-  }
-  return stop.icon || "📍";
 }
 
 function serviceLabels(stop: CompanionStop): string {
@@ -230,32 +228,27 @@ function serviceLabels(stop: CompanionStop): string {
 }
 
 function waypointName(
-  stop: Pick<CompanionStop, "name" | "category" | "categoryLabel" | "hasFuel" | "hasWater" | "hasFood" | "hasCoffee" | "icon">,
+  stop: Pick<
+    CompanionStop,
+    "name" | "category" | "categoryLabel" | "hasFuel" | "hasWater" | "hasFood" | "hasCoffee"
+  >,
   km: number,
   deviceProfile: GpsGpxDeviceProfile,
   isPrimary: boolean,
 ): string {
-  const kmLabel = formatKmLabel(km);
   if (deviceProfile === "coros") {
     const prefix = isPrimary ? "" : "ALT ";
-    const icons = serviceIcons(stop as CompanionStop);
-    const shortLabel = shortBrandLabel(stop.name);
-    const category = stop.category.toLowerCase();
-    if (stop.hasFuel || category.includes("fuel") || category.includes("gas")) {
-      const label = stop.hasWater ? "⛽💧" : "⛽";
-      return `${prefix}${label} ${shortLabel} ${kmLabel}`.trim().slice(0, 32);
-    }
-    if (category.includes("supermarket") || category.includes("convenience")) {
-      return `${prefix}🛒 ${shortLabel} ${kmLabel}`.trim().slice(0, 32);
-    }
-    if (stop.hasWater || category.includes("water")) {
-      return `${prefix}💧 ${kmLabel}`.trim().slice(0, 32);
-    }
-    if (category.includes("cafe") || category.includes("café")) {
-      return `${prefix}🍽 ${shortLabel} ${kmLabel}`.trim().slice(0, 32);
-    }
-    return `${prefix}${icons} ${shortLabel} ${kmLabel}`.trim().slice(0, 32);
+    const label = smartPoiLabel({
+      name: stop.name,
+      brand: stop.name,
+      category: stop.category,
+      hasFuel: stop.hasFuel,
+      hasWater: stop.hasWater,
+      hasFood: stop.hasFood,
+    });
+    return `${prefix}${label}`.trim().slice(0, 32);
   }
+  const kmLabel = formatKmLabel(km);
   const base = isPrimary ? stop.name : `ALT ${stop.name}`;
   return `${base} ${kmLabel}`.slice(0, 64);
 }
@@ -264,6 +257,7 @@ function waypointDesc(
   stop: CompanionStop,
   km: number,
   isPrimary: boolean,
+  sym: string | null,
 ): string {
   const confidence = computeStopConfidence({
     verificationStatus: stop.verificationStatus,
@@ -273,7 +267,7 @@ function waypointDesc(
     website: stop.website,
     phone: stop.phone,
   });
-  return [
+  const lines = [
     `Type: ${stop.categoryLabel}`,
     `Services: ${serviceLabels(stop)}`,
     `Route km: ${km.toFixed(2)}`,
@@ -281,14 +275,18 @@ function waypointDesc(
     `Confidence: ${confidence.label} (${confidence.score})`,
     `Role: ${isPrimary ? "Primary" : "Alternative"}`,
     `Verification: ${stop.verificationStatus}`,
-  ].join("\n");
+  ];
+  if (sym) {
+    lines.push(`Coros icon: ${sym}`);
+  }
+  return lines.join("\n");
 }
 
 function shouldExportStop(stop: CompanionStop, options: GpsGpxExportOptions): boolean {
   if (stop.verificationStatus === "verified") {
     return true;
   }
-  if (options.includeHighConfidence) {
+  if (options.includeHighConfidence && options.deviceProfile !== "coros") {
     const confidence = computeStopConfidence({
       verificationStatus: stop.verificationStatus,
       verifiedAt: stop.verificationDate,
@@ -299,7 +297,14 @@ function shouldExportStop(stop: CompanionStop, options: GpsGpxExportOptions): bo
     });
     return confidence.level === "high";
   }
-  return !options.verifiedOnly;
+  if (!options.verifiedOnly) {
+    return options.deviceProfile !== "coros";
+  }
+  return false;
+}
+
+function countVerifiedStops(bundle: CompanionBundle): number {
+  return bundle.stops.filter((stop) => stop.verificationStatus === "verified").length;
 }
 
 function alternativeToWaypointSource(
@@ -314,7 +319,6 @@ function alternativeToWaypointSource(
   | "hasWater"
   | "hasFood"
   | "hasCoffee"
-  | "icon"
   | "openingHours"
   | "confidenceScore"
   | "verificationStatus"
@@ -326,7 +330,6 @@ function alternativeToWaypointSource(
     name: alternative.name,
     category: alternative.category,
     categoryLabel: alternative.categoryLabel,
-    icon: alternative.icon,
     hasFuel: anchor.hasFuel,
     hasWater: anchor.hasWater,
     hasFood: anchor.hasFood,
@@ -357,16 +360,28 @@ function collectWaypoints(bundle: CompanionBundle, options: GpsGpxExportOptions)
       seenZonePrimary.add(String(stop.zoneId));
       if (!seenOsm.has(primaryKey)) {
         seenOsm.add(primaryKey);
+        const sym =
+          options.deviceProfile === "coros"
+            ? resolveCorosWptIcon({
+                category: stop.category,
+                hasFuel: stop.hasFuel,
+                hasWater: stop.hasWater,
+                hasFood: stop.hasFood,
+              })
+            : null;
         waypoints.push({
           lat: stop.lat,
           lon: stop.lon,
           ele: null,
           name: waypointName(stop, stop.km, options.deviceProfile, true),
-          desc: waypointDesc(stop, stop.km, true),
+          desc: waypointDesc(stop, stop.km, true, sym),
           category: stop.category,
           km: stop.km,
           isPrimary: true,
           osmKey: primaryKey,
+          sym,
+          verificationStatus: stop.verificationStatus,
+          offRouteM: stop.distanceOffRouteM ?? null,
         });
       }
     }
@@ -383,26 +398,35 @@ function collectWaypoints(bundle: CompanionBundle, options: GpsGpxExportOptions)
       seenOsm.add(altKey);
       const source = alternativeToWaypointSource(stop, alternative);
       const km = alternative.distanceAlongKm ?? stop.km;
+      const mergedStop = {
+        ...stop,
+        ...source,
+        lat: alternative.lat,
+        lon: alternative.lon,
+        km,
+      };
+      const sym =
+        options.deviceProfile === "coros"
+          ? resolveCorosWptIcon({
+              category: alternative.category,
+              hasFuel: stop.hasFuel,
+              hasWater: stop.hasWater,
+              hasFood: stop.hasFood,
+            })
+          : null;
       waypoints.push({
         lat: alternative.lat,
         lon: alternative.lon,
         ele: null,
         name: waypointName(source, km, options.deviceProfile, false),
-        desc: waypointDesc(
-          {
-            ...stop,
-            ...source,
-            lat: alternative.lat,
-            lon: alternative.lon,
-            km,
-          },
-          km,
-          false,
-        ),
+        desc: waypointDesc(mergedStop, km, false, sym),
         category: alternative.category,
         km,
         isPrimary: false,
         osmKey: altKey,
+        sym,
+        verificationStatus: source.verificationStatus,
+        offRouteM: alternative.distanceOffRouteM ?? stop.distanceOffRouteM ?? null,
       });
     }
   }
@@ -411,11 +435,51 @@ function collectWaypoints(bundle: CompanionBundle, options: GpsGpxExportOptions)
   return waypoints;
 }
 
-function renderWaypointsXml(waypoints: GpsWaypoint[]): string {
+function validateExportQuality(
+  waypoints: GpsWaypoint[],
+  options: GpsGpxExportOptions,
+  verifiedPoiCount: number,
+): void {
+  const failures: string[] = [];
+  const seen = new Set<string>();
+
+  for (const waypoint of waypoints) {
+    if (waypoint.verificationStatus !== "verified") {
+      failures.push(`Waypoint '${waypoint.name}' is not verified.`);
+    }
+    if (isExcludedExportCategory(waypoint.category)) {
+      failures.push(`Unsupported marker category: ${waypoint.category}.`);
+    }
+    if (isInvalidExportName(waypoint.name.replace(/^ALT\s+/, ""))) {
+      failures.push(`Invalid waypoint name: ${waypoint.name}.`);
+    }
+    if (options.deviceProfile === "coros" && !waypoint.sym) {
+      failures.push(`Missing Coros icon for '${waypoint.name}'.`);
+    }
+    if (waypoint.offRouteM != null && waypoint.offRouteM > MAX_WAYPOINT_OFF_ROUTE_M) {
+      failures.push(`Waypoint '${waypoint.name}' is too far from route (${waypoint.offRouteM} m).`);
+    }
+    const dedupeKey = `${waypoint.name}:${waypoint.lat.toFixed(5)}:${waypoint.lon.toFixed(5)}`;
+    if (seen.has(dedupeKey)) {
+      failures.push(`Duplicate waypoint: ${waypoint.name}.`);
+    }
+    seen.add(dedupeKey);
+  }
+
+  if (verifiedPoiCount < waypoints.length) {
+    failures.push("Exported POI count exceeds verified POI count.");
+  }
+
+  if (failures.length > 0) {
+    throw new GpxExportQualityError(failures.join(" "));
+  }
+}
+
+function renderWaypointsXml(waypoints: GpsWaypoint[], deviceProfile: GpsGpxDeviceProfile): string {
   if (waypoints.length === 0) {
     return "";
   }
-  const chunks = ["\n  <!-- Ultra Roadbook navigation waypoints -->\n"];
+  const chunks = [`\n  <!-- Ultra Roadbook navigation waypoints v${GPS_GPX_EXPORT_VERSION} -->\n`];
   for (const waypoint of waypoints) {
     const lat = waypoint.lat.toFixed(8).replace(/\.?0+$/, "");
     const lon = waypoint.lon.toFixed(8).replace(/\.?0+$/, "");
@@ -425,7 +489,12 @@ function renderWaypointsXml(waypoints: GpsWaypoint[]): string {
     }
     chunks.push(`    <name>${escapeXml(waypoint.name)}</name>\n`);
     chunks.push(`    <desc>${escapeXml(waypoint.desc)}</desc>\n`);
-    chunks.push(`    <type>${escapeXml(waypoint.category)}</type>\n`);
+    if (deviceProfile === "coros" && waypoint.sym) {
+      chunks.push(`    <sym>${escapeXml(waypoint.sym)}</sym>\n`);
+      chunks.push(`    <type>${escapeXml(waypoint.sym)}</type>\n`);
+    } else {
+      chunks.push(`    <type>${escapeXml(waypoint.category)}</type>\n`);
+    }
     chunks.push("  </wpt>\n");
   }
   return chunks.join("");
@@ -444,6 +513,31 @@ function insertWaypoints(original: Uint8Array, waypointXml: string): Uint8Array 
   return new TextEncoder().encode(merged);
 }
 
+function buildExportReport(
+  before: TrackFingerprint,
+  waypoints: GpsWaypoint[],
+  verifiedPoiCount: number,
+  deviceProfile: GpsGpxDeviceProfile,
+): GpsGpxExportReport {
+  const exportedCount = waypoints.length;
+  const corosIconsAssigned = waypoints.filter((waypoint) => waypoint.sym).length;
+  return {
+    exportVersion: GPS_GPX_EXPORT_VERSION,
+    deviceProfile,
+    routeIntegrityPassed: true,
+    trackPointCount: before.trackPointCount,
+    distanceKm: Math.round(before.distanceKm * 100) / 100,
+    elevationGainM: Math.round(before.elevationGainM),
+    elevationDescentM: Math.round(before.elevationDescentM),
+    verifiedPoiCount,
+    exportedPoiCount: exportedCount,
+    corosIconsAssigned: deviceProfile === "coros" ? corosIconsAssigned : null,
+    corosIconsTotal: deviceProfile === "coros" ? exportedCount : null,
+    integrityPercent: 100,
+    waypointCount: exportedCount,
+  };
+}
+
 const DEFAULT_OPTIONS: GpsGpxExportOptions = {
   deviceProfile: "coros",
   verifiedOnly: true,
@@ -455,7 +549,7 @@ export function exportGpxForGps(
   originalGpx: ArrayBuffer | Uint8Array,
   bundle: CompanionBundle,
   options: Partial<GpsGpxExportOptions> = {},
-): { bytes: Uint8Array; summary: GpsGpxExportSummary } {
+): { bytes: Uint8Array; report: GpsGpxExportReport } {
   const resolved: GpsGpxExportOptions = { ...DEFAULT_OPTIONS, ...options };
   if (!GPS_GPX_DEVICE_PROFILES.includes(resolved.deviceProfile)) {
     throw new Error(`Unsupported device profile: ${resolved.deviceProfile}`);
@@ -464,19 +558,17 @@ export function exportGpxForGps(
   const originalBytes =
     originalGpx instanceof Uint8Array ? originalGpx : new Uint8Array(originalGpx);
   const before = fingerprintGpxBytes(originalBytes);
+  const verifiedPoiCount = countVerifiedStops(bundle);
   const waypoints = collectWaypoints(bundle, resolved);
-  const outputBytes = insertWaypoints(originalBytes, renderWaypointsXml(waypoints));
+  validateExportQuality(waypoints, resolved, verifiedPoiCount);
+  const outputBytes = insertWaypoints(originalBytes, renderWaypointsXml(waypoints, resolved.deviceProfile));
   const after = fingerprintGpxBytes(outputBytes);
   validateTrackUnchanged(before, after);
 
   return {
     bytes: outputBytes,
-    summary: {
-      deviceProfile: resolved.deviceProfile,
-      waypointCount: waypoints.length,
-      trackPointCount: before.trackPointCount,
-      distanceKm: before.distanceKm,
-      elevationGainM: before.elevationGainM,
-    },
+    report: buildExportReport(before, waypoints, verifiedPoiCount, resolved.deviceProfile),
   };
 }
+
+export { GPS_GPX_EXPORT_VERSION, ROUTE_INTEGRITY_FAILED_MESSAGE };

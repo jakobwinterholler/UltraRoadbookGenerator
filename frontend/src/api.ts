@@ -615,6 +615,22 @@ export async function clearSession(): Promise<void> {
   await fetch("/api/session/clear", { method: "POST" });
 }
 
+export interface GpsGpxExportReport {
+  export_version: string;
+  device_profile: string;
+  route_integrity_passed: boolean;
+  track_point_count: number;
+  distance_km: number;
+  elevation_gain_m: number;
+  elevation_descent_m: number;
+  verified_poi_count: number;
+  exported_poi_count: number;
+  coros_icons_assigned: number | null;
+  coros_icons_total: number | null;
+  integrity_percent: number;
+  waypoint_count: number;
+}
+
 export async function downloadExport(endpoint: string, filename: string): Promise<void> {
   const response = await fetch(endpoint);
   if (!response.ok) {
@@ -632,4 +648,30 @@ export async function downloadExport(endpoint: string, filename: string): Promis
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export async function downloadGpsExport(
+  endpoint: string,
+  filename: string,
+): Promise<GpsGpxExportReport | null> {
+  const response = await fetch(endpoint);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Export failed." }));
+    const detail = error.detail;
+    throw new Error(typeof detail === "string" ? detail : "Export failed.");
+  }
+
+  const summaryHeader = response.headers.get("X-Gps-Export-Summary");
+  const report = summaryHeader ? (JSON.parse(summaryHeader) as GpsGpxExportReport) : null;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return report;
 }
