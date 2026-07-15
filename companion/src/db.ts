@@ -33,7 +33,7 @@ function computeVerifiedPercent(bundle: CompanionBundle): number | null {
   return Math.round((verified / total) * 100);
 }
 
-function openDb(): Promise<IDBDatabase> {
+export function openCompanionDb(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
@@ -62,7 +62,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 export async function saveRaceList(races: StoredRaceListItem[]): Promise<void> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(LIST_STORE, "readwrite");
     const store = tx.objectStore(LIST_STORE);
@@ -77,7 +77,7 @@ export async function saveRaceList(races: StoredRaceListItem[]): Promise<void> {
 }
 
 export async function loadRaceList(): Promise<StoredRaceListItem[]> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   const races = await new Promise<StoredRaceListItem[]>((resolve, reject) => {
     const tx = db.transaction(LIST_STORE, "readonly");
     const request = tx.objectStore(LIST_STORE).getAll();
@@ -112,7 +112,7 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
     throw new Error("Bundle checksum mismatch — refusing to cache stale data.");
   }
 
-  const db = await openDb();
+  const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([BUNDLE_STORE, LIST_STORE], "readwrite");
     tx.objectStore(BUNDLE_STORE).put(prepared);
@@ -175,7 +175,7 @@ export async function loadActiveCompanionBundle(): Promise<CompanionBundle | nul
 }
 
 export async function loadCompanionBundle(raceId: string): Promise<CompanionBundle | null> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   const bundle = await new Promise<CompanionBundle | null>((resolve, reject) => {
     const tx = db.transaction(BUNDLE_STORE, "readonly");
     const request = tx.objectStore(BUNDLE_STORE).get(raceId);
@@ -208,7 +208,7 @@ export async function hasValidCompanionBundle(raceId: string): Promise<boolean> 
 
 /** Remove a stale cached bundle and mark the race as not offline-ready. */
 export async function invalidateStaleBundle(raceId: string): Promise<void> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction([BUNDLE_STORE, LIST_STORE, GPX_STORE], "readwrite");
     tx.objectStore(BUNDLE_STORE).delete(raceId);
@@ -239,7 +239,7 @@ export async function invalidateStaleBundle(raceId: string): Promise<void> {
 }
 
 export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promise<void> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(GPX_STORE, "readwrite");
     tx.objectStore(GPX_STORE).put({
@@ -254,7 +254,7 @@ export async function saveOriginalGpx(raceId: string, bytes: ArrayBuffer): Promi
 }
 
 export async function loadOriginalGpx(raceId: string): Promise<ArrayBuffer | null> {
-  const db = await openDb();
+  const db = await openCompanionDb();
   const record = await new Promise<{ bytes: ArrayBuffer } | undefined>((resolve, reject) => {
     const tx = db.transaction(GPX_STORE, "readonly");
     const request = tx.objectStore(GPX_STORE).get(raceId);
@@ -268,7 +268,7 @@ export async function loadOriginalGpx(raceId: string): Promise<ArrayBuffer | nul
 export async function clearCompanionData(): Promise<void> {
   localStorage.removeItem(ACTIVE_KEY);
   localStorage.removeItem(RESUPPLY_FILTER_KEY);
-  const db = await openDb();
+  const db = await openCompanionDb();
   await new Promise<void>((resolve, reject) => {
     const tx = db.transaction(
       [BUNDLE_STORE, LIST_STORE, META_STORE, GPX_STORE, "verifications"],
