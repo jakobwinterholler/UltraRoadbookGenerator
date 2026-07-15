@@ -28,11 +28,19 @@ Or paste the SQL from `supabase/migrations/001_phase1.sql` into the Supabase SQL
 2. Authorized redirect URIs:
    - `https://<project-ref>.supabase.co/auth/v1/callback`
 3. Supabase → Authentication → Providers → Google → paste client ID + secret
-4. Supabase → Authentication → URL Configuration → add redirect URLs:
-   - `http://127.0.0.1:5173/**`
-   - `http://127.0.0.1:5175/**`
-   - `https://companion-flax.vercel.app/**`
-   - Site URL: `http://127.0.0.1:5173` for local dev
+4. Supabase → Authentication → URL Configuration:
+   - **Site URL:** your primary dev origin, e.g. `http://127.0.0.1:5173` (not the production Companion URL)
+   - **Redirect URLs** (add every origin + `/auth/callback`):
+     - `http://127.0.0.1:5173/auth/callback`
+     - `http://localhost:5173/auth/callback`
+     - `http://127.0.0.1:5175/auth/callback`
+     - `http://localhost:5175/auth/callback`
+     - `https://companion-road-book.vercel.app/auth/callback`
+     - `https://companion-flax.vercel.app/auth/callback` (if using this alias)
+
+   Each app sends `redirectTo = window.location.origin + '/auth/callback'` dynamically.
+   If the redirect URL is missing from this list, Supabase falls back to **Site URL** —
+   which is why Desktop sign-in was incorrectly returning to production Companion.
 
 ## 3. Local environment
 

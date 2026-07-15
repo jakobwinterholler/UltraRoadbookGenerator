@@ -21,6 +21,7 @@ import {
   markSigningIn,
   readOAuthCallbackError,
 } from "./oauthCallback";
+import { getOAuthRedirectUrl, storeOAuthReturnPath } from "./oauthRedirect";
 
 interface AuthContextValue {
   configured: boolean;
@@ -134,8 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     markSigningIn();
     setSigningIn(true);
+    storeOAuthReturnPath();
     const supabase = getSupabaseClient();
-    const redirectTo = `${window.location.origin}${window.location.pathname}`;
+    const redirectTo = getOAuthRedirectUrl();
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },

@@ -68,7 +68,8 @@ async function main() {
     if (!supabaseUrl || !anonKey) {
       skip("Supabase OAuth init", "Set VITE_SUPABASE_* env vars for this script");
     } else {
-      const res = await fetch(`${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(DESKTOP + "/")}`, {
+      const callback = `${DESKTOP}/auth/callback`;
+      const res = await fetch(`${supabaseUrl}/auth/v1/authorize?provider=google&redirect_to=${encodeURIComponent(callback)}`, {
         headers: { apikey: anonKey },
         redirect: "manual",
       });
