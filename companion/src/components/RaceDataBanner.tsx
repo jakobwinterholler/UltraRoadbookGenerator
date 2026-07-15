@@ -38,6 +38,8 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
       localRevision: bundleRevision(bundle),
       localChecksum: bundle.bundleChecksum,
       offlineReady: true,
+      cloudClimbCount: cloudRace.significant_climb_count ?? null,
+      localClimbCount: bundle.climbs?.length ?? null,
     });
   }, [bundle, cloudRace, dismissed]);
 
@@ -73,6 +75,8 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
           localRevision: bundleRevision(next),
           localChecksum: next.bundleChecksum,
           offlineReady: true,
+          cloudClimbCount: cloudAfter.significant_climb_count ?? null,
+          localClimbCount: next.climbs?.length ?? null,
         });
 
       if (stillNeedsUpdate) {

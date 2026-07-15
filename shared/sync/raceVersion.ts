@@ -27,6 +27,7 @@ export function needsCompanionDownload(
   downloadedRevision: number | null,
   offlineReady: boolean,
   downloadedChecksum?: string | null,
+  downloadedClimbCount?: number | null,
 ): boolean {
   if (!cloud.has_bundle) {
     return false;
@@ -43,6 +44,13 @@ export function needsCompanionDownload(
     cloud.bundle_checksum &&
     downloadedChecksum &&
     cloud.bundle_checksum !== downloadedChecksum
+  ) {
+    return true;
+  }
+  if (
+    cloud.significant_climb_count != null &&
+    downloadedClimbCount != null &&
+    cloud.significant_climb_count !== downloadedClimbCount
   ) {
     return true;
   }

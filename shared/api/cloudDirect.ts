@@ -188,6 +188,7 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
       has_bundle: Boolean(race.has_bundle),
       bundle_checksum: (preparation.bundle_checksum as string | undefined) ?? null,
       bundle_schema_version: (preparation.bundle_schema_version as number | undefined) ?? null,
+      significant_climb_count: (preparation.significant_climb_count as number | undefined) ?? null,
     };
   });
 }

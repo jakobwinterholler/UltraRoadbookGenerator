@@ -15,6 +15,7 @@ const RESUPPLY_FILTER_KEY = "companion-resupply-filter";
 export interface StoredRaceListItem extends SyncRaceSummary {
   downloadedRevision: number | null;
   downloadedChecksum: string | null;
+  downloadedClimbCount?: number | null;
   offlineReady: boolean;
   /** Where this race entry came from — cloud sync or on-device import. */
   source?: "cloud" | "local-import";
@@ -122,11 +123,13 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
       const existing = getRequest.result as StoredRaceListItem | undefined;
       const revision = prepared.revision ?? prepared.bundle_version ?? existing?.companion_revision ?? 0;
       const checksum = prepared.bundleChecksum ?? null;
+      const climbCount = prepared.climbs?.length ?? null;
       if (existing) {
         listStore.put({
           ...existing,
           downloadedRevision: revision,
           downloadedChecksum: checksum,
+          downloadedClimbCount: climbCount,
           offlineReady: true,
           readiness_score: prepared.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
           verified_percent: computeVerifiedPercent(prepared),
@@ -147,6 +150,7 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
         has_bundle: true,
         downloadedRevision: revision,
         downloadedChecksum: checksum,
+        downloadedClimbCount: climbCount,
         offlineReady: true,
         readiness_score: prepared.dashboardStats?.readinessScore ?? null,
         verified_percent: computeVerifiedPercent(prepared),

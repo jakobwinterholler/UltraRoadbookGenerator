@@ -13,7 +13,8 @@ from bundle_checksum import compute_bundle_checksum
 from bundle_contract import CURRENT_SCHEMA_VERSION, apply_bundle_version_fields
 from bundle_validate import validate_companion_bundle
 from companion_bundle import build_companion_bundle
-from race_project import race_store
+from race_project import race_store, gpx_fingerprint
+from significant_climbs import significant_climbs
 
 
 class CloudSyncError(RuntimeError):
@@ -87,6 +88,93 @@ def _upsert_race_row(payload: dict[str, Any], access_token: str | None = None) -
     return rows[0] if rows else payload
 
 
+def _significant_climb_count(roadbook: dict[str, Any] | None) -> int | None:
+    if not roadbook:
+        return None
+    summary_count = (roadbook.get("summary") or {}).get("climb_count")
+    if isinstance(summary_count, int):
+        return summary_count
+    climbs = significant_climbs(roadbook.get("climbs") or [])
+    return len(climbs)
+
+
+def _download_bytes(path: str, access_token: str | None = None) -> bytes:
+    url = f"{cloud_config.url}/storage/v1/object/{cloud_config.storage_bucket}/{path}"
+    response = httpx.get(url, headers=_headers(access_token), timeout=120.0)
+    if response.status_code >= 400:
+        raise CloudSyncError(f"Failed to download {path}: {response.text}")
+    return response.content
+
+
+def _find_cloud_race_by_gpx_content(
+    user_id: str,
+    fingerprint: str,
+    *,
+    local_race_id: str,
+    access_token: str | None = None,
+) -> str | None:
+    """Fallback when legacy cloud rows never stored gpx_fingerprint in preparation."""
+    if not fingerprint:
+        return None
+    matches: list[tuple[int, str]] = []
+    for race in list_sync_races(user_id, access_token):
+        race_id = str(race["id"])
+        if race.get("gpx_fingerprint") == fingerprint:
+            matches.append((int(race.get("companion_revision") or 0), race_id))
+            continue
+        try:
+            gpx_bytes = _download_bytes(_storage_path(user_id, race_id, "route.gpx"), access_token)
+        except CloudSyncError:
+            continue
+        if gpx_fingerprint(gpx_bytes) == fingerprint:
+            matches.append((int(race.get("companion_revision") or 0), race_id))
+    if not matches:
+        return None
+    preferred = [entry for entry in matches if entry[1] != local_race_id]
+    ranked = preferred or matches
+    ranked.sort(key=lambda entry: entry[0], reverse=True)
+    return ranked[0][1]
+
+
+def _resolve_cloud_race_target(
+    user_id: str,
+    local_race_id: str,
+    gpx_fingerprint_value: str,
+    access_token: str | None = None,
+) -> tuple[str, dict[str, Any] | None]:
+    """Map a local race to the cloud row/storage id that Companion already uses."""
+    matched_ids: list[str] = []
+    if gpx_fingerprint_value:
+        for match in find_cloud_races_by_gpx_fingerprint(user_id, gpx_fingerprint_value, access_token):
+            cloud_id = str(match.get("id") or "")
+            if cloud_id:
+                matched_ids.append(cloud_id)
+        content_match = _find_cloud_race_by_gpx_content(
+            user_id,
+            gpx_fingerprint_value,
+            local_race_id=local_race_id,
+            access_token=access_token,
+        )
+        if content_match and content_match not in matched_ids:
+            matched_ids.append(content_match)
+
+    if matched_ids:
+        preferred = [race_id for race_id in matched_ids if race_id != local_race_id]
+        candidates = preferred or matched_ids
+        best_id = candidates[0]
+        best_revision = -1
+        for candidate_id in candidates:
+            row = _get_race_row(user_id, candidate_id, access_token)
+            revision = int((row or {}).get("companion_revision") or 0)
+            if revision > best_revision:
+                best_revision = revision
+                best_id = candidate_id
+        return best_id, _get_race_row(user_id, best_id, access_token)
+
+    existing_local = _get_race_row(user_id, local_race_id, access_token)
+    return local_race_id, existing_local
+
+
 def _download_json(path: str, access_token: str | None = None) -> dict[str, Any]:
     url = f"{cloud_config.url}/storage/v1/object/{cloud_config.storage_bucket}/{path}"
     response = httpx.get(url, headers=_headers(access_token), timeout=120.0)
@@ -101,13 +189,18 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
 
     race = race_store.get_race(race_id)
     summary = race_store.get_summary(race_id)
-    existing = _get_race_row(user_id, race_id, access_token)
+    cloud_race_id, existing = _resolve_cloud_race_target(
+        user_id,
+        race_id,
+        race.meta.gpx_fingerprint,
+        access_token,
+    )
     next_revision = int((existing or {}).get("companion_revision") or 0) + 1
 
     gpx_path = race_store.get_gpx_path(race_id)
     if gpx_path.exists():
         _upload_bytes(
-            _storage_path(user_id, race_id, "route.gpx"),
+            _storage_path(user_id, cloud_race_id, "route.gpx"),
             gpx_path.read_bytes(),
             "application/gpx+xml",
             access_token,
@@ -117,16 +210,17 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
     has_bundle = False
     bundle: dict[str, Any] | None = None
     analyzed_at = race.analysis.get("analyzed_at")
+    significant_climb_count = _significant_climb_count(roadbook)
     if roadbook is not None:
         analysis_bytes = json.dumps(roadbook, separators=(",", ":")).encode("utf-8")
         _upload_bytes(
-            _storage_path(user_id, race_id, "analysis.json"),
+            _storage_path(user_id, cloud_race_id, "analysis.json"),
             analysis_bytes,
             "application/json",
             access_token,
         )
         bundle = build_companion_bundle(
-            race_id,
+            cloud_race_id,
             roadbook,
             race.preparation.to_dict(),
             revision=next_revision,
@@ -138,7 +232,7 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
             )
         bundle_bytes = json.dumps(bundle, separators=(",", ":")).encode("utf-8")
         _upload_bytes(
-            _storage_path(user_id, race_id, "companion-bundle.json"),
+            _storage_path(user_id, cloud_race_id, "companion-bundle.json"),
             bundle_bytes,
             "application/json",
             access_token,
@@ -148,6 +242,7 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
         preparation = {
             **race.preparation.to_dict(),
             "gpx_fingerprint": race.meta.gpx_fingerprint,
+            "significant_climb_count": significant_climb_count,
             "bundle_checksum": bundle.get("bundleChecksum"),
             "bundle_schema_version": bundle.get("schemaVersion"),
             "bundle_semantic_version": bundle.get("bundleVersion"),
@@ -157,11 +252,12 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
         preparation = {
             **race.preparation.to_dict(),
             "gpx_fingerprint": race.meta.gpx_fingerprint,
+            "significant_climb_count": significant_climb_count,
         }
 
     row = _upsert_race_row(
         {
-            "id": race_id,
+            "id": cloud_race_id,
             "user_id": user_id,
             "name": summary.name,
             "distance_km": summary.distance_km,
@@ -177,7 +273,8 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
     )
     revision = int(row.get("companion_revision", next_revision))
     return {
-        "race_id": race_id,
+        "race_id": cloud_race_id,
+        "local_race_id": race_id,
         "name": summary.name,
         "companion_revision": revision,
         "version": revision,
@@ -192,11 +289,22 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
 def _race_needs_upload(
     race_id: str,
     existing: dict[str, Any] | None,
+    *,
+    user_id: str | None = None,
+    access_token: str | None = None,
 ) -> bool:
     """Return True when local race should be pushed to cloud."""
     roadbook = race_store.load_analysis(race_id)
     if roadbook is None:
         return False
+    race = race_store.get_race(race_id)
+    if user_id:
+        _, existing = _resolve_cloud_race_target(
+            user_id,
+            race_id,
+            race.meta.gpx_fingerprint,
+            access_token,
+        )
     if existing is None:
         return True
     if not existing.get("has_bundle"):
@@ -204,6 +312,14 @@ def _race_needs_upload(
     preparation = existing.get("preparation") or {}
     cloud_schema = preparation.get("bundle_schema_version")
     if isinstance(cloud_schema, int) and cloud_schema < CURRENT_SCHEMA_VERSION:
+        return True
+    local_climb_count = _significant_climb_count(roadbook)
+    cloud_climb_count = preparation.get("significant_climb_count")
+    if (
+        local_climb_count is not None
+        and cloud_climb_count is not None
+        and int(local_climb_count) != int(cloud_climb_count)
+    ):
         return True
     summary = race_store.get_summary(race_id)
     local_updated = summary.updated_at
@@ -228,7 +344,12 @@ def push_all_local_races(user_id: str, access_token: str | None = None) -> dict[
     skipped: list[dict[str, str]] = []
     for summary in race_store.list_races():
         existing = _get_race_row(user_id, summary.id, access_token)
-        if existing and not _race_needs_upload(summary.id, existing):
+        if existing and not _race_needs_upload(
+            summary.id,
+            existing,
+            user_id=user_id,
+            access_token=access_token,
+        ):
             skipped.append({
                 "race_id": summary.id,
                 "name": summary.name,
@@ -278,6 +399,7 @@ def list_sync_races(user_id: str, access_token: str | None = None) -> list[dict[
             "bundle_checksum": preparation.get("bundle_checksum"),
             "bundle_schema_version": preparation.get("bundle_schema_version"),
             "gpx_fingerprint": preparation.get("gpx_fingerprint"),
+            "significant_climb_count": preparation.get("significant_climb_count"),
         })
     return races
 
@@ -346,6 +468,7 @@ def regenerate_cloud_bundle(user_id: str, race_id: str, access_token: str | None
 
     updated_preparation = {
         **preparation,
+        "significant_climb_count": _significant_climb_count(roadbook),
         "bundle_checksum": bundle.get("bundleChecksum"),
         "bundle_schema_version": bundle.get("schemaVersion"),
         "bundle_semantic_version": bundle.get("bundleVersion"),

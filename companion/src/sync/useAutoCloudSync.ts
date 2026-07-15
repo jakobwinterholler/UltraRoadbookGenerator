@@ -52,6 +52,7 @@ export function useAutoCloudSync(): AutoCloudSyncState {
           local?.downloadedRevision ?? null,
           local?.offlineReady ?? false,
           local?.downloadedChecksum,
+          local?.downloadedClimbCount ?? null,
         );
         if (needsDownload) {
           const kind = !local?.offlineReady ? "new" : "updated";

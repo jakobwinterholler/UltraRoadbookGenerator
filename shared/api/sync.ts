@@ -28,6 +28,7 @@ export async function fetchSyncRaces(accessToken: string): Promise<SyncRaceSumma
     bundle_version: race.bundle_version ?? race.companion_revision,
     bundle_checksum: race.bundle_checksum ?? null,
     bundle_schema_version: race.bundle_schema_version ?? null,
+    significant_climb_count: race.significant_climb_count ?? null,
   }));
 }
 

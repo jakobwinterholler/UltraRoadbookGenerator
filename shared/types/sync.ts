@@ -13,6 +13,8 @@ export interface SyncRaceSummary {
   bundle_checksum?: string | null;
   /** Schema version of the cloud bundle. */
   bundle_schema_version?: number | null;
+  /** Significant climbs in the latest cloud analysis/bundle. */
+  significant_climb_count?: number | null;
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean;

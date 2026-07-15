@@ -16,6 +16,7 @@ import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import {
   hasValidCompanionBundle,
   invalidateStaleBundle,
+  loadCompanionBundle,
   loadRaceList,
   saveRaceList,
   type StoredRaceListItem,
@@ -47,19 +48,25 @@ async function resolveOfflineReady(
     return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
   }
 
+  const localBundle = await loadCompanionBundle(race.id);
+  const downloadedClimbCount = localBundle?.climbs?.length ?? null;
+
   const needsUpdate = needsCompanionDownload(
     race,
     downloadedRevision,
     true,
     downloadedChecksum,
+    downloadedClimbCount,
   );
   if (needsUpdate) {
-    logSyncDebug("stale-cache", `${race.name} — cloud revision/checksum newer than local`, {
+    logSyncDebug("stale-cache", `${race.name} — cloud revision/checksum/climbs newer than local`, {
       raceId: race.id,
       cloudRevision: race.companion_revision,
       localRevision: downloadedRevision,
       cloudChecksum: race.bundle_checksum,
       localChecksum: downloadedChecksum,
+      cloudClimbCount: race.significant_climb_count ?? null,
+      localClimbCount: downloadedClimbCount,
     });
     await invalidateStaleBundle(race.id);
     return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };

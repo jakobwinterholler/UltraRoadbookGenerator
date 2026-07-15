@@ -97,6 +97,8 @@ export function bundleNeedsUpdate(input: {
   localRevision: number | null;
   localChecksum: string | null | undefined;
   offlineReady: boolean;
+  cloudClimbCount?: number | null;
+  localClimbCount?: number | null;
 }): boolean {
   if (!input.offlineReady || input.localRevision === null) {
     return true;
@@ -111,6 +113,13 @@ export function bundleNeedsUpdate(input: {
     input.cloudChecksum &&
     input.localChecksum &&
     input.cloudChecksum !== input.localChecksum
+  ) {
+    return true;
+  }
+  if (
+    input.cloudClimbCount != null &&
+    input.localClimbCount != null &&
+    input.cloudClimbCount !== input.localClimbCount
   ) {
     return true;
   }

@@ -74,6 +74,7 @@ export function useCompanionSync() {
         race.downloadedRevision,
         race.offlineReady,
         race.downloadedChecksum,
+        race.downloadedClimbCount ?? null,
       ),
     );
     setUpdatesAvailable(pending.length);
@@ -180,6 +181,7 @@ export function useCompanionSync() {
           local.downloadedRevision,
           local.offlineReady,
           local.downloadedChecksum,
+          local.downloadedClimbCount ?? null,
         );
         if (needsUpdate) {
           const reason = `download: cloud v${cloudVersion} > local v${local.downloadedRevision ?? 0}`;
