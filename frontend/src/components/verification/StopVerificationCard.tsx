@@ -24,7 +24,7 @@ import { zoneAvailability } from "../../planning/stopAvailability";
 import type { TimeMode } from "../../planning/types";
 import type { TimeWindowId } from "../../planning/timeWindows";
 import { formatPoiName } from "../poiUi";
-import { googleMapsUrl, googleStreetViewUrl } from "../stopQuickActions";
+import { googleMapsUrl, googleStreetViewUrl, placeIdFromTags } from "../stopQuickActions";
 import StopVerificationMap from "./StopVerificationMap";
 import StopVerificationPhotos from "./StopVerificationPhotos";
 import { stopMapStory, mapContextWindowKm } from "../../planning/stopVerification/stopMapContext";
@@ -209,6 +209,10 @@ export default function StopVerificationCard({
                   lat: mapsLat,
                   lon: mapsLon,
                   routeKm: zone.distance_along_km,
+                  name: stopTitle,
+                  placeId: best
+                    ? placeIdFromTags(best.poi.tags, (best.poi as { place_id?: string }).place_id)
+                    : null,
                 },
                 {
                   routeCoordinates,

@@ -114,7 +114,7 @@ export function googleMapsUrl(lat: number, lon: number, placeId?: string | null)
 }
 
 export function googleStreetViewUrl(
-  stop: Pick<CompanionStop, "lat" | "lon" | "placeId" | "km">,
+  stop: Pick<CompanionStop, "lat" | "lon" | "placeId" | "km" | "name">,
   options?: StreetViewUrlOptions,
 ): string {
   return sharedGoogleStreetViewUrl(
@@ -123,6 +123,7 @@ export function googleStreetViewUrl(
       lon: stop.lon,
       placeId: stop.placeId,
       routeKm: stop.km,
+      name: stop.name,
     },
     options,
   );

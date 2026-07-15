@@ -234,6 +234,10 @@ def build_companion_bundle(
         zone_id = zone.get("zone_id")
         poi = _primary_poi(zone)
         category = str((poi or {}).get("poi_category") or "Resupply")
+        poi_lat = (poi or {}).get("lat")
+        poi_lon = (poi or {}).get("lon")
+        stop_lat = float(poi_lat if poi_lat is not None else zone.get("lat") or 0)
+        stop_lon = float(poi_lon if poi_lon is not None else zone.get("lon") or 0)
         record = verified_stops.get(_verified_stop_key(zone_id))
         status = _verification_status(record if isinstance(record, dict) else None)
         notes = str((record or {}).get("reject_notes") or (record or {}).get("rejectNotes") or "").strip() or None
@@ -241,8 +245,8 @@ def build_companion_bundle(
             {
                 "zoneId": zone_id,
                 "km": zone.get("distance_along_km"),
-                "lat": zone.get("lat"),
-                "lon": zone.get("lon"),
+                "lat": stop_lat,
+                "lon": stop_lon,
                 "name": _format_poi_name(poi, zone),
                 "category": category,
                 "categoryLabel": _category_label(zone),

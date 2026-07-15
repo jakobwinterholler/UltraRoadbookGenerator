@@ -2,6 +2,7 @@ export {
   googleMapsUrl,
   googleStreetViewUrl,
   normalizeWebsite,
+  placeIdFromTags,
   type StreetViewLocation,
   type StreetViewUrlOptions,
 } from "@shared/race/streetViewUrl";
