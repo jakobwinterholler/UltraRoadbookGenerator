@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildRouteTrack } from "@shared/race/mapMatching";
 import {
   ALTERNATIVE_STOP_COLOR,
-  DETAIL_MAP_MAX_ZOOM,
+  DETAIL_MAP_ZOOM,
   DETAIL_ROUTE_WINDOW_KM,
   POI_FOCUS_ANIMATION_MS,
   ROUTE_CORE_COLOR,
@@ -126,7 +126,7 @@ export default function StopDetailMap({
       container: host,
       style: MAP_STYLE,
       center: [stop.lon, stop.lat],
-      zoom: DETAIL_MAP_MAX_ZOOM - 0.5,
+      zoom: DETAIL_MAP_ZOOM - 0.3,
       bearing: 0,
       pitch: 0,
       interactive: false,
@@ -253,25 +253,13 @@ export default function StopDetailMap({
           },
         });
 
-        const bounds = new maplibregl.LngLatBounds();
-        bounds.extend([stop.lon, stop.lat]);
-        for (const alt of alternatives) {
-          if (Number.isFinite(alt.lat) && Number.isFinite(alt.lon)) {
-            bounds.extend([alt.lon, alt.lat]);
-          }
-        }
-        const routeFeature = routeData.features[0];
-        if (routeFeature?.geometry.type === "LineString") {
-          for (const coord of routeFeature.geometry.coordinates) {
-            bounds.extend(coord as [number, number]);
-          }
-        }
-
-        map.fitBounds(bounds, {
-          padding: 36,
-          maxZoom: DETAIL_MAP_MAX_ZOOM,
+        map.flyTo({
+          center: [stop.lon, stop.lat],
+          zoom: DETAIL_MAP_ZOOM,
+          offset: [0, -36],
           duration: POI_FOCUS_ANIMATION_MS,
           essential: true,
+          curve: 1.35,
         });
 
         readyRef.current = true;

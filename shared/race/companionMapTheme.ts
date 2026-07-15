@@ -11,9 +11,9 @@ export const SELECTED_STOP_CORE = "#7c3aed";
 export const ALTERNATIVE_STOP_COLOR = "#64748b";
 export const DIMMED_STOP_COLOR = "#475569";
 
-/** ~100–200 m field of view at this zoom on typical phone widths. */
-export const POI_FOCUS_ZOOM = 17.15;
-export const POI_FOCUS_ANIMATION_MS = 420;
-export const POI_FOCUS_OFFSET: [number, number] = [0, -110];
-export const DETAIL_MAP_MAX_ZOOM = 17.2;
-export const DETAIL_ROUTE_WINDOW_KM = 0.15;
+/** Street-level focus — matches the pre-overhaul detail map feel. */
+export const POI_FOCUS_ZOOM = 17.8;
+export const POI_FOCUS_ANIMATION_MS = 480;
+export const POI_FOCUS_OFFSET: [number, number] = [0, -90];
+export const DETAIL_MAP_ZOOM = 17.8;
+export const DETAIL_ROUTE_WINDOW_KM = 0.12;

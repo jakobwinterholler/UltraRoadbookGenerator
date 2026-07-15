@@ -8,10 +8,7 @@ import {
 export function stopsNeedingVerification(bundle: CompanionBundle): CompanionStop[] {
   return collectAllBundlePois(bundle)
     .map((entry) => entry.stop)
-    .filter(
-      (stop) =>
-        stop.verificationStatus === "unverified" || stop.verificationStatus === "needs_review",
-    );
+    .filter((stop) => stop.verificationStatus === "unverified");
 }
 
 export function sortedVerificationQueue(
