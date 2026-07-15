@@ -311,30 +311,36 @@ function AppContent() {
         )}
 
         {view === "races" && (
-          <MyRacesPage
-            onRaceCreated={handleRaceCreated}
-            onOpenRace={handleOpenRace}
-          />
+          <div key="races" className="urp-animate-fade-up">
+            <MyRacesPage
+              onRaceCreated={handleRaceCreated}
+              onOpenRace={handleOpenRace}
+            />
+          </div>
         )}
 
         {view === "settings" && (
-          <SettingsPage
-            roadbook={roadbook}
-            onBack={handleCloseSettings}
-            onReanalysed={(result) => {
-              setRoadbook(result);
-              void refreshRaces();
-            }}
-          />
+          <div key="settings" className="urp-animate-fade-up">
+            <SettingsPage
+              roadbook={roadbook}
+              onBack={handleCloseSettings}
+              onReanalysed={(result) => {
+                setRoadbook(result);
+                void refreshRaces();
+              }}
+            />
+          </div>
         )}
 
         {view === "preparing" && (
-          <RacePreparingView
-            raceName={analyzingRaceName || activeRace?.name || "New race"}
-            state={analysisState}
-            startedAt={analysisStartedAt}
-            onCancel={handleMyRaces}
-          />
+          <div key="preparing" className="urp-animate-scale-in">
+            <RacePreparingView
+              raceName={analyzingRaceName || activeRace?.name || "New race"}
+              state={analysisState}
+              startedAt={analysisStartedAt}
+              onCancel={handleMyRaces}
+            />
+          </div>
         )}
 
         {error && view === "races" && (
@@ -343,7 +349,11 @@ function AppContent() {
           </div>
         )}
 
-        {view === "workspace" && renderTabContent()}
+        {view === "workspace" && (
+          <div key={`workspace-${activeRaceId}`} className="urp-animate-workspace-enter">
+            {renderTabContent()}
+          </div>
+        )}
       </div>
     </PlanningProvider>
   );

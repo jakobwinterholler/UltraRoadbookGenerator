@@ -4,12 +4,17 @@ import { importApiAvailable } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
 import { Avatar } from "@shared/ui/AuthScreens";
+import { Button } from "@shared/ui/Button";
 import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
+import { EmptyState } from "@shared/ui/EmptyState";
+import { RaceProjectCard } from "@shared/ui/RaceProjectCard";
+import { metricsFromCompanion } from "@shared/ui/raceCardMetrics";
+import { SectionHeader } from "@shared/ui/SectionHeader";
+import { RaceCardSkeleton } from "@shared/ui/Skeleton";
 import {
   getCompanionRaceSyncStatus,
-  SyncStatusBadge,
 } from "@shared/ui/SyncStatusBadge";
-import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
+import { ImportGpxIllustration, NoInternetIllustration, NoRacesIllustration } from "@shared/ui/design/illustrations";
 import { useEffect, useRef, useState } from "react";
 import GpxImportFlow from "../components/GpxImportFlow";
 import {
@@ -19,7 +24,7 @@ import {
   type StoredRaceListItem,
 } from "../db";
 import { acceptGpxFile, onIncomingGpxFile } from "../lib/incomingGpx";
-import { buildRaceListSections, formatLastUpdated } from "../lib/raceListSections";
+import { buildRaceListSections } from "../lib/raceListSections";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { useAutoCloudSync } from "../sync/useAutoCloudSync";
@@ -36,95 +41,61 @@ interface HomeScreenProps {
   } | null;
 }
 
-function RaceCardSkeleton() {
-  return (
-    <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-5">
-      <div className="h-5 w-2/3 animate-pulse rounded-lg bg-white/10" />
-      <div className="mt-3 h-4 w-1/3 animate-pulse rounded-lg bg-white/8" />
-    </div>
-  );
+function companionSourceBadge(race: StoredRaceListItem): string | null {
+  if (race.offlineReady && race.source === "local-import") {
+    return "Imported";
+  }
+  if (race.offlineReady) {
+    return "Downloaded";
+  }
+  if (race.has_bundle) {
+    return "Cloud";
+  }
+  return null;
 }
 
-function verifiedPercent(race: StoredRaceListItem): number | null {
-  return race.verified_percent ?? null;
-}
-
-function RaceCard({
+function CompanionRaceCard({
   race,
   busy,
   downloadProgress,
+  staggerIndex,
   onOpen,
   onDelete,
 }: {
   race: StoredRaceListItem;
   busy: boolean;
   downloadProgress: number | null;
+  staggerIndex: number;
   onOpen: () => void;
   onDelete: () => void;
 }) {
   const syncStatus = getCompanionRaceSyncStatus({ ...race, busy });
-  const badgeLabel =
-    race.offlineReady && race.source === "local-import"
-      ? "Imported"
-      : race.offlineReady
-        ? "Downloaded"
-        : race.has_bundle
-          ? "Cloud"
-          : null;
+  const metrics = metricsFromCompanion(
+    race.verified_percent,
+    null,
+    race.verified_percent != null && race.verified_percent > 0 ? 1 : 0,
+    race.has_bundle || race.offlineReady,
+  );
 
   return (
-    <div className="relative w-full rounded-2xl border border-white/10 bg-white/[0.03] transition hover:border-emerald-400/25 hover:bg-white/[0.05]">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={onOpen}
-        className="w-full p-5 text-left"
-      >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-lg font-semibold text-white">{race.name}</p>
-          <p className="mt-1 text-sm tabular-nums text-white/45">
-            {race.distance_km ? `${Math.round(race.distance_km)} km` : "Not analyzed"}
-            {race.elevation_gain_m
-              ? ` · +${Math.round(race.elevation_gain_m).toLocaleString()} m`
-              : ""}
-          </p>
-          <p className="mt-1 text-xs text-white/35">
-            Updated {formatLastUpdated(race.updated_at)}
-          </p>
-          {race.readiness_score != null ? (
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <ReadinessScoreBadge score={race.readiness_score} dark />
-              {verifiedPercent(race) != null ? (
-                <span className="text-[11px] text-white/40">{verifiedPercent(race)}% verified</span>
-              ) : null}
-            </div>
-          ) : null}
-          {busy && downloadProgress !== null ? (
-            <div className="mt-3">
-              <div className="mb-1 flex items-center justify-between text-[11px] text-sky-200/80">
-                <span>Downloading race…</span>
-                <span>{downloadProgress}%</span>
-              </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                <div
-                  className="h-full rounded-full bg-sky-400 transition-all duration-200"
-                  style={{ width: `${downloadProgress}%` }}
-                />
-              </div>
-            </div>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          {badgeLabel ? (
-            <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55">
-              {badgeLabel}
-            </span>
-          ) : null}
-          {syncStatus ? <SyncStatusBadge status={syncStatus} variant="dark" /> : null}
-        </div>
-      </div>
-      </button>
+    <div className="relative">
+      <RaceProjectCard
+        name={race.name}
+        distanceKm={race.distance_km}
+        elevationGainM={race.elevation_gain_m}
+        verificationPercent={metrics.verificationPercent}
+        suggestedStops={metrics.suggestedStops}
+        corosReady={metrics.corosReady}
+        syncStatus={syncStatus}
+        lastUpdated={race.updated_at}
+        dark
+        busy={busy}
+        downloadProgress={downloadProgress}
+        sourceBadge={companionSourceBadge(race)}
+        subtitle={race.has_bundle ? null : "Not analyzed"}
+        staggerIndex={staggerIndex}
+        onOpen={onOpen}
+      />
       <button
         type="button"
         disabled={busy}
@@ -133,7 +104,7 @@ function RaceCard({
           onDelete();
         }}
         aria-label={`Delete ${race.name}`}
-        className="absolute right-3 top-3 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+        className="absolute right-3 top-3 z-10 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
@@ -294,29 +265,30 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-      <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-safe-top">
+      <header className="urp-animate-fade-up flex shrink-0 items-start justify-between gap-4 px-5 pb-4 pt-safe-top">
         <div className="min-w-0 flex-1">
-          <p className="text-2xl font-semibold tracking-tight text-white">{greeting}</p>
-          <p className="mt-1 text-sm text-white/45">Your races</p>
+          <p className="text-[1.75rem] font-semibold tracking-tight text-white">{greeting}</p>
+          <p className="mt-1.5 text-sm text-white/50">Your races</p>
           {autoSyncing ? (
-            <p className="mt-1 text-xs font-medium text-sky-300">Checking cloud for updates…</p>
+            <p className="mt-2 text-xs font-medium text-sky-300">Checking cloud for updates…</p>
           ) : updatesAvailable > 0 ? (
-            <p className="mt-1 text-xs font-medium text-orange-300">
+            <p className="mt-2 text-xs font-medium text-orange-300">
               {updatesAvailable} update{updatesAvailable === 1 ? "" : "s"} available
             </p>
           ) : (
-            <p className="mt-1 text-xs text-white/30">Checked {lastCheckLabel}</p>
+            <p className="mt-2 text-xs text-white/30">Checked {lastCheckLabel}</p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <button
-            type="button"
+          <Button
+            variant="secondary"
+            size="sm"
+            dark
             disabled={checking}
             onClick={() => void checkForUpdates().catch(() => undefined)}
-            className="min-h-[40px] rounded-full border border-white/15 bg-white/5 px-3 text-xs font-semibold text-white/85 disabled:opacity-50"
           >
-            {checking ? "Refreshing…" : "Refresh routes"}
-          </button>
+            {checking ? "Refreshing…" : "Refresh"}
+          </Button>
           <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
             <Avatar
               name={getDisplayName(user)}
@@ -328,7 +300,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
         <input
           ref={fileInputRef}
           type="file"
@@ -340,8 +312,11 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           }}
         />
 
-        <button
-          type="button"
+        <Button
+          variant="primary"
+          size="lg"
+          dark
+          className="mb-6 w-full"
           onClick={() => {
             if (!online) {
               setActionError("Connect to the internet to import and analyze a GPX route.");
@@ -353,18 +328,21 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
             }
             fileInputRef.current?.click();
           }}
-          className="mb-4 flex w-full min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 text-base font-semibold text-emerald-200 transition hover:bg-emerald-500/15"
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400 text-lg font-bold text-black">
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/20 text-lg font-bold">
             +
           </span>
           New Race
-        </button>
+        </Button>
 
         {!online ? (
-          <p className="mb-3 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
-            Offline — downloaded races still work. Import and cloud sync need internet.
-          </p>
+          <EmptyState
+            dark
+            className="mb-6 rounded-2xl bg-white/[0.02] py-10"
+            illustration={<NoInternetIllustration />}
+            title="You're offline"
+            description="Downloaded races still work. Import and cloud sync need an internet connection."
+          />
         ) : null}
 
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
@@ -388,8 +366,8 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           </p>
         ) : null}
 
-        {syncDebugLog.length > 0 ? (
-          <details className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-white/55">
+        {import.meta.env.DEV && syncDebugLog.length > 0 ? (
+          <details className="mb-4 rounded-xl bg-white/[0.02] px-3 py-2 text-xs text-white/55 ring-1 ring-white/10">
             <summary className="cursor-pointer font-medium text-white/70">Sync debug log</summary>
             <ul className="mt-2 space-y-1">
               {syncDebugLog.map((entry) => (
@@ -402,32 +380,42 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         ) : null}
 
         {loading ? (
-          <div className="space-y-3">
-            <RaceCardSkeleton />
-            <RaceCardSkeleton />
+          <div className="space-y-4">
+            <RaceCardSkeleton dark />
+            <RaceCardSkeleton dark />
           </div>
         ) : sections.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-12 text-center">
-            <p className="text-base font-medium text-white">No races yet</p>
-            <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/50">
-              Tap <span className="font-medium text-white/70">New Race</span> to import a GPX from
-              Files, AirDrop, Komoot, or RideWithGPS — full analysis runs in the cloud.
-            </p>
-          </div>
+          <EmptyState
+            dark
+            illustration={<NoRacesIllustration />}
+            title="No races yet"
+            description="Import a GPX from Files, AirDrop, Komoot, or RideWithGPS — full analysis runs in the cloud."
+            action={
+              online && canImport ? (
+                <Button
+                  variant="primary"
+                  dark
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <ImportGpxIllustration className="h-5 w-5" />
+                  Import GPX
+                </Button>
+              ) : null
+            }
+          />
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {sections.map((section) => (
               <section key={section.id}>
-                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/35">
-                  {section.title}
-                </h2>
-                <ul className="space-y-3">
-                  {section.races.map((race) => (
+                <SectionHeader dark title={section.title} className="mb-4" />
+                <ul className="space-y-4">
+                  {section.races.map((race, index) => (
                     <li key={race.id}>
-                      <RaceCard
+                      <CompanionRaceCard
                         race={race}
                         busy={busyRaceId === race.id}
                         downloadProgress={busyRaceId === race.id ? downloadProgress : null}
+                        staggerIndex={Math.min(index + 1, 4)}
                         onOpen={() => void handleOpenRace(race)}
                         onDelete={() => setDeleteTarget(race)}
                       />

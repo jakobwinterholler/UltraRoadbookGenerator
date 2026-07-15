@@ -242,21 +242,25 @@ export default function App() {
     }
 
     return (
-      <HomeScreen
-        onOpenAccount={() => setHomeTab("account")}
-        onOpenRace={openRace}
-        deepLink={deepLink}
-      />
+      <div key="home" className="urp-animate-fade-up">
+        <HomeScreen
+          onOpenAccount={() => setHomeTab("account")}
+          onOpenRace={openRace}
+          deepLink={deepLink}
+        />
+      </div>
     );
   }
 
   if (!bundle || !contextValue) {
     return (
-      <HomeScreen
-        onOpenAccount={() => setHomeTab("account")}
-        onOpenRace={openRace}
-        deepLink={deepLink}
-      />
+      <div key="home-fallback" className="urp-animate-fade-up">
+        <HomeScreen
+          onOpenAccount={() => setHomeTab("account")}
+          onOpenRace={openRace}
+          deepLink={deepLink}
+        />
+      </div>
     );
   }
 
@@ -265,7 +269,7 @@ export default function App() {
 
   return (
     <CompanionContext.Provider value={contextValue}>
-      <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
+      <div key="race" className="urp-animate-workspace-enter flex h-full min-h-0 flex-col bg-[#0a0a0a]">
         <AppUpdateBanner />
         {showExecutionHeader ? (
           <ExecutionHeader trailing={headerTrailing} />
@@ -274,7 +278,7 @@ export default function App() {
           <RaceDataBanner bundle={bundle} onBundleUpdate={updateBundle} />
         ) : null}
 
-        <main className="min-h-0 flex-1 animate-tab-in" key={tab}>
+        <main className="min-h-0 flex-1 urp-animate-fade-in" key={tab}>
           {tab === "map" ? (
             <MapScreen />
           ) : tab === "resupply" ? (

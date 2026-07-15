@@ -1,5 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
+import { Button } from "@shared/ui/Button";
+import { EmptyState } from "@shared/ui/EmptyState";
+import { SectionHeader } from "@shared/ui/SectionHeader";
+import { RaceCardSkeleton } from "@shared/ui/Skeleton";
+import { NoRacesIllustration } from "@shared/ui/design/illustrations";
 import { getDesktopRaceSyncStatus } from "@shared/ui/SyncStatusBadge";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getPendingSyncRaces, removePendingSyncRace } from "@shared/sync/pendingSync";
@@ -219,48 +224,39 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
   const hasArchived = archivedRaces.length > 0 || races.some((race) => race.archived_at);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-12">
-      <header className="mb-10 flex flex-wrap items-end justify-between gap-4">
+    <div className="mx-auto max-w-5xl px-6 py-14">
+      <header className="urp-animate-fade-up mb-12 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-ink">My Races</h1>
-          <p className="mt-2 text-base text-muted">
+          <h1 className="text-[2rem] font-semibold tracking-tight text-ink">My Races</h1>
+          <p className="mt-3 max-w-lg text-base leading-relaxed text-muted">
             Each race is your workspace — route, analysis, preparation, and exports together.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openCreateDialog}
-          className="rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
-        >
-          New race
-        </button>
+        <Button onClick={openCreateDialog}>New race</Button>
       </header>
 
       {(error || createError || pageError) && !showCreate && (
-        <p className="mb-6 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
+        <p className="mb-8 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
           {error ?? createError ?? pageError}
         </p>
       )}
 
       {loadingRaces && activeRaces.length === 0 ? (
-        <p className="text-sm text-muted">Loading your races…</p>
-      ) : activeRaces.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line bg-card/50 px-8 py-16 text-center">
-          <h2 className="text-xl font-semibold text-ink">No races yet</h2>
-          <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            Upload a GPX to create your first race workspace. Analysis and preparation will live here.
-          </p>
-          <button
-            type="button"
-            onClick={openCreateDialog}
-            className="mt-6 rounded-xl bg-accent px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-accent/90"
-          >
-            Create your first race
-          </button>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <RaceCardSkeleton />
+          <RaceCardSkeleton />
+          <RaceCardSkeleton />
         </div>
+      ) : activeRaces.length === 0 ? (
+        <EmptyState
+          illustration={<NoRacesIllustration />}
+          title="No races yet"
+          description="Upload a GPX to create your first race workspace. Analysis and preparation will live here."
+          action={<Button onClick={openCreateDialog}>Create your first race</Button>}
+        />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {activeRaces.map((race) => (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {activeRaces.map((race, index) => (
             <RaceCard
               key={race.id}
               race={race}
@@ -273,23 +269,26 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
                 Boolean(user),
                 pendingSync,
               )}
+              staggerIndex={Math.min(index + 1, 4)}
             />
           ))}
         </div>
       )}
 
       {hasArchived ? (
-        <section className="mt-10">
-          <button
-            type="button"
-            onClick={() => setShowArchived((current) => !current)}
-            className="text-sm font-medium text-muted transition hover:text-ink"
-          >
-            {showArchived ? "Hide archived races" : "Show archived races"}
-          </button>
+        <section className="mt-14">
+          <SectionHeader
+            title="Archived"
+            subtitle={showArchived ? `${archivedRaces.length} archived race${archivedRaces.length === 1 ? "" : "s"}` : undefined}
+            action={
+              <Button variant="ghost" size="sm" onClick={() => setShowArchived((current) => !current)}>
+                {showArchived ? "Hide" : "Show"}
+              </Button>
+            }
+          />
           {showArchived && archivedRaces.length > 0 ? (
-            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {archivedRaces.map((race) => (
+            <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {archivedRaces.map((race, index) => (
                 <RaceCard
                   key={race.id}
                   race={race}
@@ -302,11 +301,12 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
                     Boolean(user),
                     pendingSync,
                   )}
+                  staggerIndex={Math.min(index + 1, 4)}
                 />
               ))}
             </div>
           ) : showArchived ? (
-            <p className="mt-3 text-sm text-muted">No archived races.</p>
+            <p className="mt-4 text-sm text-muted">No archived races.</p>
           ) : null}
         </section>
       ) : null}
@@ -342,7 +342,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
 
       <dialog
         ref={dialogRef}
-        className="w-full max-w-lg rounded-2xl border border-line bg-card p-0 shadow-xl backdrop:bg-ink/20"
+        className="w-full max-w-lg rounded-2xl bg-card p-0 shadow-xl ring-1 ring-black/[0.06] backdrop:bg-ink/20"
         onClose={closeCreateDialog}
       >
         <form
@@ -358,13 +358,9 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
               <h2 className="text-xl font-semibold text-ink">New race</h2>
               <p className="mt-1 text-sm text-muted">Upload a GPX to start a new race workspace.</p>
             </div>
-            <button
-              type="button"
-              onClick={closeCreateDialog}
-              className="rounded-lg px-2 py-1 text-sm text-muted hover:bg-canvas hover:text-ink"
-            >
+            <Button variant="ghost" size="sm" onClick={closeCreateDialog}>
               Close
-            </button>
+            </Button>
           </div>
 
           <div className="mt-6">
@@ -396,7 +392,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
               value={raceName}
               onChange={(event) => setRaceName(event.target.value)}
               placeholder="The Capitals 2026"
-              className="mt-1 w-full rounded-xl border border-line bg-white px-4 py-2.5 text-sm text-ink"
+              className="mt-1 w-full rounded-xl bg-white px-4 py-2.5 text-sm text-ink ring-1 ring-line/80"
             />
           </label>
 
@@ -405,20 +401,12 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
           )}
 
           <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={closeCreateDialog}
-              className="rounded-xl border border-line px-4 py-2 text-sm font-medium text-ink"
-            >
+            <Button variant="secondary" onClick={closeCreateDialog}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={!file || creating}
-              className="rounded-xl bg-accent px-5 py-2 text-sm font-semibold text-white disabled:opacity-50"
-            >
+            </Button>
+            <Button type="submit" disabled={!file || creating}>
               {creating ? "Creating…" : "Create race"}
-            </button>
+            </Button>
           </div>
         </form>
       </dialog>
