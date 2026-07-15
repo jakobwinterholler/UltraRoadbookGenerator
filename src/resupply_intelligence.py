@@ -53,6 +53,8 @@ def _poi_category_key(poi: dict[str, Any], category_key: str) -> str:
         return "fuel"
     if "small supermarket" in lowered or "mini supermarket" in lowered:
         return "small_supermarket"
+    if "convenience" in lowered:
+        return "convenience"
     if "supermarket" in lowered:
         return "large_supermarket"
     if "drinking water" in lowered or category_key == "water":
@@ -75,6 +77,7 @@ def stop_type_priority_boost(poi: dict[str, Any], category_key: str) -> float:
         "fuel": 14.0,
         "small_supermarket": 11.0,
         "water": 9.0,
+        "convenience": 7.0,
         "large_supermarket": 5.0,
         "food": 6.0,
         "other": 0.0,
@@ -132,6 +135,17 @@ def climb_position_bonus(
         return 0.0
 
     climb = _climb_for_km(climbs, poi_km)
+    if climb is not None and kind == "fuel":
+        start = float(climb.get("start_km") or climb.get("startKm") or 0)
+        end = float(climb.get("end_km") or climb.get("endKm") or 0)
+        span = max(end - start, 0.1)
+        progress = (poi_km - start) / span
+        if 0.15 <= progress <= 0.85:
+            bonus = 5.0 + min(4.0, progress * 4.0)
+            if peer_kms and poi_km >= max(peer_kms) - 0.05:
+                bonus += 2.0
+            return bonus
+
     if climb is not None and kind == "water":
         start = float(climb.get("start_km") or climb.get("startKm") or 0)
         end = float(climb.get("end_km") or climb.get("endKm") or 0)
@@ -244,6 +258,8 @@ def build_resupply_reason(
         reasons.append("Fuel station — food, water, toilets, long hours")
     elif kind == "small_supermarket":
         reasons.append("Small supermarket — fast entry, often on route")
+    elif kind == "convenience":
+        reasons.append("Convenience store — quick resupply on route")
     elif kind == "water":
         reasons.append("Drinking water — valuable on climbs and hot sections")
 

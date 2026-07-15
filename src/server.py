@@ -181,7 +181,7 @@ def _race_cache(race_id: str):
 
 @app.get("/api/health")
 def health() -> dict[str, str]:
-    return {"status": "ok", "version": "0.15"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 class AppSettingsBody(BaseModel):
@@ -1054,6 +1054,7 @@ def sync_list_races(
                 "has_bundle": bool(race.get("has_bundle")),
                 "bundle_checksum": race.get("bundle_checksum"),
                 "bundle_schema_version": race.get("bundle_schema_version"),
+                "significant_climb_count": race.get("significant_climb_count"),
             }
             for race in races
         ]

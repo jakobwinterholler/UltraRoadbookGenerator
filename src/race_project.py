@@ -768,6 +768,9 @@ class RaceProjectStore:
             for key, payload in verified_stops.items():
                 if not isinstance(payload, dict):
                     continue
+                if payload.get("_delete"):
+                    race.preparation.verified_stops.pop(str(key), None)
+                    continue
                 race.preparation.verified_stops[str(key)] = VerifiedStopRecord.from_dict(payload)
         race.meta.updated_at = _utc_now()
         if verified_stops is not None and self.has_analysis(race_id):

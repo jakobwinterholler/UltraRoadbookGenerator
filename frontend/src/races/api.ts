@@ -165,7 +165,7 @@ export async function updateRacePreparation(
   raceId: string,
   payload: {
     progress?: Partial<Record<PreparationMilestoneId, boolean>>;
-    verifiedStops?: Record<string, VerifiedStopRecord>;
+    verifiedStops?: Record<string, VerifiedStopRecord | { _delete: true }>;
   },
 ): Promise<{ race: RaceSummary; preparation: RaceDetail["preparation"] }> {
   const body: {
@@ -178,28 +178,33 @@ export async function updateRacePreparation(
   }
   if (payload.verifiedStops) {
     body.verified_stops = Object.fromEntries(
-      Object.entries(payload.verifiedStops).map(([key, record]) => [
-        key,
-        {
-          status: record.status,
-          reject_reason: record.rejectReason,
-          reject_notes: record.rejectNotes,
-          feedback_context: record.feedbackContext
-            ? {
-                zone_id: record.feedbackContext.zoneId,
-                poi_category: record.feedbackContext.poiCategory,
-                category_key: record.feedbackContext.categoryKey,
-                distance_along_km: record.feedbackContext.distanceAlongKm,
-                distance_off_route_m: record.feedbackContext.distanceOffRouteM,
-                fuel_shop_confidence: record.feedbackContext.fuelShopConfidence,
-                poi_name: record.feedbackContext.poiName,
-                algorithm_targets: record.feedbackContext.algorithmTargets,
-              }
-            : undefined,
-          poi_key: record.poiKey,
-          updated_at: record.updatedAt,
-        },
-      ]),
+      Object.entries(payload.verifiedStops).map(([key, record]) => {
+        if ("_delete" in record) {
+          return [key, { _delete: true }];
+        }
+        return [
+          key,
+          {
+            status: record.status,
+            reject_reason: record.rejectReason,
+            reject_notes: record.rejectNotes,
+            feedback_context: record.feedbackContext
+              ? {
+                  zone_id: record.feedbackContext.zoneId,
+                  poi_category: record.feedbackContext.poiCategory,
+                  category_key: record.feedbackContext.categoryKey,
+                  distance_along_km: record.feedbackContext.distanceAlongKm,
+                  distance_off_route_m: record.feedbackContext.distanceOffRouteM,
+                  fuel_shop_confidence: record.feedbackContext.fuelShopConfidence,
+                  poi_name: record.feedbackContext.poiName,
+                  algorithm_targets: record.feedbackContext.algorithmTargets,
+                }
+              : undefined,
+            poi_key: record.poiKey,
+            updated_at: record.updatedAt,
+          },
+        ];
+      }),
     );
   }
 

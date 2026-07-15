@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { ResupplyZone, RouteVisualization } from "../api";
+import type { ResupplyZone, RouteVisualization, RoadbookResult } from "../api";
 import ResupplyZoneCard from "../components/ResupplyZoneCard";
 import PlanningDetailSheet from "../components/planning/PlanningDetailSheet";
 import ResupplyHubDetailContent from "../components/resupply/ResupplyHubDetailContent";
@@ -9,7 +9,7 @@ import {
   filterResupplyZones,
   sortResupplyZones,
 } from "../planning/viewModel";
-import { presentZones } from "../planning/zonePresentation";
+import { presentSuggestedStops } from "../planning/suggestedStops";
 import type { DetourFilter, ResupplyCategoryFilter } from "../planning/types";
 import type { StopSelection } from "../planning/stopSelection";
 import { zoneAvailability } from "../planning/stopAvailability";
@@ -53,15 +53,18 @@ export default function ResupplyPage({ zones, route, totalKm }: ResupplyPageProp
     resupplySort,
     setResupplySort,
     timeMode,
-    zoneDensity,
   } = usePlanning();
   const { arrivalTimeWindow } = usePlanningAssumptions();
   const [detailSelection, setDetailSelection] = useState<StopSelection>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
 
   const planningZones = useMemo(
-    () => presentZones(zones, timeMode, zoneDensity, totalKm, route),
-    [zones, timeMode, zoneDensity, totalKm, route],
+    () =>
+      presentSuggestedStops(
+        { resupply_zones: zones, route, summary: { distance_km: totalKm } } as RoadbookResult,
+        timeMode,
+      ),
+    [zones, route, totalKm, timeMode],
   );
 
   const visibleZones = useMemo(() => {

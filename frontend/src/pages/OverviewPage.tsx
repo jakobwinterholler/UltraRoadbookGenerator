@@ -14,7 +14,7 @@ import {
   buildRouteHighlights,
   dashboardOverviewHighlights,
 } from "../planning/routeHighlights";
-import { presentZones } from "../planning/zonePresentation";
+import { presentSuggestedStops } from "../planning/suggestedStops";
 import CompanionVerificationReview from "../components/verification/CompanionVerificationReview";
 import { PreparationProgress } from "../components/races/RaceCard";
 import { useRace } from "../races/RaceContext";
@@ -95,7 +95,7 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
   useRenderTrace("render.dashboard.start", "render.dashboard.done");
   const { activeRace, refreshRaces, verifiedStops } = useRace();
   const { settings } = useSettings();
-  const { timeMode, zoneDensity, setPlanningIntent } = usePlanning();
+  const { timeMode, setPlanningIntent } = usePlanning();
   const { hoveredHighlightId, setHoveredHighlightId } = useHighlightHoverSync();
 
   const dashboardStats = useMemo(() => {
@@ -112,15 +112,8 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
   }, [result, settings?.planning, verifiedStops]);
 
   const presentedZones = useMemo(
-    () =>
-      presentZones(
-        result.resupply_zones,
-        timeMode,
-        zoneDensity,
-        result.summary.distance_km,
-        result.route,
-      ),
-    [result.resupply_zones, timeMode, zoneDensity, result.summary.distance_km, result.route],
+    () => presentSuggestedStops(result, timeMode),
+    [result, timeMode],
   );
 
   const highlights = useMemo(

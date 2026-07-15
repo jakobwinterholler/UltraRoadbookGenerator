@@ -34,6 +34,11 @@ class ResupplyIntelligenceTests(unittest.TestCase):
         large = stop_type_priority_boost({"poi_category": "Supermarket"}, "food")
         self.assertGreater(small, large)
 
+    def test_convenience_outranks_large_supermarket(self) -> None:
+        convenience = stop_type_priority_boost({"poi_category": "Convenience store"}, "food")
+        large = stop_type_priority_boost({"poi_category": "Supermarket"}, "food")
+        self.assertGreater(convenience, large)
+
     def test_water_on_climb_favours_later_fountain(self) -> None:
         climbs = [{"id": "C001", "start_km": 10.0, "end_km": 15.0}]
         bottom = {
