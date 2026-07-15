@@ -17,7 +17,7 @@ interface VerificationSwipeStackProps {
   gpsLat: number | null;
   gpsLon: number | null;
   routeCoordinates?: [number, number][];
-  onAction: (stop: CompanionStop, action: VerificationAction) => void;
+  onAction: (stop: CompanionStop, action: VerificationAction) => Promise<boolean>;
   onOpenDetails?: (stop: CompanionStop) => void;
 }
 
@@ -72,7 +72,7 @@ function SwipeCard({
   routeCoordinates?: [number, number][];
   style: React.CSSProperties;
   isTop: boolean;
-  onAction: (action: VerificationAction) => void;
+  onAction: (action: VerificationAction) => Promise<boolean>;
   onOpenDetails?: (stop: CompanionStop) => void;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -93,19 +93,33 @@ function SwipeCard({
 
   const finishExit = useCallback(
     (direction: ExitDirection, action: VerificationAction) => {
-      setExiting(direction);
-      window.setTimeout(() => onAction(action), EXIT_MS);
+      void (async () => {
+        const ok = await onAction(action);
+        if (!ok) {
+          applyOffset(0);
+          setExiting(null);
+          return;
+        }
+        setExiting(direction);
+      })();
     },
-    [onAction],
+    [applyOffset, onAction],
   );
 
   const finishSwipe = useCallback(
     (direction: "left" | "right") => {
       const action = direction === "right" ? "verified" : "skip";
-      setExiting(direction);
-      const exitX = direction === "right" ? window.innerWidth * 1.2 : -window.innerWidth * 1.2;
-      applyOffset(exitX);
-      window.setTimeout(() => onAction(action), EXIT_MS);
+      void (async () => {
+        const ok = await onAction(action);
+        if (!ok) {
+          applyOffset(0);
+          setExiting(null);
+          return;
+        }
+        setExiting(direction);
+        const exitX = direction === "right" ? window.innerWidth * 1.2 : -window.innerWidth * 1.2;
+        applyOffset(exitX);
+      })();
     },
     [applyOffset, onAction],
   );
@@ -353,12 +367,15 @@ export default function VerificationSwipeStack({
   }, [stops]);
 
   const handleAction = useCallback(
-    (action: VerificationAction) => {
+    async (action: VerificationAction) => {
       if (!current) {
-        return;
+        return false;
       }
-      onAction(current, action);
-      setIndex((value) => value + 1);
+      const ok = await onAction(current, action);
+      if (ok) {
+        setIndex((value) => value + 1);
+      }
+      return ok;
     },
     [current, onAction],
   );
@@ -395,7 +412,7 @@ export default function VerificationSwipeStack({
             routeCoordinates={routeCoordinates}
             isTop={false}
             style={{ zIndex: 1 }}
-            onAction={() => {}}
+            onAction={() => Promise.resolve(false)}
           />
         ) : null}
         <SwipeCard

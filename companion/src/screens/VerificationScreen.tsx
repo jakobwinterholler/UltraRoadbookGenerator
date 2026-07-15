@@ -25,6 +25,7 @@ export default function VerificationScreen() {
   const { user } = useAuth();
   const { submitVerification } = useVerificationActions(user?.id ?? null);
   const [detailStop, setDetailStop] = useState<CompanionStop | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const queue = useMemo(
     () =>
@@ -43,11 +44,17 @@ export default function VerificationScreen() {
 
   const statsLine = useMemo(() => verificationStatsLine(bundle), [bundle]);
 
-  async function handleAction(stop: CompanionStop, action: VerificationAction) {
-    await submitVerification(stop, {
+  async function handleAction(stop: CompanionStop, action: VerificationAction): Promise<boolean> {
+    setActionError(null);
+    const result = await submitVerification(stop, {
       ...updatesForAction(action),
       category: stop.category,
     });
+    if (!result.ok) {
+      setActionError(result.error ?? "Could not save verification.");
+      return false;
+    }
+    return true;
   }
 
   return (
@@ -64,6 +71,11 @@ export default function VerificationScreen() {
             </p>
           ) : null}
         </div>
+        {actionError ? (
+          <p className="mt-2 rounded-lg border border-red-400/25 bg-red-500/10 px-3 py-2 text-xs font-medium text-red-200">
+            {actionError}
+          </p>
+        ) : null}
       </header>
 
       <div className="verify-tab__stack min-h-0 flex-1">
@@ -73,9 +85,7 @@ export default function VerificationScreen() {
           gpsLat={gps.lat}
           gpsLon={gps.lon}
           routeCoordinates={bundle.route.coordinates}
-          onAction={(stop, action) => {
-            void handleAction(stop, action);
-          }}
+          onAction={(stop, action) => handleAction(stop, action)}
           onOpenDetails={setDetailStop}
         />
       </div>

@@ -29,10 +29,10 @@ export function sameStop(
 }
 
 export function stopMatchesSubmission(
-  stop: CompanionStop,
+  stop: Pick<CompanionStop, "poiId" | "zoneId">,
   submission: CompanionVerificationSubmission,
 ): boolean {
-  if (submission.poiId && stop.poiId) {
+  if (submission.poiId) {
     return stop.poiId === submission.poiId;
   }
   return stop.zoneId === submission.zoneId;

@@ -104,7 +104,10 @@ export function bundleNeedsUpdate(input: {
   if (input.cloudRevision > input.localRevision) {
     return true;
   }
+  // Local verification bumps checksum before cloud sync completes — do not
+  // treat that drift as a stale bundle when local revision is already ahead.
   if (
+    input.cloudRevision >= input.localRevision &&
     input.cloudChecksum &&
     input.localChecksum &&
     input.cloudChecksum !== input.localChecksum

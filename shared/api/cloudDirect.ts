@@ -1,6 +1,6 @@
 import { getSupabaseClient } from "../auth/supabaseClient";
 import { resolveVerifiedStopRecord } from "../race/poiId";
-import type { CompanionBundle, SyncRaceSummary } from "../types/sync";
+import type { CompanionBundle, CompanionStop, CompanionStopAlternative, SyncRaceSummary } from "../types/sync";
 import {
   formatBundlePrepareFailure,
   prepareCompanionBundle,
@@ -52,6 +52,81 @@ function applyVerificationToPreparation(
   };
 }
 
+function applyVerifiedRecordToStop(
+  stop: CompanionStop,
+  record: { status?: string; reject_notes?: string; updated_at?: string },
+): CompanionStop {
+  if (record.status === "verified") {
+    return {
+      ...stop,
+      verificationStatus: "verified",
+      verificationDate: record.updated_at ?? null,
+    };
+  }
+  if (record.status === "rejected" || record.status === "deferred") {
+    return {
+      ...stop,
+      verificationStatus: "needs_review",
+      notes: record.reject_notes?.trim() || stop.notes,
+    };
+  }
+  return stop;
+}
+
+function applyVerifiedRecordToAlternative(
+  alternative: CompanionStopAlternative,
+  record: { status?: string; updated_at?: string },
+): CompanionStopAlternative {
+  if (record.status === "verified") {
+    return {
+      ...alternative,
+      verificationStatus: "verified",
+    };
+  }
+  if (record.status === "rejected" || record.status === "deferred") {
+    return {
+      ...alternative,
+      verificationStatus: "needs_review",
+    };
+  }
+  return alternative;
+}
+
+function patchStopFromPreparation(
+  stop: CompanionStop,
+  verifiedStops: Record<string, { status?: string; reject_notes?: string; updated_at?: string }>,
+): CompanionStop {
+  const patchAlternative = (alternative: CompanionStopAlternative) => {
+    const { record } = resolveVerifiedStopRecord(
+      verifiedStops as Record<string, unknown>,
+      stop.zoneId,
+      alternative.poiId ?? (alternative.osmId != null ? `poi_${alternative.osmId}` : null),
+    );
+    if (!record) {
+      return alternative;
+    }
+    return applyVerifiedRecordToAlternative(alternative, record);
+  };
+
+  const { record } = resolveVerifiedStopRecord(
+    verifiedStops as Record<string, unknown>,
+    stop.zoneId,
+    stop.poiId,
+  );
+
+  let next: CompanionStop = {
+    ...stop,
+    alternatives: stop.alternatives?.map(patchAlternative),
+    nearbyAlternatives: stop.nearbyAlternatives?.map(patchAlternative),
+  };
+
+  if (record) {
+    next = applyVerifiedRecordToStop(next, record);
+  }
+
+  return next;
+}
+
 function patchBundleFromPreparation(
   bundle: CompanionBundle,
   preparation: Record<string, unknown>,
@@ -61,31 +136,7 @@ function patchBundleFromPreparation(
     string,
     { status?: string; reject_notes?: string; updated_at?: string }
   >;
-  const stops = bundle.stops.map((stop) => {
-    const { record } = resolveVerifiedStopRecord(
-      verifiedStops as Record<string, unknown>,
-      stop.zoneId,
-      stop.poiId,
-    );
-    if (!record) {
-      return stop;
-    }
-    if (record.status === "verified") {
-      return {
-        ...stop,
-        verificationStatus: "verified" as const,
-        verificationDate: (record.updated_at as string | undefined) ?? null,
-      };
-    }
-    if (record.status === "rejected" || record.status === "deferred") {
-      return {
-        ...stop,
-        verificationStatus: "needs_review" as const,
-        notes: (record.reject_notes as string | undefined)?.trim() || stop.notes,
-      };
-    }
-    return stop;
-  });
+  const stops = bundle.stops.map((stop) => patchStopFromPreparation(stop, verifiedStops));
   const verifiedCount = stops.filter((stop) => stop.verificationStatus === "verified").length;
   const unverifiedCount = stops.length - verifiedCount;
   return {

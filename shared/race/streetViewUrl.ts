@@ -24,7 +24,6 @@ export interface StreetViewUrlOptions {
 
 const DEFAULT_FOV = 75;
 const DEFAULT_PITCH = 0;
-const DEFAULT_APPROACH_OFFSET_M = 40;
 
 /** Real Google Place IDs start with ChI/GhI/EhI — OSM tags are often not valid. */
 export function isGooglePlaceId(value: string | null | undefined): boolean {
@@ -59,8 +58,8 @@ interface ApproachCamera {
 }
 
 /**
- * Computes camera heading from the route approach toward the POI entrance.
- * Viewpoint for the URL stays at the POI — Google picks the nearest road panorama.
+ * Places the Street View camera on the route at the stop km, facing the POI.
+ * Gas stations and other off-route POIs otherwise snap to the wrong road panorama.
  */
 export function computeStreetViewApproach(
   location: StreetViewLocation,
@@ -68,27 +67,18 @@ export function computeStreetViewApproach(
 ): ApproachCamera {
   const poi = { lat: location.lat, lon: location.lon };
   const coords = options?.routeCoordinates;
-  const offsetM = options?.approachOffsetM ?? DEFAULT_APPROACH_OFFSET_M;
 
   if (coords?.length && location.routeKm != null) {
     const track = buildRouteTrack(coords, options?.totalDistanceKm);
-    const offsetKm = offsetM / 1000;
-    const approachKm = Math.max(0, location.routeKm - offsetKm);
-    const routePoint = interpolateTrackAtKm(track, approachKm);
-    const approach = { lat: routePoint.lat, lon: routePoint.lon };
+    const routePoint = interpolateTrackAtKm(track, location.routeKm);
+    const viewpoint = { lat: routePoint.lat, lon: routePoint.lon };
 
-    if (haversineM(approach.lat, approach.lon, poi.lat, poi.lon) >= 5) {
+    if (haversineM(viewpoint.lat, viewpoint.lon, poi.lat, poi.lon) >= 5) {
       return {
-        viewpoint: poi,
-        heading: bearingBetween(approach, poi),
+        viewpoint,
+        heading: bearingBetween(viewpoint, poi),
       };
     }
-
-    const atStop = interpolateTrackAtKm(track, location.routeKm);
-    return {
-      viewpoint: poi,
-      heading: bearingBetween({ lat: atStop.lat, lon: atStop.lon }, poi),
-    };
   }
 
   return { viewpoint: poi, heading: 0 };
@@ -132,6 +122,11 @@ export function googleStreetViewUrl(
 
   if (placeId) {
     params.set("query", `place_id:${placeId}`);
+  } else {
+    const query = buildMapsSearchQuery(location);
+    if (query) {
+      params.set("query", query);
+    }
   }
 
   return `https://www.google.com/maps/@?${params.toString()}`;
@@ -156,6 +151,54 @@ export function normalizeWebsite(url: string): string {
     return url;
   }
   return `https://${url}`;
+}
+
+export type StreetViewMetadataStatus = "OK" | "ZERO_RESULTS" | "UNKNOWN";
+
+export interface StreetViewAvailability {
+  available: boolean;
+  status: StreetViewMetadataStatus;
+}
+
+export function parseStreetViewMetadataStatus(status: string | undefined): StreetViewAvailability {
+  if (status === "OK") {
+    return { available: true, status: "OK" };
+  }
+  if (status === "ZERO_RESULTS") {
+    return { available: false, status: "ZERO_RESULTS" };
+  }
+  return { available: true, status: "UNKNOWN" };
+}
+
+/** Check whether Google has Street View coverage near the route approach point. */
+export async function checkStreetViewAvailability(
+  location: StreetViewLocation,
+  options?: StreetViewUrlOptions & { apiKey?: string },
+): Promise<StreetViewAvailability> {
+  const approach = computeStreetViewApproach(location, options);
+  const envKey =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: { VITE_GOOGLE_MAPS_API_KEY?: string } }).env?.VITE_GOOGLE_MAPS_API_KEY
+      : undefined;
+  const params = new URLSearchParams({
+    location: `${approach.viewpoint.lat},${approach.viewpoint.lon}`,
+  });
+  const apiKey = options?.apiKey ?? envKey;
+  if (apiKey) {
+    params.set("key", apiKey);
+  }
+  try {
+    const response = await fetch(
+      `https://maps.googleapis.com/maps/api/streetview/metadata?${params.toString()}`,
+    );
+    if (!response.ok) {
+      return { available: true, status: "UNKNOWN" };
+    }
+    const data = (await response.json()) as { status?: string };
+    return parseStreetViewMetadataStatus(data.status);
+  } catch {
+    return { available: true, status: "UNKNOWN" };
+  }
 }
 
 export function placeIdFromTags(

@@ -1,4 +1,6 @@
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
+import { resolveRenderedStop } from "@shared/race/bundlePois";
 import { computeStopConfidence, stopConfidenceBadgeClass } from "@shared/race/stopConfidence";
 import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionVerificationUpdates } from "@shared/types/verification";
@@ -6,12 +8,13 @@ import type { CompanionBundle, CompanionStop } from "../types";
 import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
 import {
   canVerifyStop,
+  canConfirmOnRoute,
   isVerifiedEverywhere,
   isVerifiedLocally,
   serviceLabels,
   stopStatusLabel,
 } from "../lib/raceExecution";
-import { normalizeWebsite } from "@shared/race/streetViewUrl";
+import { checkStreetViewAvailability, normalizeWebsite } from "@shared/race/streetViewUrl";
 import { buildStopAlternatives, type StopAlternativeView } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import RouteMapView from "./RouteMapView";
@@ -117,13 +120,19 @@ function BackButton({ onClick }: { onClick: () => void }) {
 }
 
 export default function StopSheet({
-  stop,
+  stop: stopProp,
   bundle,
   onClose,
   onSelectAlternative,
 }: StopSheetProps) {
   const { user } = useAuth();
+  const stop = useMemo(
+    () => (stopProp ? resolveRenderedStop(bundle, stopProp) : null),
+    [bundle, stopProp],
+  );
   const { submitVerification } = useVerificationActions(user?.id ?? null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [streetViewAvailable, setStreetViewAvailable] = useState<boolean | null>(null);
   const totalKm = bundle.race.distanceKm;
   const streetViewOptions = {
     routeCoordinates: bundle.route.coordinates,
@@ -131,6 +140,7 @@ export default function StopSheet({
   };
   const alternatives = stop ? buildStopAlternatives(stop, bundle.stops) : [];
   const showVerifyActions = stop ? canVerifyStop(stop.verificationStatus) : false;
+  const showConfirmOnRoute = stop ? canConfirmOnRoute(stop.verificationStatus) : false;
   const confidence = stop
     ? computeStopConfidence({
         verificationStatus: stop.verificationStatus,
@@ -142,11 +152,42 @@ export default function StopSheet({
       })
     : null;
 
+  useEffect(() => {
+    if (!stop) {
+      setStreetViewAvailable(null);
+      return;
+    }
+    let cancelled = false;
+    setStreetViewAvailable(null);
+    void checkStreetViewAvailability(
+      {
+        lat: stop.lat,
+        lon: stop.lon,
+        placeId: stop.placeId,
+        routeKm: stop.km,
+        name: stop.name,
+      },
+      streetViewOptions,
+    ).then((result) => {
+      if (!cancelled) {
+        setStreetViewAvailable(result.available);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [stop?.km, stop?.lat, stop?.lon, stop?.name, stop?.placeId, stop?.poiId]);
+
   async function handleVerify(target: CompanionStop) {
-    await submitVerification(target, {
+    setActionError(null);
+    const result = await submitVerification(target, {
       ...updatesForVerify(),
       category: target.category,
     });
+    if (!result.ok) {
+      setActionError(result.error ?? "Could not verify this stop.");
+      return;
+    }
     onClose();
   }
 
@@ -154,10 +195,15 @@ export default function StopSheet({
     if (!stop) {
       return;
     }
-    await submitVerification(stop, {
+    setActionError(null);
+    const result = await submitVerification(stop, {
       ...updatesForSkip(),
       category: stop.category,
     });
+    if (!result.ok) {
+      setActionError(result.error ?? "Could not skip this stop.");
+      return;
+    }
     onClose();
   }
 
@@ -174,12 +220,14 @@ export default function StopSheet({
 
           <div>
             <div className="flex items-start gap-3">
-              <span className="text-4xl leading-none" aria-hidden>
+              <span className="poi-sheet__icon text-4xl leading-none" aria-hidden>
                 {stop.icon}
               </span>
               <div className="min-w-0 flex-1">
-                <h2 className="text-xl font-semibold leading-snug text-white">{stop.name}</h2>
-                <p className="mt-0.5 text-sm text-white/55">{stop.categoryLabel}</p>
+                <h2 className="poi-sheet__title text-2xl font-bold leading-tight text-white">
+                  {stop.name}
+                </h2>
+                <p className="mt-1 text-sm font-medium text-white/55">{stop.categoryLabel}</p>
               </div>
             </div>
             <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -198,7 +246,7 @@ export default function StopSheet({
             </div>
           </div>
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
+          <dl className="poi-sheet__meta grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
             <div>
               <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Route position</dt>
               <dd className="mt-0.5 tabular-nums text-white/85">
@@ -225,9 +273,76 @@ export default function StopSheet({
             </div>
           </dl>
 
-          <div className="relative h-44 overflow-hidden rounded-2xl border border-white/10">
+          <div className="poi-sheet__map relative h-52 overflow-hidden rounded-2xl border border-sky-400/20 shadow-lg shadow-sky-500/10">
             <RouteMapView embedded focusStop={stop} />
           </div>
+
+          <div className="poi-quick-actions">
+            {showVerifyActions ? (
+              <>
+                <button
+                  type="button"
+                  className="poi-quick-actions__btn poi-quick-actions__btn--verify"
+                  onClick={() => void handleVerify(stop)}
+                >
+                  ✓ Verify
+                </button>
+                <button
+                  type="button"
+                  className="poi-quick-actions__btn poi-quick-actions__btn--skip"
+                  onClick={() => void handleSkip()}
+                >
+                  Skip
+                </button>
+              </>
+            ) : showConfirmOnRoute ? (
+              <button
+                type="button"
+                className="poi-quick-actions__btn poi-quick-actions__btn--verify col-span-2"
+                onClick={() => void handleVerify(stop)}
+              >
+                Confirm on route
+              </button>
+            ) : (
+              <>
+                <span className="poi-quick-actions__btn poi-quick-actions__btn--disabled col-span-2 text-center">
+                  {isVerifiedLocally(stop.verificationStatus)
+                    ? "✓ Verified on this device — syncing"
+                    : isVerifiedEverywhere(stop.verificationStatus)
+                      ? "Verified everywhere"
+                      : "Verification complete"}
+                </span>
+              </>
+            )}
+            <a
+              href={googleMapsUrl(stop.lat, stop.lon, stop.placeId)}
+              target="_blank"
+              rel="noreferrer"
+              className="poi-quick-actions__btn poi-quick-actions__btn--maps"
+            >
+              Google Maps
+            </a>
+            {streetViewAvailable === false ? (
+              <span className="poi-quick-actions__btn poi-quick-actions__btn--disabled">
+                Street View unavailable
+              </span>
+            ) : (
+              <a
+                href={googleStreetViewUrl(stop, streetViewOptions)}
+                target="_blank"
+                rel="noreferrer"
+                className="poi-quick-actions__btn poi-quick-actions__btn--streetview"
+              >
+                {streetViewAvailable === null ? "Street View…" : "Street View"}
+              </a>
+            )}
+          </div>
+
+          {actionError ? (
+            <p className="rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-center text-sm font-medium text-red-200">
+              {actionError}
+            </p>
+          ) : null}
 
           {alternatives.length > 0 ? (
             <div>
@@ -290,43 +405,6 @@ export default function StopSheet({
                 })}
               </ul>
             </div>
-          ) : null}
-
-          <a
-            href={googleStreetViewUrl(stop, streetViewOptions)}
-            target="_blank"
-            rel="noreferrer"
-            className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl bg-sky-500 px-4 py-3.5 text-base font-bold text-white shadow-lg shadow-sky-500/25 transition active:scale-[0.98]"
-          >
-            <span aria-hidden>👁</span>
-            Open Street View
-          </a>
-
-          {showVerifyActions ? (
-            <div className="verification-primary-actions">
-              <button
-                type="button"
-                className="verification-primary-btn verification-primary-btn--verify"
-                onClick={() => void handleVerify(stop)}
-              >
-                ✓ Verify
-              </button>
-              <button
-                type="button"
-                className="verification-primary-btn verification-primary-btn--skip"
-                onClick={() => void handleSkip()}
-              >
-                Skip
-              </button>
-            </div>
-          ) : isVerifiedLocally(stop.verificationStatus) ? (
-            <p className="rounded-xl border border-sky-400/20 bg-sky-500/8 px-4 py-3 text-center text-sm font-medium text-sky-200/90">
-              ✓ Verified on this device — syncing to desktop
-            </p>
-          ) : isVerifiedEverywhere(stop.verificationStatus) ? (
-            <p className="rounded-xl border border-emerald-400/20 bg-emerald-500/8 px-4 py-3 text-center text-sm font-medium text-emerald-200/90">
-              Verified everywhere
-            </p>
           ) : null}
 
           <div className="grid grid-cols-3 gap-2">

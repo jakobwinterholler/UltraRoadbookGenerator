@@ -18,6 +18,17 @@ import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const FOLLOW_ZOOM = 14;
+const EMBEDDED_FOCUS_ZOOM = 17;
+const EMBEDDED_FOCUS_OFFSET: [number, number] = [0, -90];
+const FOCUS_ANIMATION_MS = 800;
+
+function stopPoiId(stop: Pick<CompanionStop, "poiId" | "zoneId">): string {
+  return stop.poiId ?? `zone-${stop.zoneId}`;
+}
+
+function isStopVerified(status: CompanionStop["verificationStatus"]): boolean {
+  return status === "verified" || status === "pending";
+}
 
 export interface RouteMapHandle {
   recenter: () => void;
@@ -36,22 +47,30 @@ interface RouteMapViewProps {
 function stopsGeoJson(
   stops: CompanionStop[],
   selectedPoiId: string | null,
+  focusPoiId: string | null,
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: stops.map((stop) => ({
-      type: "Feature",
-      properties: {
-        zoneId: stop.zoneId,
-        poiId: stop.poiId ?? `zone-${stop.zoneId}`,
-        verified: stop.verificationStatus === "verified" ? 1 : 0,
-        selected: selectedPoiId != null && stop.poiId === selectedPoiId ? 1 : 0,
-      },
-      geometry: {
-        type: "Point",
-        coordinates: [stop.lon, stop.lat],
-      },
-    })),
+    features: stops.map((stop) => {
+      const poiId = stopPoiId(stop);
+      const isFocus = focusPoiId != null && poiId === focusPoiId;
+      const isSelected = selectedPoiId != null && stop.poiId === selectedPoiId;
+      const dimmed = focusPoiId != null && !isFocus && !isSelected;
+      return {
+        type: "Feature",
+        properties: {
+          zoneId: stop.zoneId,
+          poiId,
+          verified: isStopVerified(stop.verificationStatus) ? 1 : 0,
+          selected: isFocus || isSelected ? 1 : 0,
+          dimmed: dimmed ? 1 : 0,
+        },
+        geometry: {
+          type: "Point",
+          coordinates: [stop.lon, stop.lat],
+        },
+      };
+    }),
   };
 }
 
@@ -176,6 +195,8 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     return resolveRenderedStop(bundle, selectedStop);
   }, [bundle, selectedStop]);
   const selectedMarkerPoiId = selectedRenderedStop?.poiId ?? selectedStop?.poiId ?? null;
+  const focusPoiId = focusStop ? stopPoiId(focusStop) : null;
+  const embeddedFocus = embedded && focusStop != null;
 
   stopsRef.current = visibleStops;
   onClimbSelectRef.current = onClimbSelect;
@@ -269,9 +290,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         type: "line",
         source: "route",
         paint: {
-          "line-color": "#93c5fd",
-          "line-width": embedded ? 8 : 10,
-          "line-opacity": 0.45,
+          "line-color": embeddedFocus ? "#60a5fa" : "#93c5fd",
+          "line-width": embeddedFocus ? 10 : embedded ? 8 : 10,
+          "line-opacity": embeddedFocus ? 0.55 : 0.45,
         },
       });
 
@@ -280,8 +301,8 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         type: "line",
         source: "route",
         paint: {
-          "line-color": "#2563eb",
-          "line-width": embedded ? 4 : 5,
+          "line-color": embeddedFocus ? "#38bdf8" : "#2563eb",
+          "line-width": embeddedFocus ? 5 : embedded ? 4 : 5,
           "line-opacity": 1,
         },
       });
@@ -381,19 +402,21 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
 
       map.addSource("stops", {
         type: "geojson",
-        data: stopsGeoJson(visibleStops, selectedMarkerPoiId),
+        data: stopsGeoJson(visibleStops, selectedMarkerPoiId, focusPoiId),
       });
 
       map.addLayer({
         id: "stops-unverified",
         type: "circle",
         source: "stops",
-        filter: ["==", ["get", "verified"], 0],
+        filter: ["all", ["==", ["get", "verified"], 0], ["==", ["get", "selected"], 0]],
         paint: {
-          "circle-radius": embedded ? 8 : 11,
+          "circle-radius": embeddedFocus ? 5 : embedded ? 8 : 11,
           "circle-color": "#64748b",
-          "circle-stroke-width": 2,
+          "circle-opacity": embeddedFocus ? 0.35 : 1,
+          "circle-stroke-width": embeddedFocus ? 1 : 2,
           "circle-stroke-color": "#ffffff",
+          "circle-stroke-opacity": embeddedFocus ? 0.5 : 1,
         },
       });
 
@@ -401,12 +424,14 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         id: "stops-verified-bg",
         type: "circle",
         source: "stops",
-        filter: ["==", ["get", "verified"], 1],
+        filter: ["all", ["==", ["get", "verified"], 1], ["==", ["get", "selected"], 0]],
         paint: {
-          "circle-radius": embedded ? 9 : 12,
+          "circle-radius": embeddedFocus ? 5 : embedded ? 9 : 12,
           "circle-color": "#10b981",
-          "circle-stroke-width": 2,
+          "circle-opacity": embeddedFocus ? 0.35 : 1,
+          "circle-stroke-width": embeddedFocus ? 1 : 2,
           "circle-stroke-color": "#ffffff",
+          "circle-stroke-opacity": embeddedFocus ? 0.5 : 1,
         },
       });
 
@@ -416,9 +441,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         source: "stops",
         filter: ["==", ["get", "selected"], 1],
         paint: {
-          "circle-radius": embedded ? 16 : 22,
+          "circle-radius": embeddedFocus ? 22 : embedded ? 16 : 22,
           "circle-color": "#38bdf8",
-          "circle-opacity": 0.25,
+          "circle-opacity": embeddedFocus ? 0.35 : 0.25,
           "circle-stroke-width": 0,
         },
       });
@@ -429,23 +454,36 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         source: "stops",
         filter: ["==", ["get", "selected"], 1],
         paint: {
-          "circle-radius": embedded ? 12 : 16,
-          "circle-color": "transparent",
-          "circle-stroke-width": 3,
+          "circle-radius": embeddedFocus ? 14 : embedded ? 12 : 16,
+          "circle-color": embeddedFocus ? "#38bdf8" : "transparent",
+          "circle-stroke-width": embeddedFocus ? 0 : 3,
           "circle-stroke-color": "#38bdf8",
         },
       });
 
-      if (!embedded) {
-        map.addSource("rider", {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "Point", coordinates: [0, 0] },
-          },
-        });
+      map.addLayer({
+        id: "stops-selected-core",
+        type: "circle",
+        source: "stops",
+        filter: ["==", ["get", "selected"], 1],
+        paint: {
+          "circle-radius": embeddedFocus ? 10 : 0,
+          "circle-color": "#ffffff",
+          "circle-stroke-width": embeddedFocus ? 3 : 0,
+          "circle-stroke-color": "#38bdf8",
+        },
+      });
 
+      map.addSource("rider", {
+        type: "geojson",
+        data: {
+          type: "Feature",
+          properties: {},
+          geometry: { type: "Point", coordinates: [0, 0] },
+        },
+      });
+
+      if (!embedded) {
         map.addLayer({
           id: "rider-pulse",
           type: "circle",
@@ -465,6 +503,19 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
             "circle-radius": 8,
             "circle-color": "#0ea5e9",
             "circle-stroke-width": 3,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+      } else {
+        map.addLayer({
+          id: "rider-core",
+          type: "circle",
+          source: "rider",
+          layout: { visibility: "none" },
+          paint: {
+            "circle-radius": 7,
+            "circle-color": "#0ea5e9",
+            "circle-stroke-width": 2,
             "circle-stroke-color": "#ffffff",
           },
         });
@@ -538,9 +589,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       return;
     }
     (map.getSource("stops") as maplibregl.GeoJSONSource).setData(
-      stopsGeoJson(visibleStops, selectedMarkerPoiId),
+      stopsGeoJson(visibleStops, selectedMarkerPoiId, focusPoiId),
     );
-  }, [visibleStops, selectedMarkerPoiId]);
+  }, [focusPoiId, selectedMarkerPoiId, visibleStops]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -571,7 +622,10 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       properties: {},
       geometry: { type: "Point", coordinates: [gps.lon, gps.lat] },
     });
-  }, [gps.lat, gps.lon]);
+    if (embedded && map.getLayer("rider-core")) {
+      map.setLayoutProperty("rider-core", "visibility", "visible");
+    }
+  }, [embedded, gps.lat, gps.lon]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -603,13 +657,14 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     if (!embedded && followGps) {
       return;
     }
-    map.easeTo({
+    map.flyTo({
       center: [target.lon, target.lat],
-      zoom: embedded ? 14 : map.getZoom(),
-      duration: 350,
+      zoom: embedded ? EMBEDDED_FOCUS_ZOOM : map.getZoom(),
+      offset: embedded ? EMBEDDED_FOCUS_OFFSET : undefined,
+      duration: FOCUS_ANIMATION_MS,
       essential: true,
     });
-  }, [embedded, focusStop?.zoneId, followGps, selectedStop?.zoneId]);
+  }, [embedded, focusStop, followGps, selectedStop]);
 
   useEffect(() => {
     if (followGps) {

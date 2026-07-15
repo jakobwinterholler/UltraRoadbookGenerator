@@ -39,6 +39,7 @@ export function needsCompanionDownload(
     return true;
   }
   if (
+    version >= downloadedRevision &&
     cloud.bundle_checksum &&
     downloadedChecksum &&
     cloud.bundle_checksum !== downloadedChecksum

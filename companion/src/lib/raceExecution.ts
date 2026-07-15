@@ -121,3 +121,7 @@ export function isVerifiedLocally(status: CompanionStop["verificationStatus"]): 
 export function canVerifyStop(status: CompanionStop["verificationStatus"]): boolean {
   return status !== "verified" && status !== "pending";
 }
+
+export function canConfirmOnRoute(status: CompanionStop["verificationStatus"]): boolean {
+  return status === "verified";
+}

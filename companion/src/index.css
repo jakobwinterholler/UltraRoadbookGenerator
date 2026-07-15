@@ -184,6 +184,46 @@ body {
     @apply border border-white/15 bg-white/[0.08] text-white/80;
   }
 
+  .poi-sheet__title {
+    letter-spacing: -0.02em;
+  }
+
+  .poi-sheet__meta dt {
+    @apply min-h-[14px];
+  }
+
+  .poi-sheet__meta dd {
+    @apply min-h-[20px];
+  }
+
+  .poi-quick-actions {
+    @apply grid grid-cols-2 gap-2;
+  }
+
+  .poi-quick-actions__btn {
+    @apply flex min-h-[56px] items-center justify-center rounded-2xl px-3 py-3.5 text-center text-base font-bold transition active:scale-[0.97];
+  }
+
+  .poi-quick-actions__btn--verify {
+    @apply bg-emerald-500 text-white shadow-lg shadow-emerald-500/25;
+  }
+
+  .poi-quick-actions__btn--skip {
+    @apply border border-white/15 bg-white/[0.08] text-white/85;
+  }
+
+  .poi-quick-actions__btn--maps {
+    @apply border border-white/15 bg-white/[0.06] text-white/90;
+  }
+
+  .poi-quick-actions__btn--streetview {
+    @apply bg-sky-500 text-white shadow-lg shadow-sky-500/20;
+  }
+
+  .poi-quick-actions__btn--disabled {
+    @apply border border-white/10 bg-white/[0.03] text-sm font-semibold text-white/35;
+  }
+
   .verification-swipe-card__photo {
     @apply relative flex h-24 shrink-0 flex-col items-center justify-center gap-1 border-t border-dashed border-white/15 bg-white/[0.03];
   }

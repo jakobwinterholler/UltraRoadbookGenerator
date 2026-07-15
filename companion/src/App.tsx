@@ -17,6 +17,7 @@ import ShareScreen from "./screens/ShareScreen";
 import VerificationScreen from "./screens/VerificationScreen";
 import WelcomeScreen from "./screens/WelcomeScreen";
 import { saveCompanionBundle } from "./db";
+import { liveBundleRef } from "./lib/liveBundleRef";
 import { clearCompanionDeepLinkParams, parseCompanionDeepLink } from "./lib/deepLink";
 import { registerLaunchQueueConsumer } from "./lib/incomingGpx";
 import { useRaceGps } from "./lib/useRaceGps";
@@ -67,11 +68,15 @@ export default function App() {
 
   const updateBundle = useCallback((next: CompanionBundle) => {
     setBundle(next);
-    void saveCompanionBundle(next);
+    void saveCompanionBundle(next).catch((err) => {
+      console.error("Failed to persist companion bundle:", err);
+    });
   }, []);
 
+  liveBundleRef.current = bundle;
+
   useVerificationSync(online, user?.id ?? null, {
-    bundle,
+    getBundle: () => liveBundleRef.current,
     onBundleUpdate: updateBundle,
   });
 
