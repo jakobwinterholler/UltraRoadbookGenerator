@@ -1,4 +1,5 @@
 import type { CompanionBundle } from "@shared/types/sync";
+import { importApiAvailable } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
 import { Avatar } from "@shared/ui/AuthScreens";
@@ -8,11 +9,14 @@ import {
 } from "@shared/ui/SyncStatusBadge";
 import { ReadinessScoreBadge } from "@shared/ui/RaceReadinessDisplay";
 import { useEffect, useRef, useState } from "react";
+import GpxImportFlow from "../components/GpxImportFlow";
 import {
   loadCompanionBundle,
   setActiveRaceId,
   type StoredRaceListItem,
 } from "../db";
+import { acceptGpxFile, onIncomingGpxFile } from "../lib/incomingGpx";
+import { buildRaceListSections, formatLastUpdated } from "../lib/raceListSections";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { useCompanionSync } from "../sync/useCompanionSync";
@@ -37,15 +41,83 @@ function RaceCardSkeleton() {
   );
 }
 
-function EmptyRaces() {
+function verifiedPercent(race: StoredRaceListItem): number | null {
+  return race.verified_percent ?? null;
+}
+
+function RaceCard({
+  race,
+  busy,
+  downloadProgress,
+  onOpen,
+}: {
+  race: StoredRaceListItem;
+  busy: boolean;
+  downloadProgress: number | null;
+  onOpen: () => void;
+}) {
+  const syncStatus = getCompanionRaceSyncStatus({ ...race, busy });
+  const badgeLabel =
+    race.offlineReady && race.source === "local-import"
+      ? "Imported"
+      : race.offlineReady
+        ? "Downloaded"
+        : race.has_bundle
+          ? "Cloud"
+          : null;
+
   return (
-    <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-12 text-center">
-      <p className="text-base font-medium text-white">No races yet</p>
-      <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/50">
-        Import and analyze a route in Ultra Roadbook on your computer while signed in. Your races
-        will appear here automatically.
-      </p>
-    </div>
+    <button
+      type="button"
+      disabled={busy}
+      onClick={onOpen}
+      className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-emerald-400/25 hover:bg-white/[0.05]"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-lg font-semibold text-white">{race.name}</p>
+          <p className="mt-1 text-sm tabular-nums text-white/45">
+            {race.distance_km ? `${Math.round(race.distance_km)} km` : "Not analyzed"}
+            {race.elevation_gain_m
+              ? ` · +${Math.round(race.elevation_gain_m).toLocaleString()} m`
+              : ""}
+          </p>
+          <p className="mt-1 text-xs text-white/35">
+            Updated {formatLastUpdated(race.updated_at)}
+          </p>
+          {race.readiness_score != null ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <ReadinessScoreBadge score={race.readiness_score} dark />
+              {verifiedPercent(race) != null ? (
+                <span className="text-[11px] text-white/40">{verifiedPercent(race)}% verified</span>
+              ) : null}
+            </div>
+          ) : null}
+          {busy && downloadProgress !== null ? (
+            <div className="mt-3">
+              <div className="mb-1 flex items-center justify-between text-[11px] text-sky-200/80">
+                <span>Downloading race…</span>
+                <span>{downloadProgress}%</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-sky-400 transition-all duration-200"
+                  style={{ width: `${downloadProgress}%` }}
+                />
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          {badgeLabel ? (
+            <span className="rounded-full bg-white/8 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55">
+              {badgeLabel}
+            </span>
+          ) : null}
+          {syncStatus ? <SyncStatusBadge status={syncStatus} variant="dark" /> : null}
+        </div>
+      </div>
+    </button>
   );
 }
 
@@ -60,14 +132,34 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
     lastCheckLabel,
     syncError,
     syncDebugLog,
-    updateResults,
   } = useCompanionSync();
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const deepLinkHandledRef = useRef(false);
 
   const greeting = getGreeting(getDisplayName(user));
+  const sections = buildRaceListSections(races);
+  const canImport = importApiAvailable();
+
+  useEffect(() => {
+    const onOnline = () => setOnline(true);
+    const onOffline = () => setOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
+    onIncomingGpxFile((file) => setImportFile(file));
+    return () => onIncomingGpxFile(null);
+  }, []);
 
   useEffect(() => {
     if (!deepLink?.raceId || loading || races.length === 0 || deepLinkHandledRef.current) {
@@ -107,7 +199,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       return;
     }
     if (!race.has_bundle) {
-      setActionError("Analyze this race in Ultra Roadbook on your computer, then tap Sync now in Account.");
+      setActionError("This race has not been analyzed yet.");
       return;
     }
 
@@ -135,6 +227,24 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       setBusyRaceId(null);
       window.setTimeout(() => setDownloadProgress(null), 400);
     }
+  }
+
+  function handleFileSelection(fileList: FileList | null) {
+    const file = fileList?.[0];
+    if (!acceptGpxFile(file)) {
+      setActionError("Please choose a .gpx file.");
+      return;
+    }
+    setActionError(null);
+    setImportFile(file!);
+  }
+
+  function handleImportComplete(bundle: CompanionBundle) {
+    setImportFile(null);
+    void refresh().then(() => {
+      void setActiveRaceId(bundle.race.id);
+      onOpenRace(bundle);
+    });
   }
 
   return (
@@ -172,6 +282,44 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".gpx,application/gpx+xml,application/xml,text/xml"
+          className="hidden"
+          onChange={(event) => {
+            handleFileSelection(event.target.files);
+            event.target.value = "";
+          }}
+        />
+
+        <button
+          type="button"
+          onClick={() => {
+            if (!online) {
+              setActionError("Connect to the internet to import and analyze a GPX route.");
+              return;
+            }
+            if (!canImport) {
+              setActionError("Route analysis server is not configured for this build.");
+              return;
+            }
+            fileInputRef.current?.click();
+          }}
+          className="mb-4 flex w-full min-h-[56px] items-center justify-center gap-2 rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 text-base font-semibold text-emerald-200 transition hover:bg-emerald-500/15"
+        >
+          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-400 text-lg font-bold text-black">
+            +
+          </span>
+          New Race
+        </button>
+
+        {!online ? (
+          <p className="mb-3 rounded-xl bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+            Offline — downloaded races still work. Import and cloud sync need internet.
+          </p>
+        ) : null}
+
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
         {syncError ? <p className="mb-3 text-sm text-red-300">{syncError}</p> : null}
         {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
@@ -180,6 +328,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
             {checkMessage}
           </p>
         ) : null}
+
         {syncDebugLog.length > 0 ? (
           <details className="mb-3 rounded-xl border border-white/10 bg-white/[0.02] px-3 py-2 text-xs text-white/55">
             <summary className="cursor-pointer font-medium text-white/70">Sync debug log</summary>
@@ -190,17 +339,6 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
                 </li>
               ))}
             </ul>
-            {updateResults.some((entry) => entry.reason) ? (
-              <ul className="mt-2 space-y-1 border-t border-white/8 pt-2">
-                {updateResults.map((entry) => (
-                  <li key={entry.raceId}>
-                    {entry.name}: {entry.status}
-                    {entry.reason ? ` — ${entry.reason}` : ""}
-                    {entry.error ? ` — ${entry.error}` : ""}
-                  </li>
-                ))}
-              </ul>
-            ) : null}
           </details>
         ) : null}
 
@@ -209,65 +347,47 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
             <RaceCardSkeleton />
             <RaceCardSkeleton />
           </div>
-        ) : races.length === 0 ? (
-          <EmptyRaces />
+        ) : sections.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.02] px-6 py-12 text-center">
+            <p className="text-base font-medium text-white">No races yet</p>
+            <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/50">
+              Tap <span className="font-medium text-white/70">New Race</span> to import a GPX from
+              Files, AirDrop, Komoot, or RideWithGPS — full analysis runs in the cloud.
+            </p>
+          </div>
         ) : (
-          <ul className="space-y-3">
-            {races.map((race) => {
-              const syncStatus = getCompanionRaceSyncStatus({
-                ...race,
-                busy: busyRaceId === race.id,
-              });
-              return (
-                <li key={race.id}>
-                  <button
-                    type="button"
-                    disabled={busyRaceId === race.id}
-                    onClick={() => void handleOpenRace(race)}
-                    className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-emerald-400/25 hover:bg-white/[0.05]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-lg font-semibold text-white">{race.name}</p>
-                        <p className="mt-1 text-sm tabular-nums text-white/45">
-                          {race.distance_km
-                            ? `${Math.round(race.distance_km)} km`
-                            : "Not analyzed"}
-                          {race.elevation_gain_m
-                            ? ` · +${Math.round(race.elevation_gain_m).toLocaleString()} m`
-                            : ""}
-                        </p>
-                        {race.readiness_score != null ? (
-                          <div className="mt-2">
-                            <ReadinessScoreBadge score={race.readiness_score} dark />
-                          </div>
-                        ) : null}
-                        {busyRaceId === race.id && downloadProgress !== null ? (
-                          <div className="mt-3">
-                            <div className="mb-1 flex items-center justify-between text-[11px] text-sky-200/80">
-                              <span>Downloading race…</span>
-                              <span>{downloadProgress}%</span>
-                            </div>
-                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
-                              <div
-                                className="h-full rounded-full bg-sky-400 transition-all duration-200"
-                                style={{ width: `${downloadProgress}%` }}
-                              />
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                      {syncStatus ? (
-                        <SyncStatusBadge status={syncStatus} variant="dark" className="shrink-0" />
-                      ) : null}
-                    </div>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
+          <div className="space-y-6">
+            {sections.map((section) => (
+              <section key={section.id}>
+                <h2 className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/35">
+                  {section.title}
+                </h2>
+                <ul className="space-y-3">
+                  {section.races.map((race) => (
+                    <li key={race.id}>
+                      <RaceCard
+                        race={race}
+                        busy={busyRaceId === race.id}
+                        downloadProgress={busyRaceId === race.id ? downloadProgress : null}
+                        onOpen={() => void handleOpenRace(race)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
         )}
       </div>
+
+      {importFile ? (
+        <GpxImportFlow
+          file={importFile}
+          online={online}
+          onClose={() => setImportFile(null)}
+          onComplete={handleImportComplete}
+        />
+      ) : null}
     </div>
   );
 }

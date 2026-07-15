@@ -18,6 +18,7 @@ import VerificationScreen from "./screens/VerificationScreen";
 import WelcomeScreen from "./screens/WelcomeScreen";
 import { saveCompanionBundle } from "./db";
 import { clearCompanionDeepLinkParams, parseCompanionDeepLink } from "./lib/deepLink";
+import { registerLaunchQueueConsumer } from "./lib/incomingGpx";
 import { useRaceGps } from "./lib/useRaceGps";
 import { useVerificationSync } from "./sync/useVerificationSync";
 
@@ -103,6 +104,10 @@ export default function App() {
     }
     setBootLoading(false);
   }, [isRestoring, session]);
+
+  useEffect(() => {
+    registerLaunchQueueConsumer();
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {

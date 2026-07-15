@@ -642,8 +642,24 @@ class RaceProjectStore:
         return summaries
 
     def create_race(self, *, filename: str, gpx_bytes: bytes, name: str | None = None) -> RaceProject:
-        race_id = str(uuid.uuid4())
+        return self.create_race_with_id(
+            str(uuid.uuid4()),
+            filename=filename,
+            gpx_bytes=gpx_bytes,
+            name=name,
+        )
+
+    def create_race_with_id(
+        self,
+        race_id: str,
+        *,
+        filename: str,
+        gpx_bytes: bytes,
+        name: str | None = None,
+    ) -> RaceProject:
         race_dir = self._race_dir(race_id)
+        if race_dir.exists():
+            raise ValueError(f"Race {race_id} already exists.")
         race_dir.mkdir(parents=True)
         (race_dir / "analysis").mkdir()
         self._exports_dir(race_id).mkdir()
@@ -867,6 +883,28 @@ class RaceProjectStore:
         race = self.get_race(race_id)
         race.meta.archived_at = _utc_now() if archived else None
         race.meta.updated_at = _utc_now()
+        self._save_race(race)
+        return race
+
+    def replace_race_gpx(
+        self,
+        race_id: str,
+        *,
+        filename: str,
+        gpx_bytes: bytes,
+        name: str | None = None,
+    ) -> RaceProject:
+        race = self.get_race(race_id)
+        self._gpx_path(race_id).write_bytes(gpx_bytes)
+        race.meta.gpx_original_name = filename
+        race.meta.gpx_fingerprint = gpx_fingerprint(gpx_bytes)
+        race.meta.updated_at = _utc_now()
+        if name and name.strip():
+            race.meta.name = name.strip()
+        analysis_path = self._analysis_path(race_id)
+        if analysis_path.is_file():
+            analysis_path.unlink()
+        race.analysis = {"latest_snapshot_id": None, "pipeline_version": PIPELINE_VERSION}
         self._save_race(race)
         return race
 

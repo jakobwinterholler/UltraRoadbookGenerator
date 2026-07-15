@@ -38,6 +38,7 @@ from cloud.race_sync import (
     CloudSyncError,
     add_companion_verifications,
     compare_desktop_companion,
+    find_cloud_races_by_gpx_fingerprint,
     get_companion_bundle,
     list_companion_verifications,
     list_sync_races,
@@ -45,6 +46,11 @@ from cloud.race_sync import (
     push_race,
     review_companion_verification,
     soft_delete_race,
+)
+from companion_import import (
+    find_local_duplicates,
+    import_stage_catalog,
+    run_companion_import,
 )
 
 PREVIEW_NO_CACHE_HEADERS = {
@@ -1098,6 +1104,107 @@ def sync_get_original_gpx(race_id: str, user: AuthUser = Depends(require_user)) 
         gpx_path,
         filename=gpx_path.name,
         media_type="application/gpx+xml",
+    )
+
+
+@app.get("/api/sync/import-gpx/stages")
+def sync_import_gpx_stages() -> dict:
+    return {"stages": import_stage_catalog()}
+
+
+@app.get("/api/sync/import-gpx/duplicates")
+def sync_import_gpx_duplicates(
+    fingerprint: str = Query(..., min_length=8, max_length=64),
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    local_matches = [match.to_dict() for match in find_local_duplicates(fingerprint)]
+    cloud_matches: list[dict[str, Any]] = []
+    try:
+        cloud_matches = find_cloud_races_by_gpx_fingerprint(user.id, fingerprint, access_token)
+    except CloudSyncError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    seen: set[str] = set()
+    matches: list[dict[str, Any]] = []
+    for entry in [*local_matches, *cloud_matches]:
+        race_id = str(entry.get("id") or entry.get("race_id") or "")
+        if not race_id or race_id in seen:
+            continue
+        seen.add(race_id)
+        matches.append(
+            {
+                "id": race_id,
+                "name": entry.get("name"),
+                "distance_km": entry.get("distance_km"),
+                "elevation_gain_m": entry.get("elevation_gain_m"),
+                "updated_at": entry.get("updated_at"),
+                "source": "local" if race_id in {m["id"] for m in local_matches} else "cloud",
+            }
+        )
+    return {"fingerprint": fingerprint, "matches": matches}
+
+
+@app.post("/api/sync/import-gpx")
+async def sync_import_gpx(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    name: str | None = Form(default=None),
+    conflict_action: str = Form(default="create"),
+    replace_race_id: str | None = Form(default=None),
+    user: AuthUser = Depends(require_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> StreamingResponse:
+    file_bytes = await file.read()
+    _validate_gpx_upload(file, file_bytes)
+    if conflict_action not in {"create", "replace"}:
+        raise HTTPException(status_code=400, detail="conflict_action must be create or replace.")
+
+    loop = asyncio.get_running_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+    thread = threading.Thread(
+        target=run_companion_import,
+        kwargs={
+            "filename": file.filename or "route.gpx",
+            "gpx_bytes": file_bytes,
+            "name": name,
+            "conflict_action": conflict_action,  # type: ignore[arg-type]
+            "replace_race_id": replace_race_id,
+            "loop": loop,
+            "queue": queue,
+        },
+        daemon=True,
+    )
+    thread.start()
+
+    async def event_stream():
+        import_ok = False
+        race_id: str | None = None
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
+            if isinstance(event, dict):
+                if event.get("type") == "complete":
+                    import_ok = True
+                    race_id = str(event.get("race_id") or "")
+                yield f"data: {json.dumps(event)}\n\n"
+        if import_ok and race_id:
+            try:
+                sync_result = push_race(user.id, race_id, access_token)
+                yield f"data: {json.dumps({'type': 'synced', 'sync': sync_result})}\n\n"
+            except Exception as exc:
+                logger.exception("Cloud push after companion import failed for race %s", race_id)
+                yield f"data: {json.dumps({'type': 'sync_warning', 'detail': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 

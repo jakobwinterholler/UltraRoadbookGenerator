@@ -65,6 +65,32 @@ export default defineConfig({
         orientation: "portrait",
         scope: "/",
         start_url: "/",
+        file_handlers: [
+          {
+            action: "/",
+            accept: {
+              "application/gpx+xml": [".gpx"],
+              "application/xml": [".gpx"],
+              "text/xml": [".gpx"],
+              "application/octet-stream": [".gpx"],
+            },
+          },
+        ],
+        share_target: {
+          action: "/?import=gpx",
+          method: "GET",
+          params: {
+            title: "title",
+            text: "text",
+            url: "url",
+            files: [
+              {
+                name: "gpx",
+                accept: [".gpx", "application/gpx+xml", "application/xml", "text/xml"],
+              },
+            ],
+          },
+        },
         icons: [
           {
             src: "/icons/icon-192.png",

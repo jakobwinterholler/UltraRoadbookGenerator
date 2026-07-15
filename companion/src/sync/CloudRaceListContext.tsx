@@ -76,16 +76,36 @@ async function mergeRaceLists(
   local: StoredRaceListItem[],
 ): Promise<StoredRaceListItem[]> {
   const localById = new Map(local.map((race) => [race.id, race]));
+  const cloudIds = new Set(cloud.map((race) => race.id));
   const merged: StoredRaceListItem[] = [];
+
   for (const race of cloud) {
     const existing = localById.get(race.id);
     const status = await resolveOfflineReady(race, existing);
     merged.push({
       ...race,
       ...status,
+      source: existing?.source === "local-import" ? "local-import" : "cloud",
+      lastOpenedAt: existing?.lastOpenedAt ?? null,
     });
   }
-  return merged;
+
+  for (const race of local) {
+    if (cloudIds.has(race.id)) {
+      continue;
+    }
+    if (!race.offlineReady && race.source !== "local-import") {
+      continue;
+    }
+    merged.push({
+      ...race,
+      source: race.source ?? "local-import",
+    });
+  }
+
+  return merged.sort((left, right) =>
+    (right.updated_at ?? "").localeCompare(left.updated_at ?? ""),
+  );
 }
 
 interface CloudRaceListContextValue {

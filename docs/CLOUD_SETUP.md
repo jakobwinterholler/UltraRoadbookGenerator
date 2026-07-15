@@ -69,16 +69,13 @@ cd companion && npm run dev  # companion → http://127.0.0.1:5175
 
 ## 5. iPhone / production Companion
 
-The Companion reads **directly from Supabase** (race list + bundle download). You do **not** need to deploy FastAPI for the phone app.
+The Companion reads **directly from Supabase** (race list + bundle download) by default. Set `VITE_API_BASE_URL` to enable **mobile GPX import** — full server-side analysis via `POST /api/sync/import-gpx`. See [MOBILE_GPX_IMPORT.md](./MOBILE_GPX_IMPORT.md).
 
 Set these Vercel environment variables for the `companion` project:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-
-Do **not** set `VITE_API_BASE_URL` unless you want to route reads through FastAPI instead.
-
-FastAPI only needs to run on your desktop (via `./run_dev.sh`) to analyze GPX files and push races to the cloud.
+- `VITE_API_BASE_URL` — **required for on-phone GPX import** (FastAPI deployment URL)
 
 ## 6. End-to-end workflow
 

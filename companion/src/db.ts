@@ -14,6 +14,20 @@ export interface StoredRaceListItem extends SyncRaceSummary {
   downloadedRevision: number | null;
   downloadedChecksum: string | null;
   offlineReady: boolean;
+  /** Where this race entry came from — cloud sync or on-device import. */
+  source?: "cloud" | "local-import";
+  lastOpenedAt?: string | null;
+  verified_percent?: number | null;
+}
+
+function computeVerifiedPercent(bundle: CompanionBundle): number | null {
+  const verified = bundle.dashboardStats?.verifiedStops ?? 0;
+  const unverified = bundle.dashboardStats?.unverifiedStops ?? 0;
+  const total = verified + unverified;
+  if (total <= 0) {
+    return 0;
+  }
+  return Math.round((verified / total) * 100);
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -106,6 +120,7 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
           downloadedChecksum: checksum,
           offlineReady: true,
           readiness_score: bundle.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
+          verified_percent: computeVerifiedPercent(bundle),
         });
         return;
       }
@@ -125,6 +140,9 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
         downloadedChecksum: checksum,
         offlineReady: true,
         readiness_score: bundle.dashboardStats?.readinessScore ?? null,
+        verified_percent: computeVerifiedPercent(bundle),
+        source: "local-import",
+        lastOpenedAt: new Date().toISOString(),
       });
     };
 
@@ -233,6 +251,15 @@ export async function resetLocalRaceCache(): Promise<void> {
 
 export async function setActiveRaceId(raceId: string): Promise<void> {
   localStorage.setItem(ACTIVE_KEY, raceId);
+  const list = await loadRaceList();
+  const updated = list.map((race) =>
+    race.id === raceId
+      ? { ...race, lastOpenedAt: new Date().toISOString() }
+      : race,
+  );
+  if (updated.some((race, index) => race.lastOpenedAt !== list[index]?.lastOpenedAt)) {
+    await saveRaceList(updated);
+  }
 }
 
 export async function estimateCompanionStorageBytes(): Promise<number | null> {

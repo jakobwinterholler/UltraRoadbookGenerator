@@ -139,12 +139,16 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
         analyzed_at = analyzed_at or _utc_now()
         preparation = {
             **race.preparation.to_dict(),
+            "gpx_fingerprint": race.meta.gpx_fingerprint,
             "bundle_checksum": bundle.get("bundleChecksum"),
             "bundle_schema_version": bundle.get("schemaVersion"),
             "bundle_generated_at": bundle.get("generatedAt"),
         }
     else:
-        preparation = race.preparation.to_dict()
+        preparation = {
+            **race.preparation.to_dict(),
+            "gpx_fingerprint": race.meta.gpx_fingerprint,
+        }
 
     row = _upsert_race_row(
         {
@@ -258,8 +262,23 @@ def list_sync_races(user_id: str, access_token: str | None = None) -> list[dict[
             "has_bundle": bool(row.get("has_bundle")),
             "bundle_checksum": preparation.get("bundle_checksum"),
             "bundle_schema_version": preparation.get("bundle_schema_version"),
+            "gpx_fingerprint": preparation.get("gpx_fingerprint"),
         })
     return races
+
+
+def find_cloud_races_by_gpx_fingerprint(
+    user_id: str,
+    fingerprint: str,
+    access_token: str | None = None,
+) -> list[dict[str, Any]]:
+    if not fingerprint:
+        return []
+    matches: list[dict[str, Any]] = []
+    for race in list_sync_races(user_id, access_token):
+        if race.get("gpx_fingerprint") == fingerprint:
+            matches.append(race)
+    return matches
 
 
 def get_companion_bundle(user_id: str, race_id: str, access_token: str | None = None) -> dict[str, Any]:
