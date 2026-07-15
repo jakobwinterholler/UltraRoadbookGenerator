@@ -96,6 +96,7 @@ export function bundleNeedsUpdate(input: {
   cloudChecksum: string | null | undefined;
   localRevision: number | null;
   localChecksum: string | null | undefined;
+  downloadedChecksum?: string | null | undefined;
   offlineReady: boolean;
   cloudClimbCount?: number | null;
   localClimbCount?: number | null;
@@ -106,22 +107,26 @@ export function bundleNeedsUpdate(input: {
   if (input.cloudRevision > input.localRevision) {
     return true;
   }
-  // Local verification bumps checksum before cloud sync completes — do not
-  // treat that drift as a stale bundle when local revision is already ahead.
-  if (
-    input.cloudRevision >= input.localRevision &&
-    input.cloudChecksum &&
-    input.localChecksum &&
-    input.cloudChecksum !== input.localChecksum
-  ) {
-    return true;
-  }
+  const baselineChecksum = input.downloadedChecksum ?? input.localChecksum;
   if (
     input.cloudClimbCount != null &&
     input.localClimbCount != null &&
     input.cloudClimbCount !== input.localClimbCount
   ) {
     return true;
+  }
+  // Cloud matches what we last downloaded — local bundle checksum may differ after verify.
+  if (
+    input.cloudRevision === input.localRevision &&
+    input.cloudChecksum &&
+    baselineChecksum &&
+    input.cloudChecksum === baselineChecksum
+  ) {
+    return false;
+  }
+  // Same revision checksum drift cannot be fixed by re-downloading from cloud.
+  if (input.cloudRevision === input.localRevision) {
+    return false;
   }
   return false;
 }

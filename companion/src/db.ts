@@ -96,7 +96,17 @@ export async function loadRaceList(): Promise<StoredRaceListItem[]> {
   );
 }
 
-export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void> {
+export async function saveCompanionBundle(
+  bundle: CompanionBundle,
+  options?: {
+    /** Set when replacing cache from a cloud download (before local verification patches). */
+    syncFromCloud?: {
+      revision: number;
+      checksum: string | null;
+      climbCount: number | null;
+    };
+  },
+): Promise<void> {
   const prepared = migrateCachedBundle(bundle) ?? bundle;
   const validation = validateCompanionBundle(prepared);
   if (!validation.valid) {
@@ -124,12 +134,24 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
       const revision = prepared.revision ?? prepared.bundle_version ?? existing?.companion_revision ?? 0;
       const checksum = prepared.bundleChecksum ?? null;
       const climbCount = prepared.climbs?.length ?? null;
+      const downloadedRevision =
+        options?.syncFromCloud?.revision ??
+        existing?.downloadedRevision ??
+        revision;
+      const downloadedChecksum =
+        options?.syncFromCloud?.checksum ??
+        existing?.downloadedChecksum ??
+        checksum;
+      const downloadedClimbCount =
+        options?.syncFromCloud?.climbCount ??
+        existing?.downloadedClimbCount ??
+        climbCount;
       if (existing) {
         listStore.put({
           ...existing,
-          downloadedRevision: revision,
-          downloadedChecksum: checksum,
-          downloadedClimbCount: climbCount,
+          downloadedRevision,
+          downloadedChecksum,
+          downloadedClimbCount,
           offlineReady: true,
           readiness_score: prepared.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
           verified_percent: computeVerifiedPercent(prepared),
@@ -148,9 +170,9 @@ export async function saveCompanionBundle(bundle: CompanionBundle): Promise<void
         updated_at: prepared.syncedAt ?? prepared.exportedAt,
         analyzed_at: prepared.race.analyzedAt ?? null,
         has_bundle: true,
-        downloadedRevision: revision,
-        downloadedChecksum: checksum,
-        downloadedClimbCount: climbCount,
+        downloadedRevision,
+        downloadedChecksum,
+        downloadedClimbCount,
         offlineReady: true,
         readiness_score: prepared.dashboardStats?.readinessScore ?? null,
         verified_percent: computeVerifiedPercent(prepared),

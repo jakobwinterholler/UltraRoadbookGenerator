@@ -28,6 +28,9 @@ export async function downloadRaceAssets(
       fetchCompanionBundle(accessToken, raceId, userId),
       fetchOriginalGpx(accessToken, raceId, userId),
     ]);
+    const cloudRevision = downloaded.revision ?? downloaded.bundle_version ?? 0;
+    const cloudChecksum = downloaded.bundleChecksum ?? null;
+    const cloudClimbCount = downloaded.climbs?.length ?? null;
     let bundle: CompanionBundle = downloaded;
     for (const { synced: _synced, ...submission } of pending) {
       bundle = applyVerificationToBundle(bundle, submission);
@@ -35,7 +38,13 @@ export async function downloadRaceAssets(
     if (pending.length > 0) {
       logSyncDebug("download", `Re-applied ${pending.length} pending verification(s) after download`);
     }
-    await saveCompanionBundle(bundle);
+    await saveCompanionBundle(bundle, {
+      syncFromCloud: {
+        revision: cloudRevision,
+        checksum: cloudChecksum,
+        climbCount: cloudClimbCount,
+      },
+    });
     await saveOriginalGpx(raceId, gpx);
     return bundle;
   } finally {

@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { fetchSyncRaces } from "@shared/api/sync";
 import { useAuth } from "@shared/auth/AuthProvider";
 import type { CompanionBundle } from "@shared/types/sync";
 import { bundleNeedsUpdate } from "@shared/sync/bundleValidation";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
+import { loadRaceList } from "../db";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 
 function bundleRevision(bundle: CompanionBundle): number {
@@ -22,11 +23,21 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [downloadedChecksum, setDownloadedChecksum] = useState<string | null>(
+    bundle.bundleChecksum ?? null,
+  );
 
   const cloudRace = useMemo(
     () => races.find((race) => race.id === bundle.race.id),
     [bundle.race.id, races],
   );
+
+  useEffect(() => {
+    void loadRaceList().then((items) => {
+      const item = items.find((race) => race.id === bundle.race.id);
+      setDownloadedChecksum(item?.downloadedChecksum ?? bundle.bundleChecksum ?? null);
+    });
+  }, [bundle.bundleChecksum, bundle.race.id]);
 
   const updateAvailable = useMemo(() => {
     if (!cloudRace || dismissed) {
@@ -37,11 +48,12 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
       cloudChecksum: cloudRace.bundle_checksum,
       localRevision: bundleRevision(bundle),
       localChecksum: bundle.bundleChecksum,
+      downloadedChecksum,
       offlineReady: true,
       cloudClimbCount: cloudRace.significant_climb_count ?? null,
       localClimbCount: bundle.climbs?.length ?? null,
     });
-  }, [bundle, cloudRace, dismissed]);
+  }, [bundle, cloudRace, dismissed, downloadedChecksum]);
 
   if (!updateAvailable || !cloudRace) {
     return null;
@@ -58,12 +70,14 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
     setError(null);
     setSuccess(null);
     try {
-      const beforeRevision = bundleRevision(bundle);
-      const beforeChecksum = bundle.bundleChecksum ?? null;
-
       const next = await downloadRaceAssets(accessToken, bundle.race.id, user?.id);
       onBundleUpdate(next);
       await refresh();
+
+      const list = await loadRaceList();
+      const item = list.find((race) => race.id === bundle.race.id);
+      const nextDownloadedChecksum = item?.downloadedChecksum ?? null;
+      setDownloadedChecksum(nextDownloadedChecksum);
 
       const cloudRaces = await fetchSyncRaces(accessToken);
       const cloudAfter = cloudRaces.find((race) => race.id === bundle.race.id);
@@ -74,19 +88,15 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
           cloudChecksum: cloudAfter.bundle_checksum,
           localRevision: bundleRevision(next),
           localChecksum: next.bundleChecksum,
+          downloadedChecksum: nextDownloadedChecksum,
           offlineReady: true,
           cloudClimbCount: cloudAfter.significant_climb_count ?? null,
           localClimbCount: next.climbs?.length ?? null,
         });
 
       if (stillNeedsUpdate) {
-        const unchanged =
-          bundleRevision(next) === beforeRevision &&
-          (next.bundleChecksum ?? null) === beforeChecksum;
         setError(
-          unchanged
-            ? "Cloud bundle is still outdated. Open Desktop, open this race, and sync to upload the latest analysis."
-            : "Downloaded the latest cloud bundle, but Desktop still has newer analysis. Sync from Desktop, then tap Update again.",
+          "A newer analysis is on Desktop but not in the cloud yet. Open this race on Desktop and sync, then tap Update again.",
         );
         return;
       }
@@ -102,8 +112,8 @@ export default function RaceDataBanner({ bundle, onBundleUpdate }: RaceDataBanne
 
   const checksumDrift =
     cloudRace.bundle_checksum &&
-    bundle.bundleChecksum &&
-    cloudRace.bundle_checksum !== bundle.bundleChecksum;
+    downloadedChecksum &&
+    cloudRace.bundle_checksum !== downloadedChecksum;
 
   return (
     <div className="shrink-0 border-b border-amber-400/25 bg-amber-500/10 px-4 py-3">

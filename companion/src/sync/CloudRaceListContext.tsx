@@ -64,7 +64,7 @@ async function resolveOfflineReady(
     downloadedClimbCount,
   );
   if (needsUpdate) {
-    logSyncDebug("stale-cache", `${race.name} — cloud revision/checksum/climbs newer than local`, {
+    logSyncDebug("stale-cache", `${race.name} — cloud revision/climbs newer than local`, {
       raceId: race.id,
       cloudRevision: race.companion_revision,
       localRevision: downloadedRevision,
@@ -72,20 +72,6 @@ async function resolveOfflineReady(
       localChecksum: downloadedChecksum,
       cloudClimbCount: race.significant_climb_count ?? null,
       localClimbCount: downloadedClimbCount,
-    });
-    await invalidateStaleBundle(race.id);
-    return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
-  }
-
-  if (
-    race.bundle_checksum &&
-    downloadedChecksum &&
-    race.bundle_checksum !== downloadedChecksum
-  ) {
-    logSyncDebug("checksum-mismatch", `${race.name} — checksum drift detected`, {
-      raceId: race.id,
-      cloud: race.bundle_checksum,
-      local: downloadedChecksum,
     });
     await invalidateStaleBundle(race.id);
     return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
