@@ -33,7 +33,11 @@ function embeddedAlternativeView(
   alternative: CompanionStopAlternative,
   anchorKm: number,
 ): StopAlternativeView | null {
-  const alongDeltaKm = Math.abs(alternative.distanceAlongKm - anchorKm);
+  const alongKm = alternative.distanceAlongKm;
+  if (alongKm == null || !Number.isFinite(alongKm)) {
+    return null;
+  }
+  const alongDeltaKm = Math.abs(alongKm - anchorKm);
   if (alongDeltaKm > PLANNING_AREA_KM) {
     return null;
   }

@@ -17,7 +17,8 @@ import {
 import { checkStreetViewAvailability, normalizeWebsite } from "@shared/race/streetViewUrl";
 import { buildStopAlternatives, type StopAlternativeView } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
-import RouteMapView from "./RouteMapView";
+import { useCompanion } from "../context/CompanionContext";
+import StopDetailMapPreview from "./StopDetailMapPreview";
 import BottomSheet from "./BottomSheet";
 
 interface StopSheetProps {
@@ -126,6 +127,7 @@ export default function StopSheet({
   onSelectAlternative,
 }: StopSheetProps) {
   const { user } = useAuth();
+  const { gps } = useCompanion();
   const stop = useMemo(
     () => (stopProp ? resolveRenderedStop(bundle, stopProp) : null),
     [bundle, stopProp],
@@ -274,7 +276,12 @@ export default function StopSheet({
           </dl>
 
           <div className="poi-sheet__map relative h-52 overflow-hidden rounded-2xl border border-sky-400/20 shadow-lg shadow-sky-500/10">
-            <RouteMapView embedded focusStop={stop} />
+            <StopDetailMapPreview
+              stop={stop}
+              bundle={bundle}
+              riderLat={gps.lat}
+              riderLon={gps.lon}
+            />
           </div>
 
           <div className="poi-quick-actions">

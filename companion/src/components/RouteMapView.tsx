@@ -51,25 +51,30 @@ function stopsGeoJson(
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
-    features: stops.map((stop) => {
+    features: stops.flatMap((stop) => {
+      if (!Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) {
+        return [];
+      }
       const poiId = stopPoiId(stop);
       const isFocus = focusPoiId != null && poiId === focusPoiId;
       const isSelected = selectedPoiId != null && stop.poiId === selectedPoiId;
       const dimmed = focusPoiId != null && !isFocus && !isSelected;
-      return {
-        type: "Feature",
-        properties: {
-          zoneId: stop.zoneId,
-          poiId,
-          verified: isStopVerified(stop.verificationStatus) ? 1 : 0,
-          selected: isFocus || isSelected ? 1 : 0,
-          dimmed: dimmed ? 1 : 0,
+      return [
+        {
+          type: "Feature" as const,
+          properties: {
+            zoneId: stop.zoneId,
+            poiId,
+            verified: isStopVerified(stop.verificationStatus) ? 1 : 0,
+            selected: isFocus || isSelected ? 1 : 0,
+            dimmed: dimmed ? 1 : 0,
+          },
+          geometry: {
+            type: "Point" as const,
+            coordinates: [stop.lon, stop.lat],
+          },
         },
-        geometry: {
-          type: "Point",
-          coordinates: [stop.lon, stop.lat],
-        },
-      };
+      ];
     }),
   };
 }
@@ -563,7 +568,8 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       if (typeof poiId !== "string") {
         return;
       }
-      const stop = stopsRef.current.find((item) => item.poiId === poiId) ?? null;
+      const stop =
+        stopsRef.current.find((item) => stopPoiId(item) === poiId) ?? null;
       selectStopRef.current(stop);
     });
 
@@ -654,13 +660,17 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     if (!map || !readyRef.current || !target) {
       return;
     }
-    if (!embedded && followGps) {
+    if (!embedded && followGps && !selectedStop) {
       return;
     }
+    if (!Number.isFinite(target.lat) || !Number.isFinite(target.lon)) {
+      return;
+    }
+    const focusingSelectedStop = !embedded && selectedStop != null;
     map.flyTo({
       center: [target.lon, target.lat],
-      zoom: embedded ? EMBEDDED_FOCUS_ZOOM : map.getZoom(),
-      offset: embedded ? EMBEDDED_FOCUS_OFFSET : undefined,
+      zoom: embedded || focusingSelectedStop ? EMBEDDED_FOCUS_ZOOM : map.getZoom(),
+      offset: embedded || focusingSelectedStop ? EMBEDDED_FOCUS_OFFSET : undefined,
       duration: FOCUS_ANIMATION_MS,
       essential: true,
     });
