@@ -80,7 +80,9 @@ interface RouteMapProps {
   onSelectCandidate: (candidateId: string) => void;
   onSelectPoi: (selection: StopSelection) => void;
   poiDebugMode?: boolean;
+  climbDebugMode?: boolean;
   onPoiDebugClick?: (lat: number, lon: number) => void;
+  onClimbDebugClick?: (lat: number, lon: number) => void;
 }
 
 function PanToFocus({
@@ -183,12 +185,16 @@ function MapInteractionHandler({
   points,
   onActiveIndexChange,
   poiDebugMode = false,
+  climbDebugMode = false,
   onPoiDebugClick,
+  onClimbDebugClick,
 }: {
   points: RouteVisualization["track_points"];
   onActiveIndexChange: (index: number | null) => void;
   poiDebugMode?: boolean;
+  climbDebugMode?: boolean;
   onPoiDebugClick?: (lat: number, lon: number) => void;
+  onClimbDebugClick?: (lat: number, lon: number) => void;
 }) {
   useMapEvents({
     click(event: L.LeafletMouseEvent) {
@@ -196,18 +202,22 @@ function MapInteractionHandler({
         onPoiDebugClick(event.latlng.lat, event.latlng.lng);
         return;
       }
+      if (climbDebugMode && onClimbDebugClick) {
+        onClimbDebugClick(event.latlng.lat, event.latlng.lng);
+        return;
+      }
       const index = findNearestTrackIndexByLatLng(points, event.latlng.lat, event.latlng.lng);
       onActiveIndexChange(index);
     },
     mousemove(event: L.LeafletMouseEvent) {
-      if (poiDebugMode) {
+      if (poiDebugMode || climbDebugMode) {
         return;
       }
       const index = findNearestTrackIndexByLatLng(points, event.latlng.lat, event.latlng.lng);
       onActiveIndexChange(index);
     },
     mouseout() {
-      if (poiDebugMode) {
+      if (poiDebugMode || climbDebugMode) {
         return;
       }
       onActiveIndexChange(null);
@@ -276,7 +286,9 @@ export default function RouteMap({
   onSelectCandidate,
   onSelectPoi,
   poiDebugMode = false,
+  climbDebugMode = false,
   onPoiDebugClick,
+  onClimbDebugClick,
 }: RouteMapProps) {
   const { verifiedStops } = useRace();
   const [mapZoom, setMapZoom] = useState(11);
@@ -345,7 +357,9 @@ export default function RouteMap({
           points={route.track_points}
           onActiveIndexChange={onActiveIndexChange}
           poiDebugMode={poiDebugMode}
+          climbDebugMode={climbDebugMode}
           onPoiDebugClick={onPoiDebugClick}
+          onClimbDebugClick={onClimbDebugClick}
         />
 
         {overlay === "normal" ? (

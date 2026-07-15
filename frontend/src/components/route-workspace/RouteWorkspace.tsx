@@ -23,8 +23,11 @@ import RouteMap from "../RouteMap";
 import TimelineLayerControls from "../TimelineLayerControls";
 import PlanningDetailSheet from "../planning/PlanningDetailSheet";
 import PoiDebugPanel from "../planning/PoiDebugPanel";
+import ClimbDebugPanel from "../planning/ClimbDebugPanel";
 import ResupplyHubDetailContent from "../resupply/ResupplyHubDetailContent";
-import { nearestPoiDebugEntry } from "../../planning/poiDebug";
+import { nearbyPoiDebugEntries } from "../../planning/poiDebug";
+import { buildClimbDebugContext } from "../../planning/climbDebug";
+import { significantClimbs } from "@shared/race/significantClimbs";
 import { activePoint, computeRouteInsights, percentOfRoute } from "../routeInsights";
 import { formatKm } from "../routeInsights";
 import ClimbDetailView from "../climb/ClimbDetailView";
@@ -57,10 +60,12 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   const { verifiedStops } = useRace();
   const [stopsBrowseOpen, setStopsBrowseOpen] = useState(false);
   const [poiDebugMode, setPoiDebugMode] = useState(false);
+  const [climbDebugMode, setClimbDebugMode] = useState(false);
   const [poiDebugClick, setPoiDebugClick] = useState<{ lat: number; lon: number } | null>(null);
   const [poiDebugSelection, setPoiDebugSelection] = useState<import("../../api").PoiDebugRow | null>(
     null,
   );
+  const [climbDebugClick, setClimbDebugClick] = useState<{ lat: number; lon: number } | null>(null);
 
   const presentedZones = useMemo(
     () =>
@@ -75,9 +80,29 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   );
 
   const sortedClimbs = useMemo(
-    () => [...result.climbs].sort((left, right) => left.start_km - right.start_km),
+    () => significantClimbs([...result.climbs]).sort((left, right) => left.start_km - right.start_km),
     [result.climbs],
   );
+
+  const poiDebugNearby = useMemo(() => {
+    if (!poiDebugClick) {
+      return [];
+    }
+    return nearbyPoiDebugEntries(result.poi_debug ?? [], poiDebugClick.lat, poiDebugClick.lon);
+  }, [poiDebugClick, result.poi_debug]);
+
+  const climbDebugContext = useMemo(() => {
+    if (!climbDebugClick) {
+      return null;
+    }
+    return buildClimbDebugContext(
+      result.route.track_points,
+      result.climbs,
+      result.climb_candidates ?? [],
+      climbDebugClick.lat,
+      climbDebugClick.lon,
+    );
+  }, [climbDebugClick, result.climb_candidates, result.climbs, result.route.track_points]);
 
   const selection = useRouteWorkspaceSelection(result, presentedZones, verifiedStops);
 
@@ -375,8 +400,10 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
           type="button"
           onClick={() => {
             setPoiDebugMode((current) => !current);
+            setClimbDebugMode(false);
             setPoiDebugClick(null);
             setPoiDebugSelection(null);
+            setClimbDebugClick(null);
           }}
           className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
             poiDebugMode
@@ -385,6 +412,23 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
           }`}
         >
           {poiDebugMode ? "POI debug on" : "POI debug"}
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            setClimbDebugMode((current) => !current);
+            setPoiDebugMode(false);
+            setPoiDebugClick(null);
+            setPoiDebugSelection(null);
+            setClimbDebugClick(null);
+          }}
+          className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+            climbDebugMode
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-line bg-card text-muted hover:text-ink"
+          }`}
+        >
+          {climbDebugMode ? "Climb debug on" : "Climb debug"}
         </button>
       </header>
 
@@ -426,20 +470,33 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 onSelectCandidate={selection.handleSelectCandidate}
                 onSelectPoi={selection.handleSelectPoi}
                 poiDebugMode={poiDebugMode}
+                climbDebugMode={climbDebugMode}
                 onPoiDebugClick={(lat, lon) => {
                   setPoiDebugClick({ lat, lon });
-                  setPoiDebugSelection(
-                    nearestPoiDebugEntry(result.poi_debug ?? [], lat, lon),
-                  );
+                  const nearby = nearbyPoiDebugEntries(result.poi_debug ?? [], lat, lon);
+                  setPoiDebugSelection(nearby[0]?.entry ?? null);
+                }}
+                onClimbDebugClick={(lat, lon) => {
+                  setClimbDebugClick({ lat, lon });
                 }}
               />
               {poiDebugMode && (
                 <PoiDebugPanel
-                  entry={poiDebugSelection}
+                  entries={poiDebugNearby}
+                  selectedEntry={poiDebugSelection}
                   clickLatLng={poiDebugClick}
+                  onSelectEntry={setPoiDebugSelection}
                   onClose={() => {
                     setPoiDebugClick(null);
                     setPoiDebugSelection(null);
+                  }}
+                />
+              )}
+              {climbDebugMode && (
+                <ClimbDebugPanel
+                  context={climbDebugContext}
+                  onClose={() => {
+                    setClimbDebugClick(null);
                   }}
                 />
               )}

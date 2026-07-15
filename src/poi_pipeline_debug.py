@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from poi_scoring import PoiScoreWeights, score_poi
+from poi_scoring import DEFAULT_POI_SCORE_WEIGHTS, PoiScoreWeights, score_poi
 from poi_types import PointOfInterest
+from resupply_zone_config import FOOD_POI_CATEGORIES, FUEL_POI_CATEGORIES, WATER_POI_CATEGORIES
 from resupply_zones import ResupplyZonePlan
 
 
@@ -29,6 +30,12 @@ class PoiDebugEntry:
     zone_id: int | None
     cluster_id: int | None
     zone_role: str | None  # primary | alternative | zone_member | None
+    primary_score: float | None = None
+    fuel_score: float | None = None
+    food_score: float | None = None
+    water_score: float | None = None
+    cluster_winner: bool | None = None
+    bundle_exported: bool | None = None
 
 
 def detection_discard_to_debug(discard) -> PoiDebugEntry:
@@ -50,6 +57,124 @@ def detection_discard_to_debug(discard) -> PoiDebugEntry:
         zone_id=None,
         cluster_id=None,
         zone_role=None,
+        primary_score=None,
+        fuel_score=None,
+        food_score=None,
+        water_score=None,
+        cluster_winner=None,
+        bundle_exported=None,
+    )
+
+
+def _category_score(
+    poi: PointOfInterest,
+    members: frozenset[str],
+    weights: PoiScoreWeights,
+    score_cache: dict[tuple[int, str], float] | None,
+) -> float | None:
+    if poi.category not in members:
+        return None
+    if score_cache is not None:
+        return score_cache.get((poi.osm_id, poi.osm_type), score_poi(poi, weights))
+    return score_poi(poi, weights)
+
+
+def _score_fields(
+    poi: PointOfInterest,
+    weights: PoiScoreWeights,
+    score_cache: dict[tuple[int, str], float] | None,
+) -> tuple[float | None, float | None, float | None, float | None]:
+    fuel_score = _category_score(poi, FUEL_POI_CATEGORIES, weights, score_cache)
+    food_score = _category_score(poi, FOOD_POI_CATEGORIES, weights, score_cache)
+    water_score = _category_score(poi, WATER_POI_CATEGORIES, weights, score_cache)
+    primary_score = fuel_score or food_score or water_score
+    if primary_score is None and score_cache is not None:
+        primary_score = score_cache.get((poi.osm_id, poi.osm_type))
+    if primary_score is None:
+        primary_score = score_poi(poi, weights)
+    return primary_score, fuel_score, food_score, water_score
+
+
+def _planning_score(option, category_key: str) -> float:
+    score = float(option.score or 0)
+    detour = float(option.distance_off_route_m or 0)
+    boost = {"fuel": 10.0, "food": 5.0, "water": 2.0, "dining": 0.0}.get(category_key, 0.0)
+    return score - min(detour / 8.0, 35.0) + boost
+
+
+def _bundle_exported_keys(resupply_plan: ResupplyZonePlan) -> set[tuple[int, str]]:
+    """POIs that appear in the Companion bundle for each zone."""
+    exported: set[tuple[int, str]] = set()
+    for zone in resupply_plan.zones:
+        ranked: list[tuple] = []
+        seen: set[tuple[int, str]] = set()
+        for group in zone.categories:
+            for option in [group.primary, *group.alternatives]:
+                if option is None:
+                    continue
+                poi_key = (option.osm_id, option.osm_type)
+                if poi_key in seen:
+                    continue
+                seen.add(poi_key)
+                ranked.append((option, group.key))
+        ranked.sort(key=lambda entry: _planning_score(entry[0], entry[1]), reverse=True)
+        for option, _ in ranked[:6]:
+            exported.add((option.osm_id, option.osm_type))
+    return exported
+
+
+def _zone_option_dict(option) -> dict | None:
+    if option is None:
+        return None
+    return {
+        "osm_id": option.osm_id,
+        "osm_type": option.osm_type,
+        "name": option.name,
+        "poi_category": option.poi_category,
+        "distance_along_km": option.distance_along_km,
+        "distance_off_route_m": option.distance_off_route_m,
+        "score": option.score,
+        "brand": option.brand,
+        "lat": option.lat,
+        "lon": option.lon,
+    }
+
+
+def _enrich_entry(
+    entry: PoiDebugEntry,
+    poi_lookup: dict[tuple[int, str], PointOfInterest],
+    weights: PoiScoreWeights,
+    score_cache: dict[tuple[int, str], float] | None,
+    bundle_keys: set[tuple[int, str]],
+) -> PoiDebugEntry:
+    poi_key = (entry.osm_id, entry.osm_type)
+    poi = poi_lookup.get(poi_key)
+    if poi is None:
+        return entry
+    primary_score, fuel_score, food_score, water_score = _score_fields(poi, weights, score_cache)
+    return PoiDebugEntry(
+        osm_id=entry.osm_id,
+        osm_type=entry.osm_type,
+        name=entry.name,
+        brand=entry.brand,
+        category=entry.category,
+        lat=entry.lat,
+        lon=entry.lon,
+        status=entry.status,
+        discard_stage=entry.discard_stage,
+        discard_reason=entry.discard_reason,
+        distance_along_km=entry.distance_along_km,
+        distance_off_route_m=entry.distance_off_route_m,
+        score=entry.score if entry.score is not None else primary_score,
+        zone_id=entry.zone_id,
+        cluster_id=entry.cluster_id,
+        zone_role=entry.zone_role,
+        primary_score=primary_score,
+        fuel_score=fuel_score,
+        food_score=food_score,
+        water_score=water_score,
+        cluster_winner=entry.zone_role == "primary",
+        bundle_exported=poi_key in bundle_keys,
     )
 
 
@@ -127,6 +252,8 @@ def build_poi_debug_entries(
 
     weights = weights or DEFAULT_POI_SCORE_WEIGHTS
     zone_entries = _zone_membership(resupply_plan, score_cache, weights)
+    bundle_keys = _bundle_exported_keys(resupply_plan)
+    poi_lookup = {(poi.osm_id, poi.osm_type): poi for poi in imported_pois}
 
     entries: dict[tuple[int, str], PoiDebugEntry] = {
         (entry.osm_id, entry.osm_type): entry for entry in discarded
@@ -162,6 +289,12 @@ def build_poi_debug_entries(
                 zone_id=None,
                 cluster_id=None,
                 zone_role=None,
+                primary_score=None,
+                fuel_score=None,
+                food_score=None,
+                water_score=None,
+                cluster_winner=None,
+                bundle_exported=None,
             )
             continue
 
@@ -182,10 +315,19 @@ def build_poi_debug_entries(
             zone_id=zone_id,
             cluster_id=zone_id,
             zone_role="zone_member",
+            primary_score=None,
+            fuel_score=None,
+            food_score=None,
+            water_score=None,
+            cluster_winner=None,
+            bundle_exported=None,
         )
 
+    enriched = [
+        _enrich_entry(entry, poi_lookup, weights, score_cache, bundle_keys) for entry in entries.values()
+    ]
     return sorted(
-        entries.values(),
+        enriched,
         key=lambda entry: (
             entry.distance_along_km if entry.distance_along_km is not None else 9999.0,
             entry.osm_id,

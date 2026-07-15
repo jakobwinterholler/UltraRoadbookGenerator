@@ -27,6 +27,7 @@ from pipeline_profiler import PipelineProfiler
 from progress import ProgressReporter
 from resupply_quality import ResupplyQualitySegment, build_resupply_quality_segments
 from resupply_zones import ResupplyZone, ResupplyZonePlan, ZoneCategoryGroup, ZonePoiOption, build_resupply_zones
+from significant_climbs import significant_climbs
 from route_segment_index import RouteSegmentIndex
 from route_visualization import RouteVisualization, build_route_visualization, build_track_route_visualization
 from surface_detector import SurfaceDataset, detect_surfaces
@@ -286,6 +287,12 @@ class PoiDebugRow:
     zone_id: int | None
     cluster_id: int | None
     zone_role: str | None
+    primary_score: float | None = None
+    fuel_score: float | None = None
+    food_score: float | None = None
+    water_score: float | None = None
+    cluster_winner: bool | None = None
+    bundle_exported: bool | None = None
 
 
 @dataclass
@@ -702,14 +709,14 @@ def analyze_gpx_file(
             "climb_candidates": [asdict(row) for row in candidate_rows],
             "summary": {
                 **asdict(bootstrap_summary),
-                "climb_count": len(climb_rows),
+                "climb_count": len(significant_climbs(climb_rows)),
             },
         },
     )
     if progress is not None:
         progress.readiness("climbs", "ready")
-        progress.update_stats(climb_count=len(climb_rows))
-        progress.milestone(f"Detected {len(climb_rows)} climbs")
+        progress.update_stats(climb_count=len(significant_climbs(climb_rows)))
+        progress.milestone(f"Detected {len(significant_climbs(climb_rows))} climbs")
 
     with profiler.stage("osm_prefetch", "OSM Prefetch"):
         osm_prefetch = prefetch_osm_data(
@@ -877,6 +884,12 @@ def analyze_gpx_file(
             zone_id=entry.zone_id,
             cluster_id=entry.cluster_id,
             zone_role=entry.zone_role,
+            primary_score=entry.primary_score,
+            fuel_score=entry.fuel_score,
+            food_score=entry.food_score,
+            water_score=entry.water_score,
+            cluster_winner=entry.cluster_winner,
+            bundle_exported=entry.bundle_exported,
         )
         for entry in poi_debug_entries
     ]
@@ -915,6 +928,7 @@ def analyze_gpx_file(
         progress.milestone("Route timeline generated")
 
     summary = surface_summary_row
+    summary.climb_count = len(significant_climbs(climb_rows))
     performance_report = _performance_rows(profiler)
     cache_mode = classify_cache_mode(
         surface_downloaded=surface_dataset.osm_downloaded,
@@ -1082,7 +1096,7 @@ def recalculate_climbs(
     cache.roadbook.climb_candidates = [
         _climb_candidate_row(candidate) for candidate in climb_candidates
     ]
-    cache.roadbook.summary.climb_count = len(climb_rows)
+    cache.roadbook.summary.climb_count = len(significant_climbs(climb_rows))
     return cache
 
 

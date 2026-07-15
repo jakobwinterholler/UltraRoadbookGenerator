@@ -10,6 +10,8 @@ import type { RoadbookResult } from "../src/api.ts";
 
 const ROOT = join(import.meta.dirname, "../..");
 const RACES_DIR = join(ROOT, "data/races");
+const COLLSSEROLA_ID = "626b3103-c50d-49eb-b5de-8a129a5f27f3";
+const OILPRIX_OSM_ID = 287007125;
 const CAPITALS_ID = "d836e1d9-1fa9-49ea-8476-694c6c00d090";
 const CAPITALS_MAX_MS = 20;
 
@@ -51,6 +53,20 @@ function benchmarkRace(label: string, data: RoadbookResult): void {
   }
   if (presented.length !== hubs.length) {
     throw new Error(`${label}: presentZones mismatch (${presented.length} vs ${hubs.length})`);
+  }
+
+  if (label === COLLSSEROLA_ID) {
+    const hasOilprix = presented.some((zone) =>
+      zone.categories.some(
+        (group) =>
+          group.key === "fuel" &&
+          (group.primary?.osm_id === OILPRIX_OSM_ID ||
+            group.alternatives.some((option) => option.osm_id === OILPRIX_OSM_ID)),
+      ),
+    );
+    if (!hasOilprix) {
+      throw new Error(`${label}: planning hubs dropped Oilprix (zone 4 fuel stop)`);
+    }
   }
 
   const maxMs = label === CAPITALS_ID ? CAPITALS_MAX_MS : 50;

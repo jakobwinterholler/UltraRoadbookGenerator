@@ -281,6 +281,12 @@ export interface PoiDebugRow {
   zone_id: number | null;
   cluster_id: number | null;
   zone_role: string | null;
+  primary_score?: number | null;
+  fuel_score?: number | null;
+  food_score?: number | null;
+  water_score?: number | null;
+  cluster_winner?: boolean | null;
+  bundle_exported?: boolean | null;
 }
 
 export interface RoadbookResult {

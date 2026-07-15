@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from race_dashboard import compute_race_dashboard_stats
+from significant_climbs import significant_climbs
 from unsupported_sections import analyze_unsupported_sections
 
 COMPANION_SCHEMA_VERSION = 4
@@ -191,7 +192,7 @@ def _climb_name(climb: dict[str, Any], index: int) -> str:
 
 def _build_climbs(roadbook: dict[str, Any]) -> list[dict[str, Any]]:
     climbs: list[dict[str, Any]] = []
-    for index, climb in enumerate(roadbook.get("climbs") or []):
+    for index, climb in enumerate(significant_climbs(roadbook.get("climbs") or [])):
         if not isinstance(climb, dict):
             continue
         climbs.append(

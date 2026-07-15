@@ -8,12 +8,84 @@ const TIGHT_SPACING_KM = 10;
 const REMOTE_GAP_KM = 22;
 const REMOTE_PICK_SPACING_KM = 6;
 const LOOKAHEAD_KM = 20;
+/** When consecutive hubs are farther apart than this, keep the best stop in the gap. */
+const GAP_FILL_THRESHOLD_KM = 8;
+const CLIMB_GAP_GAIN_M = 200;
 
 export interface PlanningHubBenchmark {
   walkSteps: number;
   spacingCalculations: number;
   elevationCalculations: number;
   gravelCalculations: number;
+}
+
+
+function zoneFuelPrimary(zone: ResupplyZone) {
+  return zone.categories.find((group) => group.key === "fuel")?.primary ?? null;
+}
+
+function pickGapHub(inGap: ResupplyZone[], gainInGap: number): ResupplyZone {
+  if (gainInGap >= CLIMB_GAP_GAIN_M) {
+    const fuelZones = inGap.filter((zone) => zoneFuelPrimary(zone));
+    if (fuelZones.length > 0) {
+      return [...fuelZones].sort((left, right) => {
+        const leftFuel = zoneFuelPrimary(left);
+        const rightFuel = zoneFuelPrimary(right);
+        const scoreDiff = (rightFuel?.score ?? 0) - (leftFuel?.score ?? 0);
+        if (scoreDiff !== 0) {
+          return scoreDiff;
+        }
+        return compareHubCandidates(left, right);
+      })[0];
+    }
+  }
+
+  let bestZone = inGap[0];
+  for (const zone of inGap.slice(1)) {
+    if (compareHubCandidates(zone, bestZone) < 0) {
+      bestZone = zone;
+    }
+  }
+  return bestZone;
+}
+
+function fillPlanningHubGaps(
+  picked: ResupplyZone[],
+  candidates: ResupplyZone[],
+  metrics: RouteMetricsCache,
+  pickedIds: Set<number>,
+  pickAt: (index: number) => void,
+): void {
+  const sortedPicked = [...picked].sort(
+    (left, right) => left.distance_along_km - right.distance_along_km,
+  );
+
+  for (let index = 0; index < sortedPicked.length - 1; index += 1) {
+    const left = sortedPicked[index];
+    const right = sortedPicked[index + 1];
+    const gapKm = right.distance_along_km - left.distance_along_km;
+    if (gapKm < GAP_FILL_THRESHOLD_KM) {
+      continue;
+    }
+
+    const inGap = candidates.filter(
+      (zone) =>
+        zone.distance_along_km > left.distance_along_km &&
+        zone.distance_along_km < right.distance_along_km &&
+        !pickedIds.has(zone.zone_id),
+    );
+    if (inGap.length === 0) {
+      continue;
+    }
+
+    const gainInGap = metrics.elevationGainM(left.distance_along_km, right.distance_along_km);
+    const bestZone = pickGapHub(inGap, gainInGap);
+
+    const bestIndex = candidates.findIndex((zone) => zone.zone_id === bestZone.zone_id);
+    if (bestIndex >= 0) {
+      pickAt(bestIndex);
+    }
+  }
 }
 
 function compareHubCandidates(left: ResupplyZone, right: ResupplyZone): number {
@@ -267,7 +339,8 @@ export function selectPlanningHubs(
   }
 
   pickAt(candidates.length - 1);
-  return picked;
+  fillPlanningHubGaps(picked, candidates, metrics, pickedIds, pickAt);
+  return picked.sort((left, right) => left.distance_along_km - right.distance_along_km);
 }
 
 /** POI-centric alias — replaces hub terminology. */

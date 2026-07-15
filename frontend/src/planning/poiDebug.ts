@@ -13,27 +13,40 @@ function distanceM(latA: number, lonA: number, latB: number, lonB: number): numb
   return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(a));
 }
 
-export function nearestPoiDebugEntry(
+export interface NearbyPoiDebugEntry {
+  entry: PoiDebugRow;
+  distanceM: number;
+}
+
+export function nearbyPoiDebugEntries(
   entries: PoiDebugRow[],
   lat: number,
   lon: number,
   maxDistanceM = 180,
-): PoiDebugRow | null {
-  let best: PoiDebugRow | null = null;
-  let bestDistance = maxDistanceM;
+  limit = 8,
+): NearbyPoiDebugEntry[] {
+  const nearby: NearbyPoiDebugEntry[] = [];
 
   for (const entry of entries) {
     if (entry.lat == null || entry.lon == null) {
       continue;
     }
     const distance = distanceM(lat, lon, entry.lat, entry.lon);
-    if (distance <= bestDistance) {
-      best = entry;
-      bestDistance = distance;
+    if (distance <= maxDistanceM) {
+      nearby.push({ entry, distanceM: distance });
     }
   }
 
-  return best;
+  return nearby.sort((left, right) => left.distanceM - right.distanceM).slice(0, limit);
+}
+
+export function nearestPoiDebugEntry(
+  entries: PoiDebugRow[],
+  lat: number,
+  lon: number,
+  maxDistanceM = 180,
+): PoiDebugRow | null {
+  return nearbyPoiDebugEntries(entries, lat, lon, maxDistanceM, 1)[0]?.entry ?? null;
 }
 
 export function poiDebugTitle(entry: PoiDebugRow): string {
