@@ -77,6 +77,29 @@ Set these Vercel environment variables for the `companion` project:
 - `VITE_SUPABASE_ANON_KEY`
 - `VITE_API_BASE_URL` — **required for on-phone GPX import** (FastAPI deployment URL)
 
+### 5.1 Deploy the API (mobile import)
+
+The Companion PWA is static on Vercel; **GPX import requires a running FastAPI server**.
+
+**Option A — Render (recommended)**
+
+1. Push this repo to GitHub.
+2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect the repo (`render.yaml` is included).
+3. Set env vars: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`.
+4. After deploy, copy the service URL (e.g. `https://ultra-roadbook-api.onrender.com`).
+5. Vercel → companion project → **Environment Variables** → `VITE_API_BASE_URL` = that URL (no trailing slash).
+6. Redeploy Companion (`vercel --prod --yes`).
+
+**Option B — Local + tunnel (quick phone test)**
+
+```bash
+./run_dev.sh
+# In another terminal, expose :8000 (e.g. ngrok http 8000)
+# Set companion/.env.local: VITE_API_BASE_URL=https://<tunnel-url>
+cd companion && npm run dev -- --host
+# Open http://<your-lan-ip>:5175 on iPhone (same Wi‑Fi)
+```
+
 ## 6. End-to-end workflow
 
 1. **Desktop:** Sign in (Settings → Account) → import GPX → analyze → verify stops
