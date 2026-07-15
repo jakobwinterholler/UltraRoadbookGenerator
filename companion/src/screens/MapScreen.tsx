@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useCompanion } from "../context/CompanionContext";
 import type { CompanionClimb } from "@shared/types/sync";
 import ClimbSheet from "../components/ClimbSheet";
 import FloatingCard from "../components/FloatingCard";
-import RouteMapView from "../components/RouteMapView";
+import MapControls from "../components/MapControls";
+import RouteMapView, { type RouteMapHandle } from "../components/RouteMapView";
 import StopSheet from "../components/StopSheet";
 
 export default function MapScreen({ embedded = false }: { embedded?: boolean }) {
@@ -14,15 +15,15 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
     selectStop,
     showUnverified,
     setShowUnverified,
-    mapGesturesLocked,
-    setMapGesturesLocked,
+    followGps,
     gps,
   } = useCompanion();
+  const mapRef = useRef<RouteMapHandle | null>(null);
   const [showClimbs, setShowClimbs] = useState(Boolean(bundle.climbs?.length));
   const [selectedClimb, setSelectedClimb] = useState<CompanionClimb | null>(null);
 
   const hasClimbs = (bundle.climbs?.length ?? 0) > 0;
-  const followPaused = !embedded && gps.lat != null && gps.lon != null && !mapGesturesLocked;
+  const gpsActive = gps.lat != null && gps.lon != null;
 
   if (embedded) {
     return (
@@ -35,6 +36,7 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
   return (
     <div className="relative h-full min-h-0">
       <RouteMapView
+        ref={mapRef}
         showClimbs={showClimbs}
         onClimbSelect={(climbId) => {
           const climb = bundle.climbs?.find((item) => item.id === climbId) ?? null;
@@ -67,37 +69,14 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
         </FloatingCard>
       </div>
 
-      <div className="pointer-events-none absolute right-4 top-4 z-10">
-        <FloatingCard className="pointer-events-auto overflow-hidden">
-          <button
-            type="button"
-            onClick={() => setMapGesturesLocked(!mapGesturesLocked)}
-            className="flex min-h-[44px] w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm font-medium text-white/90 hover:bg-white/5"
-            aria-pressed={mapGesturesLocked}
-          >
-            <span
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs ${
-                mapGesturesLocked ? "bg-sky-500/25 text-sky-300" : "bg-white/10 text-white/50"
-              }`}
-              aria-hidden
-            >
-              ◎
-            </span>
-            {mapGesturesLocked ? "Following" : "Follow off"}
-          </button>
-        </FloatingCard>
-      </div>
-
-      {followPaused ? (
-        <button
-          type="button"
-          onClick={() => setMapGesturesLocked(true)}
-          className="absolute bottom-28 left-1/2 z-20 -translate-x-1/2 rounded-full bg-sky-500/90 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-sky-500/30 backdrop-blur transition active:scale-[0.97]"
-          style={{ marginBottom: "max(0px, env(safe-area-inset-bottom))" }}
-        >
-          Resume follow
-        </button>
-      ) : null}
+      <MapControls
+        followGps={followGps}
+        gpsActive={gpsActive}
+        onRecenter={() => mapRef.current?.recenter()}
+        onZoomIn={() => mapRef.current?.zoomIn()}
+        onZoomOut={() => mapRef.current?.zoomOut()}
+        onResetNorth={() => mapRef.current?.resetNorth()}
+      />
 
       <StopSheet
         stop={selectedStop}

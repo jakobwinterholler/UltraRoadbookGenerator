@@ -1,5 +1,7 @@
 /** Shared POI scoring for primary stop selection (mirrors src/poi_scoring.py). */
 
+import { assessFuelShop } from "./fuelShopScoring";
+
 export interface PoiScoringInput {
   priority: number;
   category: string;
@@ -8,6 +10,7 @@ export interface PoiScoringInput {
   name?: string | null;
   brand?: string | null;
   openingHours?: string | null;
+  tags?: Record<string, string> | null;
 }
 
 const PRIORITY_WEIGHT: Record<number, number> = {
@@ -20,7 +23,8 @@ const CATEGORY_WEIGHT: Record<string, number> = {
   "Small supermarket": 36,
   "Mini supermarket": 32,
   Supermarket: 20,
-  "Gas station": 24,
+  "Gas station": 28,
+  "Convenience store": 22,
   Bakery: 18,
   "Drinking water": 14,
   "Fast food": 10,
@@ -68,6 +72,15 @@ export function scorePoi(input: PoiScoringInput): number {
     score += BRAND_BONUS;
   }
   score += openingHoursReliabilityBonus(input.openingHours);
+  const fuelShop = assessFuelShop({
+    category: input.category,
+    tags: input.tags,
+    name: input.name,
+    brand: input.brand,
+  });
+  if (fuelShop) {
+    score += fuelShop.scoreAdjustment;
+  }
   if (input.category === "Drinking water" && !input.name?.trim() && !input.brand?.trim()) {
     score -= UNNAMED_DRINKING_WATER_PENALTY;
   }

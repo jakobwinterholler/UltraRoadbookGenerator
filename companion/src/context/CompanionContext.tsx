@@ -12,8 +12,8 @@ export interface CompanionContextValue {
   selectStop: (stop: CompanionStop | null) => void;
   showUnverified: boolean;
   setShowUnverified: (value: boolean) => void;
-  mapGesturesLocked: boolean;
-  setMapGesturesLocked: (locked: boolean) => void;
+  followGps: boolean;
+  setFollowGps: (value: boolean) => void;
   updateBundle: (bundle: CompanionBundle) => void;
   clearRace: () => Promise<void>;
 }

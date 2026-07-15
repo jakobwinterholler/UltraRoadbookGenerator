@@ -1,13 +1,36 @@
-import { useEffect, useMemo, useRef } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+} from "react";
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import { buildRouteTrack, interpolateTrackAtKm } from "@shared/race/mapMatching";
 import type { CompanionClimb } from "@shared/types/sync";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
+import { buildRouteArrowPoints } from "../lib/routeDirectionArrows";
 import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const FOLLOW_ZOOM = 14;
+
+export interface RouteMapHandle {
+  recenter: () => void;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  resetNorth: () => void;
+}
+
+interface RouteMapViewProps {
+  embedded?: boolean;
+  showClimbs?: boolean;
+  onClimbSelect?: (climbId: string) => void;
+  focusStop?: Pick<CompanionStop, "lat" | "lon" | "zoneId"> | null;
+}
 
 function stopsGeoJson(
   stops: CompanionStop[],
@@ -82,8 +105,6 @@ function climbSegmentsGeoJson(
         properties: {
           climbId: climb.id,
           color: tier.color,
-          label: `${climb.lengthKm.toFixed(1)} km · ${climb.avgGradientPct.toFixed(1)}% · +${climb.elevationGainM} m`,
-          difficulty: tier.label,
         },
         geometry: {
           type: "LineString",
@@ -111,8 +132,7 @@ function climbMarkersGeoJson(
         properties: {
           climbId: climb.id,
           color: tier.color,
-          label: `⛰ ${climb.lengthKm.toFixed(1)}km ${climb.avgGradientPct.toFixed(1)}% +${climb.elevationGainM}m`,
-          difficulty: tier.label,
+          label: `⛰ ${climb.lengthKm.toFixed(1)}km`,
         },
         geometry: {
           type: "Point",
@@ -123,32 +143,30 @@ function climbMarkersGeoJson(
   };
 }
 
-interface RouteMapViewProps {
-  embedded?: boolean;
-  showClimbs?: boolean;
-  onClimbSelect?: (climbId: string) => void;
-}
-
-export default function RouteMapView({
-  embedded = false,
-  showClimbs = false,
-  onClimbSelect,
-}: RouteMapViewProps) {
+const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function RouteMapView(
+  { embedded = false, showClimbs = false, onClimbSelect, focusStop = null },
+  ref,
+) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
-  const userMovedMapRef = useRef(false);
+  const readyRef = useRef(false);
+  const userExploringRef = useRef(false);
+  const initialFitDoneRef = useRef(false);
+  const stopsRef = useRef<CompanionStop[]>([]);
+  const onClimbSelectRef = useRef(onClimbSelect);
+  const selectStopRef = useRef<(stop: CompanionStop | null) => void>(() => undefined);
+
   const {
     bundle,
     gps,
-    currentKm,
     selectedStop,
     selectStop,
     showUnverified,
-    mapGesturesLocked,
-    setMapGesturesLocked,
+    followGps,
+    setFollowGps,
   } = useCompanion();
 
-  const selectedZoneId = selectedStop?.zoneId ?? null;
+  const selectedZoneId = focusStop?.zoneId ?? selectedStop?.zoneId ?? null;
   const climbs = bundle.climbs ?? [];
 
   const visibleStops = useMemo(
@@ -159,7 +177,48 @@ export default function RouteMapView({
     [bundle.stops, showUnverified],
   );
 
-  const followRider = !embedded && gps.lat != null && gps.lon != null;
+  stopsRef.current = bundle.stops;
+  onClimbSelectRef.current = onClimbSelect;
+  selectStopRef.current = selectStop;
+
+  const recenter = useCallback(() => {
+    const map = mapRef.current;
+    if (!map || gps.lat == null || gps.lon == null) {
+      return;
+    }
+    userExploringRef.current = false;
+    setFollowGps(true);
+    map.easeTo({
+      center: [gps.lon, gps.lat],
+      bearing: gps.bearing,
+      zoom: Math.max(map.getZoom(), FOLLOW_ZOOM),
+      duration: 450,
+      essential: true,
+    });
+  }, [gps.bearing, gps.lat, gps.lon, setFollowGps]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      recenter,
+      zoomIn: () => {
+        userExploringRef.current = true;
+        setFollowGps(false);
+        mapRef.current?.zoomIn({ duration: 200 });
+      },
+      zoomOut: () => {
+        userExploringRef.current = true;
+        setFollowGps(false);
+        mapRef.current?.zoomOut({ duration: 200 });
+      },
+      resetNorth: () => {
+        userExploringRef.current = true;
+        setFollowGps(false);
+        mapRef.current?.easeTo({ bearing: 0, duration: 300 });
+      },
+    }),
+    [recenter, setFollowGps],
+  );
 
   useEffect(() => {
     const host = hostRef.current;
@@ -167,18 +226,24 @@ export default function RouteMapView({
       return;
     }
 
+    readyRef.current = false;
+    userExploringRef.current = false;
+    initialFitDoneRef.current = false;
+
     const map = new maplibregl.Map({
       container: host,
       style: MAP_STYLE,
-      bounds: [
-        [bundle.route.bounds.west, bundle.route.bounds.south],
-        [bundle.route.bounds.east, bundle.route.bounds.north],
+      center: [
+        (bundle.route.bounds.west + bundle.route.bounds.east) / 2,
+        (bundle.route.bounds.south + bundle.route.bounds.north) / 2,
       ],
-      fitBoundsOptions: { padding: embedded ? 20 : 40 },
+      zoom: embedded ? 11 : 10,
       dragRotate: !embedded,
       touchPitch: !embedded,
       touchZoomRotate: true,
       doubleClickZoom: !embedded,
+      fadeDuration: 0,
+      refreshExpiredTiles: false,
     });
     mapRef.current = map;
 
@@ -221,6 +286,44 @@ export default function RouteMapView({
         },
       });
 
+      map.addLayer({
+        id: "route-direction",
+        type: "symbol",
+        source: "route",
+        minzoom: 9,
+        layout: {
+          "symbol-placement": "line",
+          "symbol-spacing": [
+            "interpolate",
+            ["linear"],
+            ["zoom"],
+            10,
+            120,
+            14,
+            70,
+            17,
+            40,
+          ],
+          "text-field": "▸",
+          "text-size": ["interpolate", ["linear"], ["zoom"], 10, 10, 14, 13, 17, 15],
+          "text-keep-upright": false,
+          "text-rotation-alignment": "map",
+          "text-allow-overlap": true,
+          "text-ignore-placement": true,
+        },
+        paint: {
+          "text-color": "#ffffff",
+          "text-halo-color": "#1d4ed8",
+          "text-halo-width": 1.2,
+          "text-opacity": 0.9,
+        },
+      });
+
+      map.addSource("route-arrows", {
+        type: "geojson",
+        data: buildRouteArrowPoints(bundle.route.coordinates, bundle.race.distanceKm),
+      });
+
       map.addSource("climb-segments", {
         type: "geojson",
         data: climbSegmentsGeoJson(climbs, bundle.route.coordinates, bundle.race.distanceKm),
@@ -253,25 +356,6 @@ export default function RouteMapView({
           "circle-color": ["get", "color"],
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
-        },
-      });
-
-      map.addLayer({
-        id: "climb-markers-label",
-        type: "symbol",
-        source: "climb-markers",
-        layout: {
-          visibility: showClimbs ? "visible" : "none",
-          "text-field": ["get", "label"],
-          "text-size": embedded ? 10 : 11,
-          "text-offset": [0, 1.6],
-          "text-anchor": "top",
-          "text-allow-overlap": false,
-        },
-        paint: {
-          "text-color": "#ffffff",
-          "text-halo-color": "#000000",
-          "text-halo-width": 1,
         },
       });
 
@@ -385,6 +469,19 @@ export default function RouteMapView({
           },
         });
       }
+
+      if (!embedded && !initialFitDoneRef.current) {
+        map.fitBounds(
+          [
+            [bundle.route.bounds.west, bundle.route.bounds.south],
+            [bundle.route.bounds.east, bundle.route.bounds.north],
+          ],
+          { padding: 40, duration: 0 },
+        );
+        initialFitDoneRef.current = true;
+      }
+
+      readyRef.current = true;
     };
 
     if (map.loaded()) {
@@ -397,10 +494,10 @@ export default function RouteMapView({
       const climbFeatures = map.queryRenderedFeatures(event.point, {
         layers: ["climb-markers-bg", "climb-segments-line"],
       });
-      if (climbFeatures.length > 0 && onClimbSelect) {
+      if (climbFeatures.length > 0 && onClimbSelectRef.current) {
         const climbId = climbFeatures[0].properties?.climbId;
         if (typeof climbId === "string") {
-          onClimbSelect(climbId);
+          onClimbSelectRef.current(climbId);
           return;
         }
       }
@@ -412,43 +509,29 @@ export default function RouteMapView({
         return;
       }
       const zoneId = Number(stopFeatures[0].properties?.zoneId);
-      const stop = bundle.stops.find((item) => item.zoneId === zoneId) ?? null;
-      selectStop(stop);
+      const stop = stopsRef.current.find((item) => item.zoneId === zoneId) ?? null;
+      selectStopRef.current(stop);
     });
 
-    if (!embedded) {
-      const pauseFollow = () => {
-        userMovedMapRef.current = true;
-        setMapGesturesLocked(false);
-      };
-      map.on("dragstart", pauseFollow);
-      map.on("zoomstart", pauseFollow);
-      map.on("rotatestart", pauseFollow);
-      map.on("pitchstart", pauseFollow);
-    }
+    const pauseFollow = () => {
+      userExploringRef.current = true;
+      setFollowGps(false);
+    };
+    map.on("dragstart", pauseFollow);
+    map.on("zoomstart", pauseFollow);
+    map.on("rotatestart", pauseFollow);
+    map.on("pitchstart", pauseFollow);
 
     return () => {
+      readyRef.current = false;
       map.remove();
       mapRef.current = null;
     };
-  }, [
-    bundle.race.id,
-    bundle.route.coordinates,
-    bundle.route.bounds,
-    bundle.stops,
-    climbs,
-    embedded,
-    onClimbSelect,
-    selectStop,
-    setMapGesturesLocked,
-    showClimbs,
-    visibleStops,
-    selectedZoneId,
-  ]);
+  }, [bundle.race.id, embedded, setFollowGps]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map?.getSource("stops")) {
+    if (!map?.getSource("stops") || !readyRef.current) {
       return;
     }
     (map.getSource("stops") as maplibregl.GeoJSONSource).setData(
@@ -458,7 +541,7 @@ export default function RouteMapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map?.getSource("climb-segments") || !map?.getSource("climb-markers")) {
+    if (!map?.getSource("climb-segments") || !readyRef.current) {
       return;
     }
     const visibility = showClimbs && climbs.length > 0 ? "visible" : "none";
@@ -468,7 +551,7 @@ export default function RouteMapView({
     (map.getSource("climb-markers") as maplibregl.GeoJSONSource).setData(
       climbMarkersGeoJson(climbs, bundle.route.coordinates, bundle.race.distanceKm),
     );
-    for (const layerId of ["climb-segments-line", "climb-markers-bg", "climb-markers-label"]) {
+    for (const layerId of ["climb-segments-line", "climb-markers-bg"]) {
       if (map.getLayer(layerId)) {
         map.setLayoutProperty(layerId, "visibility", visibility);
       }
@@ -477,7 +560,7 @@ export default function RouteMapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map?.getSource("rider") || gps.lat == null || gps.lon == null) {
+    if (!map?.getSource("rider") || !readyRef.current || gps.lat == null || gps.lon == null) {
       return;
     }
     (map.getSource("rider") as maplibregl.GeoJSONSource).setData({
@@ -491,9 +574,10 @@ export default function RouteMapView({
     const map = mapRef.current;
     if (
       !map ||
-      !followRider ||
-      !mapGesturesLocked ||
-      userMovedMapRef.current ||
+      embedded ||
+      !readyRef.current ||
+      !followGps ||
+      userExploringRef.current ||
       gps.lat == null ||
       gps.lon == null
     ) {
@@ -502,24 +586,35 @@ export default function RouteMapView({
     map.easeTo({
       center: [gps.lon, gps.lat],
       bearing: gps.bearing,
-      zoom: Math.max(map.getZoom(), 14),
-      duration: 500,
+      duration: 450,
       essential: true,
     });
-  }, [followRider, mapGesturesLocked, gps.lat, gps.lon, gps.bearing, currentKm]);
+  }, [embedded, followGps, gps.bearing, gps.lat, gps.lon]);
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !selectedStop) {
+    const target = focusStop ?? selectedStop;
+    if (!map || !readyRef.current || !target) {
+      return;
+    }
+    if (!embedded && followGps) {
       return;
     }
     map.easeTo({
-      center: [selectedStop.lon, selectedStop.lat],
-      zoom: embedded ? 13 : Math.max(map.getZoom(), 14),
+      center: [target.lon, target.lat],
+      zoom: embedded ? 14 : map.getZoom(),
       duration: 350,
       essential: true,
     });
-  }, [embedded, selectedStop?.zoneId]);
+  }, [embedded, focusStop?.zoneId, followGps, selectedStop?.zoneId]);
 
-  return <div ref={hostRef} className="absolute inset-0" />;
-}
+  useEffect(() => {
+    if (followGps) {
+      userExploringRef.current = false;
+    }
+  }, [followGps]);
+
+  return <div ref={hostRef} className="absolute inset-0 bg-[#0c1018]" />;
+});
+
+export default RouteMapView;

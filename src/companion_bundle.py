@@ -53,10 +53,19 @@ def _primary_poi(zone: dict[str, Any]) -> dict[str, Any] | None:
     return ranked[0] if ranked else None
 
 
-def _planning_score(poi: dict[str, Any]) -> float:
+def _primary_category_boost(category_key: str) -> float:
+    return {
+        "fuel": 10.0,
+        "food": 5.0,
+        "water": 2.0,
+        "dining": 0.0,
+    }.get(category_key, 0.0)
+
+
+def _planning_score(poi: dict[str, Any], category_key: str = "") -> float:
     score = float(poi.get("score") or 0)
     detour = float(poi.get("distance_off_route_m") or 0)
-    return score - min(detour / 8.0, 35.0)
+    return score - min(detour / 8.0, 35.0) + _primary_category_boost(category_key)
 
 
 def _rank_zone_pois(zone: dict[str, Any]) -> list[tuple[dict[str, Any], str, str]]:
@@ -74,7 +83,7 @@ def _rank_zone_pois(zone: dict[str, Any]) -> list[tuple[dict[str, Any], str, str
                 continue
             seen.add(osm_key)
             items.append((option, category_key, category_label))
-    items.sort(key=lambda entry: _planning_score(entry[0]), reverse=True)
+    items.sort(key=lambda entry: _planning_score(entry[0], entry[1]), reverse=True)
     return items
 
 

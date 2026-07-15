@@ -1,4 +1,6 @@
 import { useAuth } from "@shared/auth/AuthProvider";
+import { computeStopConfidence, stopConfidenceBadgeClass } from "@shared/race/stopConfidence";
+import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionVerificationUpdates } from "@shared/types/verification";
 import type { CompanionBundle, CompanionStop } from "../types";
 import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
@@ -6,6 +8,7 @@ import {
   canVerifyStop,
   isVerifiedEverywhere,
   isVerifiedLocally,
+  serviceLabels,
   stopStatusLabel,
 } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
@@ -71,6 +74,20 @@ function alternativeToStop(anchor: CompanionStop, alternative: StopAlternativeVi
   };
 }
 
+function formatDetourM(distanceOffRouteM: number | undefined): string {
+  if (distanceOffRouteM == null || !Number.isFinite(distanceOffRouteM) || distanceOffRouteM < 50) {
+    return "On route";
+  }
+  return `${Math.round(distanceOffRouteM)} m off route`;
+}
+
+function formatSeparationM(meters: number): string {
+  if (meters < 1000) {
+    return `${Math.round(meters)} m apart`;
+  }
+  return `${(meters / 1000).toFixed(1)} km apart`;
+}
+
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -101,6 +118,16 @@ export default function StopSheet({
   };
   const alternatives = stop ? buildStopAlternatives(stop, bundle.stops) : [];
   const showVerifyActions = stop ? canVerifyStop(stop.verificationStatus) : false;
+  const confidence = stop
+    ? computeStopConfidence({
+        verificationStatus: stop.verificationStatus,
+        verifiedAt: stop.verificationDate,
+        poiScore: stop.confidenceScore,
+        openingHours: stop.openingHours,
+        website: stop.website,
+        phone: stop.phone,
+      })
+    : null;
 
   async function handleVerify(target: CompanionStop) {
     await submitVerification(target, {
@@ -148,14 +175,45 @@ export default function StopSheet({
               >
                 {stopStatusLabel(stop.verificationStatus)}
               </span>
-              <span className="text-sm tabular-nums text-white/50">
-                {formatKm(stop.km)} · {formatKm(Math.max(0, totalKm - stop.km))} left
-              </span>
+              {confidence ? (
+                <span
+                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${stopConfidenceBadgeClass(confidence.level, true)}`}
+                >
+                  {confidence.label} ({confidence.score})
+                </span>
+              ) : null}
             </div>
           </div>
 
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Route position</dt>
+              <dd className="mt-0.5 tabular-nums text-white/85">
+                {formatKm(stop.km)} · {formatKm(Math.max(0, totalKm - stop.km))} left
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Detour</dt>
+              <dd className="mt-0.5 text-white/85">{formatDetourM(stop.distanceOffRouteM)}</dd>
+            </div>
+            <div className="col-span-2">
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Services</dt>
+              <dd className="mt-0.5 text-white/85">{serviceLabels(stop)}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Hours</dt>
+              <dd className="mt-0.5 text-white/85">{stop.openingHours ?? "Unknown"}</dd>
+            </div>
+            <div>
+              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">POI score</dt>
+              <dd className="mt-0.5 tabular-nums text-white/85">
+                {stop.confidenceScore != null ? `${Math.round(stop.confidenceScore)}` : "—"}
+              </dd>
+            </div>
+          </dl>
+
           <div className="relative h-44 overflow-hidden rounded-2xl border border-white/10">
-            <RouteMapView embedded />
+            <RouteMapView embedded focusStop={stop} />
           </div>
 
           {alternatives.length > 0 ? (
@@ -167,6 +225,7 @@ export default function StopSheet({
                 {alternatives.map((alternative) => {
                   const altStop = alternativeToStop(stop, alternative);
                   const canVerifyAlt = canVerifyStop(alternative.verificationStatus);
+                  const separationM = haversineM(stop.lat, stop.lon, alternative.lat, alternative.lon);
                   return (
                     <li key={alternative.key}>
                       <div className="flex min-h-[48px] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition active:bg-white/8">
@@ -183,7 +242,8 @@ export default function StopSheet({
                               {alternative.name}
                             </p>
                             <p className="truncate text-xs text-white/45">
-                              {alternative.categoryLabel} · {alternative.distanceLabel}
+                              {alternative.categoryLabel} · {alternative.distanceLabel} ·{" "}
+                              {formatSeparationM(separationM)}
                             </p>
                           </div>
                           <span
@@ -293,24 +353,12 @@ export default function StopSheet({
             )}
           </div>
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
-            <div>
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Hours</dt>
-              <dd className="mt-0.5 text-white/85">{stop.openingHours ?? "Unknown"}</dd>
+          {stop.notes ? (
+            <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 text-sm">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-white/40">Notes</p>
+              <p className="mt-1 text-white/85">{stop.notes}</p>
             </div>
-            <div>
-              <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Confidence</dt>
-              <dd className="mt-0.5 tabular-nums text-white/85">
-                {stop.confidenceScore != null ? `${Math.round(stop.confidenceScore)}` : "—"}
-              </dd>
-            </div>
-            {stop.notes ? (
-              <div className="col-span-2">
-                <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Notes</dt>
-                <dd className="mt-0.5 text-white/85">{stop.notes}</dd>
-              </div>
-            ) : null}
-          </dl>
+          ) : null}
         </div>
       ) : null}
     </BottomSheet>

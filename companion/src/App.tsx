@@ -30,7 +30,7 @@ export default function App() {
   const [tab, setTab] = useState<CompanionTab>("map");
   const [selectedStop, setSelectedStop] = useState<CompanionStop | null>(null);
   const [showUnverified, setShowUnverified] = useState(false);
-  const [mapGesturesLocked, setMapGesturesLocked] = useState(true);
+  const [followGps, setFollowGps] = useState(true);
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -99,8 +99,8 @@ export default function App() {
             selectStop: setSelectedStop,
             showUnverified,
             setShowUnverified,
-            mapGesturesLocked,
-            setMapGesturesLocked,
+            followGps,
+            setFollowGps,
             updateBundle,
             clearRace,
           }
@@ -109,7 +109,7 @@ export default function App() {
       bundle,
       clearRace,
       gps,
-      mapGesturesLocked,
+      followGps,
       routeTrack,
       selectedStop,
       showUnverified,
