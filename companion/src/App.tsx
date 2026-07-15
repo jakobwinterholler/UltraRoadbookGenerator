@@ -54,7 +54,7 @@ export default function App() {
     };
   });
   const [selectedStop, setSelectedStop] = useState<CompanionStop | null>(null);
-  const [showUnverified, setShowUnverified] = useState(false);
+  const [showUnverified, setShowUnverified] = useState(true);
   const [followGps, setFollowGps] = useState(true);
   const [online, setOnline] = useState(
     typeof navigator !== "undefined" ? navigator.onLine : true,

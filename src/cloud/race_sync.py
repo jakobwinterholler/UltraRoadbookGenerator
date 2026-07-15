@@ -705,6 +705,12 @@ def compare_desktop_companion(
                 differences.append(f"Stops only on desktop: {', '.join(only_local[:5])}")
             if only_cloud:
                 differences.append(f"Stops only on cloud: {', '.join(only_cloud[:5])}")
+        local_has_oilprix = any("oilprix" in name.lower() for name in local_stops)
+        cloud_has_oilprix = any("oilprix" in name.lower() for name in cloud_stops)
+        if local_has_oilprix != cloud_has_oilprix:
+            differences.append(
+                f"Oilprix: desktop={'yes' if local_has_oilprix else 'no'} vs cloud={'yes' if cloud_has_oilprix else 'no'}"
+            )
 
     return {
         "raceId": race_id,

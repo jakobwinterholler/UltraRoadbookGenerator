@@ -370,7 +370,7 @@ def build_companion_bundle(
                 "zoneId": zone_id,
                 "osmId": (poi or {}).get("osm_id"),
                 "osmType": (poi or {}).get("osm_type"),
-                "km": zone.get("distance_along_km"),
+                "km": float((poi or {}).get("distance_along_km") or zone.get("distance_along_km") or 0),
                 "lat": stop_lat,
                 "lon": stop_lon,
                 "name": _format_poi_name(poi, zone),

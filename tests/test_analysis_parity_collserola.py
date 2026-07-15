@@ -1,0 +1,72 @@
+"""Collserola analysis parity: desktop analysis must match companion bundle."""
+
+from __future__ import annotations
+
+import unittest
+from unittest.mock import patch
+
+from bundle_checksum import compute_bundle_checksum
+from companion_bundle import build_companion_bundle
+from race_project import race_store
+from significant_climbs import significant_climbs
+
+COLLserola_ID = "b7a1c487-80c6-477c-87ae-ec9dd32b900c"
+
+
+class CollserolaAnalysisParityTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.roadbook = race_store.load_analysis(COLLserola_ID)
+        if self.roadbook is None:
+            self.skipTest("Collserola analysis not available locally")
+
+    def test_two_significant_climbs_in_analysis(self) -> None:
+        sig = significant_climbs(self.roadbook.get("climbs") or [])
+        self.assertEqual([c.get("id") for c in sig], ["C001", "C002"])
+
+    def test_oilprix_primary_in_resupply_zones(self) -> None:
+        found = False
+        for zone in self.roadbook.get("resupply_zones") or []:
+            for group in zone.get("categories") or []:
+                primary = group.get("primary") or {}
+                if "oilprix" in str(primary.get("name") or "").lower():
+                    found = True
+                    self.assertEqual(zone.get("zone_id"), 4)
+        self.assertTrue(found, "Oilprix must be a primary POI in zone 4")
+
+    def test_bundle_exports_two_climbs_and_oilprix(self) -> None:
+        race = race_store.get_race(COLLserola_ID)
+        with patch("companion_bundle._utc_now", return_value="2026-07-15T12:00:00+00:00"):
+            bundle = build_companion_bundle(
+                COLLserola_ID,
+                self.roadbook,
+                race.preparation.to_dict(),
+                revision=1,
+            )
+        climb_ids = [c.get("id") for c in bundle.get("climbs") or []]
+        self.assertEqual(climb_ids, ["C001", "C002"])
+        self.assertEqual(len(bundle.get("stops") or []), 19)
+        oilprix = [
+            stop
+            for stop in bundle.get("stops") or []
+            if "oilprix" in str(stop.get("name") or "").lower()
+        ]
+        self.assertEqual(len(oilprix), 1)
+        self.assertEqual(oilprix[0].get("zoneId"), 4)
+        self.assertEqual(oilprix[0].get("verificationStatus"), "verified")
+        self.assertTrue(bundle.get("bundleChecksum"))
+
+    def test_bundle_checksum_stable_for_collserola(self) -> None:
+        race = race_store.get_race(COLLserola_ID)
+        with patch("companion_bundle._utc_now", return_value="2026-07-15T12:00:00+00:00"):
+            bundle = build_companion_bundle(
+                COLLserola_ID,
+                self.roadbook,
+                race.preparation.to_dict(),
+                revision=1,
+            )
+        checksum = compute_bundle_checksum(bundle)
+        self.assertEqual(bundle.get("bundleChecksum"), checksum)
+
+
+if __name__ == "__main__":
+    unittest.main()

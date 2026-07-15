@@ -8,11 +8,12 @@ import {
 } from "react";
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import { buildRouteTrack, interpolateTrackAtKm } from "@shared/race/mapMatching";
-import type { CompanionClimb } from "@shared/types/sync";
+import { collectAllBundlePois } from "@shared/race/bundlePois";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
 import { buildRouteArrowPoints } from "../lib/routeDirectionArrows";
+import type { CompanionClimb } from "@shared/types/sync";
 import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
@@ -35,6 +36,7 @@ interface RouteMapViewProps {
 function stopsGeoJson(
   stops: CompanionStop[],
   selectedZoneId: number | null,
+  selectedPoiId: string | null,
 ): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
@@ -42,8 +44,13 @@ function stopsGeoJson(
       type: "Feature",
       properties: {
         zoneId: stop.zoneId,
+        poiId: stop.poiId ?? `zone-${stop.zoneId}`,
         verified: stop.verificationStatus === "verified" ? 1 : 0,
-        selected: stop.zoneId === selectedZoneId ? 1 : 0,
+        selected:
+          (selectedPoiId != null && stop.poiId === selectedPoiId) ||
+          (selectedPoiId == null && stop.zoneId === selectedZoneId)
+            ? 1
+            : 0,
       },
       geometry: {
         type: "Point",
@@ -161,23 +168,17 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     gps,
     selectedStop,
     selectStop,
-    showUnverified,
     followGps,
     setFollowGps,
   } = useCompanion();
 
   const selectedZoneId = focusStop?.zoneId ?? selectedStop?.zoneId ?? null;
+  const selectedPoiId = selectedStop?.poiId ?? null;
   const climbs = bundle.climbs ?? [];
 
-  const visibleStops = useMemo(
-    () =>
-      bundle.stops.filter(
-        (stop) => stop.verificationStatus === "verified" || showUnverified,
-      ),
-    [bundle.stops, showUnverified],
-  );
+  const visibleStops = useMemo(() => collectAllBundlePois(bundle).map((entry) => entry.stop), [bundle]);
 
-  stopsRef.current = bundle.stops;
+  stopsRef.current = visibleStops;
   onClimbSelectRef.current = onClimbSelect;
   selectStopRef.current = selectStop;
 
@@ -381,7 +382,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
 
       map.addSource("stops", {
         type: "geojson",
-        data: stopsGeoJson(visibleStops, selectedZoneId),
+        data: stopsGeoJson(visibleStops, selectedZoneId, selectedPoiId),
       });
 
       map.addLayer({
@@ -508,8 +509,14 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       if (stopFeatures.length === 0) {
         return;
       }
+      const poiId = stopFeatures[0].properties?.poiId;
       const zoneId = Number(stopFeatures[0].properties?.zoneId);
-      const stop = stopsRef.current.find((item) => item.zoneId === zoneId) ?? null;
+      const stop =
+        (typeof poiId === "string"
+          ? stopsRef.current.find((item) => item.poiId === poiId)
+          : null) ??
+        stopsRef.current.find((item) => item.zoneId === zoneId) ??
+        null;
       selectStopRef.current(stop);
     });
 
@@ -535,9 +542,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       return;
     }
     (map.getSource("stops") as maplibregl.GeoJSONSource).setData(
-      stopsGeoJson(visibleStops, selectedZoneId),
+      stopsGeoJson(visibleStops, selectedZoneId, selectedPoiId),
     );
-  }, [visibleStops, selectedZoneId]);
+  }, [visibleStops, selectedZoneId, selectedPoiId]);
 
   useEffect(() => {
     const map = mapRef.current;

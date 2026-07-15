@@ -45,6 +45,11 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
       />
 
       <div className="pointer-events-none absolute left-4 top-4 z-10 flex flex-col gap-2">
+        {hasClimbs ? (
+          <FloatingCard className="pointer-events-none px-3 py-2 text-xs font-medium text-white/80">
+            {bundle.climbs?.length ?? 0} climbs
+          </FloatingCard>
+        ) : null}
         <FloatingCard className="pointer-events-auto p-1">
           <label className="flex min-h-[44px] cursor-pointer items-center gap-2.5 px-3 py-2 text-sm text-white/85">
             <input
