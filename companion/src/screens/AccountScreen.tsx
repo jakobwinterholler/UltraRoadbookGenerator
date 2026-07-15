@@ -302,7 +302,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
         onConfirm={() => void handleDeleteAccount()}
       />
 
-      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.3</p>
+      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.4</p>
     </div>
   );
 }
