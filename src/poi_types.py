@@ -154,3 +154,4 @@ class PoiDataset:
     osm_load_s: float = 0.0
     matching_s: float = 0.0
     osm_downloaded: bool = False
+    discarded: tuple = ()  # tuple[PoiDetectionDiscard, ...] — filled by poi_detector

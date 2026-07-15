@@ -76,6 +76,8 @@ LIKELY_SHOP_BRANDS = frozenset(
         "alcampo",
         "petrocat",
         "petrolis",
+        "oilprix",
+        "petroprix",
         "esclatoil",
     }
 )

@@ -79,6 +79,8 @@ interface RouteMapProps {
   onSelectClimb: (climbId: string) => void;
   onSelectCandidate: (candidateId: string) => void;
   onSelectPoi: (selection: StopSelection) => void;
+  poiDebugMode?: boolean;
+  onPoiDebugClick?: (lat: number, lon: number) => void;
 }
 
 function PanToFocus({
@@ -180,20 +182,34 @@ function FitBounds({ route }: { route: RouteVisualization }) {
 function MapInteractionHandler({
   points,
   onActiveIndexChange,
+  poiDebugMode = false,
+  onPoiDebugClick,
 }: {
   points: RouteVisualization["track_points"];
   onActiveIndexChange: (index: number | null) => void;
+  poiDebugMode?: boolean;
+  onPoiDebugClick?: (lat: number, lon: number) => void;
 }) {
   useMapEvents({
     click(event: L.LeafletMouseEvent) {
+      if (poiDebugMode && onPoiDebugClick) {
+        onPoiDebugClick(event.latlng.lat, event.latlng.lng);
+        return;
+      }
       const index = findNearestTrackIndexByLatLng(points, event.latlng.lat, event.latlng.lng);
       onActiveIndexChange(index);
     },
     mousemove(event: L.LeafletMouseEvent) {
+      if (poiDebugMode) {
+        return;
+      }
       const index = findNearestTrackIndexByLatLng(points, event.latlng.lat, event.latlng.lng);
       onActiveIndexChange(index);
     },
     mouseout() {
+      if (poiDebugMode) {
+        return;
+      }
       onActiveIndexChange(null);
     },
   });
@@ -259,6 +275,8 @@ export default function RouteMap({
   onSelectClimb,
   onSelectCandidate,
   onSelectPoi,
+  poiDebugMode = false,
+  onPoiDebugClick,
 }: RouteMapProps) {
   const { verifiedStops } = useRace();
   const [mapZoom, setMapZoom] = useState(11);
@@ -326,6 +344,8 @@ export default function RouteMap({
         <MapInteractionHandler
           points={route.track_points}
           onActiveIndexChange={onActiveIndexChange}
+          poiDebugMode={poiDebugMode}
+          onPoiDebugClick={onPoiDebugClick}
         />
 
         {overlay === "normal" ? (

@@ -22,7 +22,9 @@ import RouteInspector from "../RouteInspector";
 import RouteMap from "../RouteMap";
 import TimelineLayerControls from "../TimelineLayerControls";
 import PlanningDetailSheet from "../planning/PlanningDetailSheet";
+import PoiDebugPanel from "../planning/PoiDebugPanel";
 import ResupplyHubDetailContent from "../resupply/ResupplyHubDetailContent";
+import { nearestPoiDebugEntry } from "../../planning/poiDebug";
 import { activePoint, computeRouteInsights, percentOfRoute } from "../routeInsights";
 import { formatKm } from "../routeInsights";
 import ClimbDetailView from "../climb/ClimbDetailView";
@@ -54,6 +56,11 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   const { stageSettings, arrivalTimeWindow } = usePlanningAssumptions();
   const { verifiedStops } = useRace();
   const [stopsBrowseOpen, setStopsBrowseOpen] = useState(false);
+  const [poiDebugMode, setPoiDebugMode] = useState(false);
+  const [poiDebugClick, setPoiDebugClick] = useState<{ lat: number; lon: number } | null>(null);
+  const [poiDebugSelection, setPoiDebugSelection] = useState<import("../../api").PoiDebugRow | null>(
+    null,
+  );
 
   const presentedZones = useMemo(
     () =>
@@ -363,6 +370,22 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
             <TimelineLayerControls />
           </div>
         </details>
+
+        <button
+          type="button"
+          onClick={() => {
+            setPoiDebugMode((current) => !current);
+            setPoiDebugClick(null);
+            setPoiDebugSelection(null);
+          }}
+          className={`rounded-xl border px-4 py-2 text-sm font-medium transition ${
+            poiDebugMode
+              ? "border-accent bg-accent/10 text-accent"
+              : "border-line bg-card text-muted hover:text-ink"
+          }`}
+        >
+          {poiDebugMode ? "POI debug on" : "POI debug"}
+        </button>
       </header>
 
       {selectedClimb ? (
@@ -402,7 +425,24 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 onSelectClimb={selection.handleSelectClimb}
                 onSelectCandidate={selection.handleSelectCandidate}
                 onSelectPoi={selection.handleSelectPoi}
+                poiDebugMode={poiDebugMode}
+                onPoiDebugClick={(lat, lon) => {
+                  setPoiDebugClick({ lat, lon });
+                  setPoiDebugSelection(
+                    nearestPoiDebugEntry(result.poi_debug ?? [], lat, lon),
+                  );
+                }}
               />
+              {poiDebugMode && (
+                <PoiDebugPanel
+                  entry={poiDebugSelection}
+                  clickLatLng={poiDebugClick}
+                  onClose={() => {
+                    setPoiDebugClick(null);
+                    setPoiDebugSelection(null);
+                  }}
+                />
+              )}
             </div>
 
             <ElevationProfile

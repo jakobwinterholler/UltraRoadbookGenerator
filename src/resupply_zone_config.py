@@ -26,6 +26,10 @@ class ResupplyZoneConfig:
     # Maximum recursive split depth for oversized clusters.
     max_split_depth: int = 3
 
+    # POIs further apart than this along the route (km) must not share a zone.
+    # Prevents loop routes from chaining distant stops through spatial proximity.
+    max_along_route_spread_km: float = 3.0
+
 
 DEFAULT_RESUPPLY_ZONE_CONFIG = ResupplyZoneConfig()
 

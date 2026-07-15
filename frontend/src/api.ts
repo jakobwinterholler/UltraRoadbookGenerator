@@ -264,6 +264,25 @@ export interface RouteVisualization {
   resupply_segments: ResupplyQualitySegment[];
 }
 
+export interface PoiDebugRow {
+  osm_id: number;
+  osm_type: string;
+  name: string | null;
+  brand: string | null;
+  category: string | null;
+  lat: number | null;
+  lon: number | null;
+  status: "imported" | "discarded";
+  discard_stage: string | null;
+  discard_reason: string | null;
+  distance_along_km: number | null;
+  distance_off_route_m: number | null;
+  score: number | null;
+  zone_id: number | null;
+  cluster_id: number | null;
+  zone_role: string | null;
+}
+
 export interface RoadbookResult {
   summary: RouteSummary;
   climbs: ClimbRow[];
@@ -275,6 +294,7 @@ export interface RoadbookResult {
   performance_summary?: PerformanceSummaryRow | null;
   surface_insights?: SurfaceInsight[];
   surface_diagnostics?: SurfaceDiagnostics | null;
+  poi_debug?: PoiDebugRow[];
 }
 
 export type AppTab =

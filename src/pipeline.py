@@ -17,6 +17,7 @@ from performance_targets import build_performance_summary, classify_cache_mode
 from poi_contact import extract_phone, extract_website
 from poi_detour import classify_detour
 from poi_detector import PoiDataset, detect_pois
+from poi_pipeline_debug import PoiDebugEntry, build_poi_debug_entries, detection_discard_to_debug
 from poi_night_usability import classify_night_usability, night_usability_label, water_fountain_type_label
 from poi_profile import PoiPlanningProfile, DEFAULT_ULTRA_POI_PROFILE
 from poi_reviews import PoiReviews, empty_reviews
@@ -268,6 +269,26 @@ class PerformanceSummaryRow:
 
 
 @dataclass
+class PoiDebugRow:
+    osm_id: int
+    osm_type: str
+    name: str | None
+    brand: str | None
+    category: str | None
+    lat: float | None
+    lon: float | None
+    status: str
+    discard_stage: str | None
+    discard_reason: str | None
+    distance_along_km: float | None
+    distance_off_route_m: float | None
+    score: float | None
+    zone_id: int | None
+    cluster_id: int | None
+    zone_role: str | None
+
+
+@dataclass
 class RoadbookResult:
     """Complete analysis result returned to the frontend."""
 
@@ -281,6 +302,7 @@ class RoadbookResult:
     performance_summary: PerformanceSummaryRow | None
     surface_insights: list[SurfaceInsightRow]
     surface_diagnostics: dict | None
+    poi_debug: list[PoiDebugRow] | None = None
 
 
 @dataclass
@@ -831,6 +853,33 @@ def analyze_gpx_file(
     )
 
     zone_rows = [_resupply_zone_row(zone) for zone in resupply_plan.zones]
+    poi_debug_entries = build_poi_debug_entries(
+        poi_dataset.pois,
+        resupply_plan,
+        [detection_discard_to_debug(discard) for discard in poi_dataset.discarded],
+        score_cache=score_cache,
+    )
+    poi_debug_rows = [
+        PoiDebugRow(
+            osm_id=entry.osm_id,
+            osm_type=entry.osm_type,
+            name=entry.name,
+            brand=entry.brand,
+            category=entry.category,
+            lat=entry.lat,
+            lon=entry.lon,
+            status=entry.status,
+            discard_stage=entry.discard_stage,
+            discard_reason=entry.discard_reason,
+            distance_along_km=entry.distance_along_km,
+            distance_off_route_m=entry.distance_off_route_m,
+            score=entry.score,
+            zone_id=entry.zone_id,
+            cluster_id=entry.cluster_id,
+            zone_role=entry.zone_role,
+        )
+        for entry in poi_debug_entries
+    ]
     _emit_partial(
         progress,
         "zones",
@@ -919,6 +968,7 @@ def analyze_gpx_file(
             for insight in build_surface_insights(route_viz)
         ],
         surface_diagnostics=surface_dataset.diagnostics,
+        poi_debug=poi_debug_rows,
     )
 
     return AnalysisArtifacts(
@@ -1064,4 +1114,7 @@ def roadbook_to_dict(result: RoadbookResult) -> dict:
         "performance_summary": (
             asdict(result.performance_summary) if result.performance_summary is not None else None
         ),
+        "surface_insights": [asdict(insight) for insight in (result.surface_insights or [])],
+        "surface_diagnostics": result.surface_diagnostics,
+        "poi_debug": [asdict(entry) for entry in (result.poi_debug or [])],
     }

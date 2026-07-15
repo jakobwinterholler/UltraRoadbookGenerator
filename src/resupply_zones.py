@@ -128,6 +128,44 @@ def _grid_key(lat: float, lon: float, cell_lat_deg: float, cell_lon_deg: float) 
     return (int(lat / cell_lat_deg), int(lon / cell_lon_deg))
 
 
+def _cluster_along_route_spread_km(cluster: list[PointOfInterest]) -> float:
+    if len(cluster) < 2:
+        return 0.0
+    distances = [poi.distance_along_km for poi in cluster]
+    return max(distances) - min(distances)
+
+
+def _split_along_route_clusters(
+    clusters: list[list[PointOfInterest]],
+    config: ResupplyZoneConfig,
+) -> list[list[PointOfInterest]]:
+    """Split clusters whose POIs span too much distance along the route."""
+    max_spread_km = config.max_along_route_spread_km
+    result: list[list[PointOfInterest]] = []
+
+    for cluster in clusters:
+        if len(cluster) < 2 or _cluster_along_route_spread_km(cluster) <= max_spread_km:
+            result.append(cluster)
+            continue
+
+        sorted_cluster = sorted(cluster, key=lambda poi: poi.distance_along_km)
+        current: list[PointOfInterest] = [sorted_cluster[0]]
+        anchor_km = sorted_cluster[0].distance_along_km
+
+        for poi in sorted_cluster[1:]:
+            if poi.distance_along_km - anchor_km <= max_spread_km:
+                current.append(poi)
+            else:
+                result.append(current)
+                current = [poi]
+                anchor_km = poi.distance_along_km
+
+        if current:
+            result.append(current)
+
+    return result
+
+
 def _spatial_cluster(
     pois: list[PointOfInterest],
     config: ResupplyZoneConfig,
@@ -137,6 +175,7 @@ def _spatial_cluster(
         return []
 
     merge_radius_m = config.merge_radius_m
+    max_along_km = config.max_along_route_spread_km
     mean_lat = sum(poi.lat for poi in pois) / len(pois)
     cell_lat_deg = merge_radius_m / _METERS_PER_DEG_LAT
     cell_lon_deg = merge_radius_m / _meters_per_deg_lon(mean_lat)
@@ -154,8 +193,12 @@ def _spatial_cluster(
                     if neighbor_index <= index:
                         continue
                     neighbor = pois[neighbor_index]
-                    if _distance_m(poi.lat, poi.lon, neighbor.lat, neighbor.lon) <= merge_radius_m:
-                        union_find.union(index, neighbor_index)
+                    if _distance_m(poi.lat, poi.lon, neighbor.lat, neighbor.lon) > merge_radius_m:
+                        continue
+                    along_gap_km = abs(poi.distance_along_km - neighbor.distance_along_km)
+                    if along_gap_km > max_along_km:
+                        continue
+                    union_find.union(index, neighbor_index)
 
     grouped: dict[int, list[PointOfInterest]] = defaultdict(list)
     for index, poi in enumerate(pois):
@@ -432,7 +475,8 @@ def build_resupply_zones(
         return ResupplyZonePlan(zones=[], poi_zone_ids={})
 
     merged = _spatial_cluster(pois, config)
-    split = _split_oversized_clusters(merged, config)
+    along_split = _split_along_route_clusters(merged, config)
+    split = _split_oversized_clusters(along_split, config)
     clusters = _finalize_clusters(split, config)
 
     zones: list[ResupplyZone] = []
