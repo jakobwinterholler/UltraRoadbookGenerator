@@ -23,6 +23,8 @@ from route_segment_index import RouteSegmentIndex
 
 BBOX_BUFFER_M = 500.0
 MAX_OFF_ROUTE_M = 500.0
+# Gas stations beside highways can sit further from the GPX track.
+FUEL_MAX_OFF_ROUTE_M = 1200.0
 
 OVERPASS_URLS = (
     "https://overpass.kumi.systems/api/interpreter",
@@ -249,8 +251,9 @@ def _build_poi(
         return None
 
     lat, lon = coordinates
-    projection = route_index.project(lat, lon, search_radius_m=MAX_OFF_ROUTE_M)
-    if projection is None or projection.distance_off_route_m > MAX_OFF_ROUTE_M:
+    max_off_route_m = FUEL_MAX_OFF_ROUTE_M if category == "gas_stations" else MAX_OFF_ROUTE_M
+    projection = route_index.project(lat, lon, search_radius_m=max_off_route_m)
+    if projection is None or projection.distance_off_route_m > max_off_route_m:
         return None
 
     osm_id = element.get("id")

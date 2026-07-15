@@ -47,13 +47,18 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
   const { accessToken, user } = useAuth();
   const { races, loading, error, refresh } = useCloudRaceList();
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
   const greeting = getGreeting(getDisplayName(user));
 
   async function handleOpenRace(race: StoredRaceListItem) {
     setActionError(null);
-    if (race.offlineReady) {
+    const needsDownload =
+      !race.offlineReady ||
+      (race.downloadedRevision !== null && race.companion_revision > race.downloadedRevision);
+
+    if (!needsDownload) {
       const bundle = await loadCompanionBundle(race.id);
       if (bundle) {
         await setActiveRaceId(race.id);
@@ -67,20 +72,35 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
       return;
     }
     if (!race.has_bundle) {
-      setActionError("Analyze this race in Ultra Roadbook first.");
+      setActionError("Analyze this race in Ultra Roadbook on your computer, then tap Sync now in Account.");
       return;
     }
 
     setBusyRaceId(race.id);
+    setDownloadProgress(0);
+    const progressTimer = window.setInterval(() => {
+      setDownloadProgress((value) => {
+        if (value === null || value >= 90) {
+          return value;
+        }
+        return value + 8;
+      });
+    }, 200);
+
     try {
       const bundle = await fetchCompanionBundle(accessToken, race.id, user?.id);
+      setDownloadProgress(95);
       await saveCompanionBundle(bundle);
+      setDownloadProgress(100);
       await refresh();
+      await setActiveRaceId(race.id);
       onOpenRace(bundle);
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Download failed.");
     } finally {
+      window.clearInterval(progressTimer);
       setBusyRaceId(null);
+      window.setTimeout(() => setDownloadProgress(null), 400);
     }
   }
 
@@ -128,7 +148,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
                     className="w-full rounded-2xl border border-white/10 bg-white/[0.03] p-5 text-left transition hover:border-emerald-400/25 hover:bg-white/[0.05]"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
+                      <div className="min-w-0 flex-1">
                         <p className="truncate text-lg font-semibold text-white">{race.name}</p>
                         <p className="mt-1 text-sm tabular-nums text-white/45">
                           {race.distance_km
@@ -141,6 +161,20 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
                         {race.readiness_score != null ? (
                           <div className="mt-2">
                             <ReadinessScoreBadge score={race.readiness_score} dark />
+                          </div>
+                        ) : null}
+                        {busyRaceId === race.id && downloadProgress !== null ? (
+                          <div className="mt-3">
+                            <div className="mb-1 flex items-center justify-between text-[11px] text-sky-200/80">
+                              <span>Downloading race…</span>
+                              <span>{downloadProgress}%</span>
+                            </div>
+                            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                              <div
+                                className="h-full rounded-full bg-sky-400 transition-all duration-200"
+                                style={{ width: `${downloadProgress}%` }}
+                              />
+                            </div>
                           </div>
                         ) : null}
                       </div>

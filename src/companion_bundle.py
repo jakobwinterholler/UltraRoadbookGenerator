@@ -97,17 +97,22 @@ def _poi_icon(category: str) -> str:
     return "📍"
 
 
+def _is_google_place_id(value: str) -> bool:
+    value = value.strip()
+    return len(value) >= 10 and value.startswith(("ChI", "GhI", "EhI"))
+
+
 def _poi_place_id(poi: dict[str, Any] | None) -> str | None:
     if not poi:
         return None
     direct = poi.get("place_id") or poi.get("placeId")
-    if isinstance(direct, str) and direct.strip():
+    if isinstance(direct, str) and _is_google_place_id(direct):
         return direct.strip()
     tags = poi.get("tags") or {}
     if isinstance(tags, dict):
         for key in ("place_id", "google_place_id", "google:place_id"):
             value = tags.get(key)
-            if isinstance(value, str) and value.strip():
+            if isinstance(value, str) and _is_google_place_id(value):
                 return value.strip()
     return None
 

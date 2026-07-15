@@ -7,14 +7,14 @@ export interface StreetViewLocation {
   placeId?: string | null;
   /** Route km — used to aim the camera from the approach direction. */
   routeKm?: number;
-  /** POI / business name — improves Google search when no Place ID. */
+  /** POI / business name — used for Maps fallback links only. */
   name?: string | null;
 }
 
 export interface StreetViewUrlOptions {
   routeCoordinates?: [number, number][];
   totalDistanceKm?: number;
-  /** Meters before the stop on the route to place the Street View camera. */
+  /** Meters before the stop on the route when computing camera heading. */
   approachOffsetM?: number;
   /** Field of view in degrees (default 75). */
   fov?: number;
@@ -24,8 +24,16 @@ export interface StreetViewUrlOptions {
 
 const DEFAULT_FOV = 75;
 const DEFAULT_PITCH = 0;
-/** Place the panorama on the road ~40 m before the stop, facing the POI. */
 const DEFAULT_APPROACH_OFFSET_M = 40;
+
+/** Real Google Place IDs start with ChI/GhI/EhI — OSM tags are often not valid. */
+export function isGooglePlaceId(value: string | null | undefined): boolean {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed.length < 10) {
+    return false;
+  }
+  return /^(ChI|GhI|EhI)/.test(trimmed);
+}
 
 function normalizeBearing(degrees: number): number {
   return ((degrees % 360) + 360) % 360;
@@ -51,8 +59,8 @@ interface ApproachCamera {
 }
 
 /**
- * Street View panoramas sit on the road network. Place the camera on the route
- * slightly before the stop and look toward the POI entrance — not at the POI coords.
+ * Computes camera heading from the route approach toward the POI entrance.
+ * Viewpoint for the URL stays at the POI — Google picks the nearest road panorama.
  */
 export function computeStreetViewApproach(
   location: StreetViewLocation,
@@ -67,28 +75,26 @@ export function computeStreetViewApproach(
     const offsetKm = offsetM / 1000;
     const approachKm = Math.max(0, location.routeKm - offsetKm);
     const routePoint = interpolateTrackAtKm(track, approachKm);
-    const viewpoint = { lat: routePoint.lat, lon: routePoint.lon };
-    const heading = bearingBetween(viewpoint, poi);
+    const approach = { lat: routePoint.lat, lon: routePoint.lon };
 
-    if (haversineM(viewpoint.lat, viewpoint.lon, poi.lat, poi.lon) >= 8) {
-      return { viewpoint, heading };
+    if (haversineM(approach.lat, approach.lon, poi.lat, poi.lon) >= 5) {
+      return {
+        viewpoint: poi,
+        heading: bearingBetween(approach, poi),
+      };
     }
 
     const atStop = interpolateTrackAtKm(track, location.routeKm);
-    const atStopPoint = { lat: atStop.lat, lon: atStop.lon };
     return {
-      viewpoint: atStopPoint,
-      heading: bearingBetween(atStopPoint, poi),
+      viewpoint: poi,
+      heading: bearingBetween({ lat: atStop.lat, lon: atStop.lon }, poi),
     };
   }
 
-  return {
-    viewpoint: poi,
-    heading: 0,
-  };
+  return { viewpoint: poi, heading: 0 };
 }
 
-function buildDisambiguationQuery(location: StreetViewLocation): string | undefined {
+function buildMapsSearchQuery(location: StreetViewLocation): string | undefined {
   const name = location.name?.trim();
   if (!name) {
     return undefined;
@@ -97,16 +103,14 @@ function buildDisambiguationQuery(location: StreetViewLocation): string | undefi
 }
 
 export function googleMapsUrl(lat: number, lon: number, placeId?: string | null): string {
-  if (placeId?.trim()) {
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`place_id:${placeId.trim()}`)}`;
+  if (isGooglePlaceId(placeId)) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`place_id:${placeId!.trim()}`)}`;
   }
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
 }
 
 /**
- * Opens Street View facing the POI entrance from the route approach.
- * With Place ID: query pins the business (no conflicting viewpoint).
- * Without Place ID: viewpoint on the road + heading toward the POI + name query.
+ * Opens Street View at the POI with the camera facing the building from the route approach.
  */
 export function googleStreetViewUrl(
   location: StreetViewLocation,
@@ -115,30 +119,20 @@ export function googleStreetViewUrl(
   const fov = options?.fov ?? DEFAULT_FOV;
   const pitch = options?.pitch ?? DEFAULT_PITCH;
   const approach = computeStreetViewApproach(location, options);
-  const placeId = location.placeId?.trim();
+  const placeId = isGooglePlaceId(location.placeId) ? location.placeId!.trim() : null;
 
   const params = new URLSearchParams({
     api: "1",
     map_action: "pano",
+    viewpoint: `${approach.viewpoint.lat.toFixed(6)},${approach.viewpoint.lon.toFixed(6)}`,
+    heading: String(Math.round(approach.heading)),
+    pitch: String(pitch),
+    fov: String(fov),
   });
 
   if (placeId) {
     params.set("query", `place_id:${placeId}`);
-    params.set("heading", String(Math.round(approach.heading)));
-  } else {
-    params.set(
-      "viewpoint",
-      `${approach.viewpoint.lat.toFixed(6)},${approach.viewpoint.lon.toFixed(6)}`,
-    );
-    params.set("heading", String(Math.round(approach.heading)));
-    const query = buildDisambiguationQuery(location);
-    if (query) {
-      params.set("query", query);
-    }
   }
-
-  params.set("pitch", String(pitch));
-  params.set("fov", String(fov));
 
   return `https://www.google.com/maps/@?${params.toString()}`;
 }
@@ -147,10 +141,10 @@ export function googleStreetViewUrl(
 export function googleStreetViewFallbackMapsUrl(
   location: Pick<StreetViewLocation, "lat" | "lon" | "placeId" | "name">,
 ): string {
-  if (location.placeId?.trim()) {
+  if (isGooglePlaceId(location.placeId)) {
     return googleMapsUrl(location.lat, location.lon, location.placeId);
   }
-  const query = buildDisambiguationQuery(location as StreetViewLocation);
+  const query = buildMapsSearchQuery(location as StreetViewLocation);
   if (query) {
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
   }
@@ -168,15 +162,15 @@ export function placeIdFromTags(
   tags?: Record<string, string> | null,
   direct?: string | null,
 ): string | null {
-  if (direct?.trim()) {
-    return direct.trim();
+  if (isGooglePlaceId(direct)) {
+    return direct!.trim();
   }
   if (!tags) {
     return null;
   }
   for (const key of ["place_id", "google_place_id", "google:place_id"]) {
     const value = tags[key];
-    if (value?.trim()) {
+    if (isGooglePlaceId(value)) {
       return value.trim();
     }
   }

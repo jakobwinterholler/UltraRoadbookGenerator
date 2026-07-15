@@ -41,7 +41,7 @@ def test_build_companion_bundle_minimal():
                             "opening_hours": "24/7",
                             "lat": 46.051,
                             "lon": 7.051,
-                            "tags": {"google_place_id": "ChIJ_test_poi"},
+                            "tags": {"google_place_id": "ChIJtest1234"},
                         },
                     }
                 ],
@@ -65,7 +65,7 @@ def test_build_companion_bundle_minimal():
     assert bundle["stops"][0]["hasWater"] is True
     assert bundle["stops"][0]["lat"] == 46.051
     assert bundle["stops"][0]["lon"] == 7.051
-    assert bundle["stops"][0]["placeId"] == "ChIJ_test_poi"
+    assert bundle["stops"][0]["placeId"] == "ChIJtest1234"
     assert bundle["climbs"] == []
     assert bundle["dashboardStats"]["readinessScore"] >= 0
     assert len(bundle["route"]["coordinates"]) == 2
