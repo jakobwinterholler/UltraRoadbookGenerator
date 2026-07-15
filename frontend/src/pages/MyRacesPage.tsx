@@ -31,7 +31,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
   const { user } = useAuth();
   const userId = user?.id ?? "";
   const { syncing } = useAccountSync();
-  const { cloudById } = useDesktopCloudRaces();
+  const { cloudRaces } = useDesktopCloudRaces();
   const [showCreate, setShowCreate] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [raceName, setRaceName] = useState("");
@@ -268,7 +268,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
               onManage={(raceId, action) => void handleManage(raceId, action)}
               syncStatus={getDesktopRaceSyncStatus(
                 race,
-                cloudById,
+                cloudRaces,
                 syncing,
                 Boolean(user),
                 pendingSync,
@@ -297,7 +297,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
                   onManage={(raceId, action) => void handleManage(raceId, action)}
                   syncStatus={getDesktopRaceSyncStatus(
                     race,
-                    cloudById,
+                    cloudRaces,
                     syncing,
                     Boolean(user),
                     pendingSync,
@@ -326,7 +326,12 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         elevationGainM={deleteTarget?.elevation_gain_m}
         cloudSynced={
           deleteTarget && user
-            ? cloudById.has(deleteTarget.id) || deleteTarget.has_analysis
+            ? cloudRaces.some(
+                (cloudRace) =>
+                  cloudRace.id === deleteTarget.id ||
+                  (deleteTarget.gpx_fingerprint &&
+                    cloudRace.gpx_fingerprint === deleteTarget.gpx_fingerprint),
+              ) || deleteTarget.has_analysis
             : null
         }
         lastModified={deleteTarget?.updated_at}

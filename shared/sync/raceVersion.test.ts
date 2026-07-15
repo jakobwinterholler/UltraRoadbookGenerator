@@ -5,7 +5,11 @@
 
 import assert from "node:assert/strict";
 import type { SyncRaceSummary } from "../types/sync";
-import { needsCompanionDownload } from "./raceVersion";
+import {
+  needsCompanionDownload,
+  needsDesktopUpload,
+  resolveCloudRaceForLocal,
+} from "./raceVersion";
 
 function baseRace(overrides: Partial<SyncRaceSummary> = {}): SyncRaceSummary {
   return {
@@ -20,6 +24,7 @@ function baseRace(overrides: Partial<SyncRaceSummary> = {}): SyncRaceSummary {
     bundle_checksum: "abc123",
     bundle_schema_version: 5,
     significant_climb_count: 2,
+    gpx_fingerprint: "c19c3ee71994c636",
     ...overrides,
   };
 }
@@ -39,8 +44,57 @@ function testHigherRevisionStillTriggersDownload() {
   assert.equal(needsCompanionDownload(cloud, 5, true, "abc123", 2), true);
 }
 
+function testMissingCloudMetadataTriggersDownload() {
+  const cloud = baseRace({
+    bundle_schema_version: null,
+    significant_climb_count: null,
+  });
+  assert.equal(needsCompanionDownload(cloud, 22, true, "abc123", 0), true);
+}
+
+function testMissingCloudMetadataTriggersDesktopUpload() {
+  const local = {
+    id: "d836e1d9-1fa9-49ea-8476-694c6c00d090",
+    updated_at: "2026-07-14T00:14:02.862406+00:00",
+    has_analysis: true,
+    gpx_fingerprint: "6e5333b6e8b2d663",
+  };
+  const cloud = baseRace({
+    id: local.id,
+    name: "THE CAPITALS 2026",
+    companion_revision: 22,
+    updated_at: "2026-07-15T04:54:06.545+00:00",
+    bundle_schema_version: null,
+    significant_climb_count: null,
+    gpx_fingerprint: local.gpx_fingerprint,
+  });
+  assert.equal(needsDesktopUpload(local, cloud, new Set()), true);
+}
+
+function testResolveCloudRaceUsesFingerprint() {
+  const local = {
+    id: "b7a1c487-80c6-477c-87ae-ec9dd32b900c",
+    gpx_fingerprint: "c19c3ee71994c636",
+  };
+  const cloudRaces = [
+    baseRace({
+      id: "b7a1c487-80c6-477c-87ae-ec9dd32b900c",
+      companion_revision: 2,
+    }),
+    baseRace({
+      id: "626b3103-c50d-49eb-b5de-8a129a5f27f3",
+      companion_revision: 11,
+    }),
+  ];
+  const resolved = resolveCloudRaceForLocal(local, cloudRaces);
+  assert.equal(resolved?.id, "626b3103-c50d-49eb-b5de-8a129a5f27f3");
+}
+
 testClimbCountMismatchTriggersDownload();
 testMatchingClimbCountDoesNotTriggerDownload();
 testHigherRevisionStillTriggersDownload();
+testMissingCloudMetadataTriggersDownload();
+testMissingCloudMetadataTriggersDesktopUpload();
+testResolveCloudRaceUsesFingerprint();
 
 console.log("raceVersion.test.ts: all tests passed");

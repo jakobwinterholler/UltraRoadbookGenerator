@@ -379,6 +379,7 @@ class RaceSummary:
     preparation_completed: int
     preparation_total: int
     preparation_items: list[PreparationProgressItem]
+    gpx_fingerprint: str | None = None
     archived_at: str | None = None
     dashboard_stats: dict[str, Any] | None = None
 
@@ -393,6 +394,7 @@ class RaceSummary:
             "distance_km": self.distance_km,
             "elevation_gain_m": self.elevation_gain_m,
             "climb_count": self.climb_count,
+            "gpx_fingerprint": self.gpx_fingerprint,
             "has_analysis": self.has_analysis,
             "preparation_completed": self.preparation_completed,
             "preparation_total": self.preparation_total,
@@ -1040,6 +1042,7 @@ class RaceProjectStore:
             distance_km=race.meta.distance_km,
             elevation_gain_m=race.meta.elevation_gain_m,
             climb_count=race.meta.climb_count,
+            gpx_fingerprint=race.meta.gpx_fingerprint,
             has_analysis=has_analysis,
             preparation_completed=progress.completed_count(),
             preparation_total=progress.total_count,

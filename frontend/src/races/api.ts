@@ -48,6 +48,7 @@ export interface RaceSummary {
   distance_km: number | null;
   elevation_gain_m: number | null;
   climb_count: number | null;
+  gpx_fingerprint?: string | null;
   has_analysis: boolean;
   preparation_completed: number;
   preparation_total: number;

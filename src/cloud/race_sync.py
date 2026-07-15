@@ -91,11 +91,13 @@ def _upsert_race_row(payload: dict[str, Any], access_token: str | None = None) -
 def _significant_climb_count(roadbook: dict[str, Any] | None) -> int | None:
     if not roadbook:
         return None
+    climbs = significant_climbs(roadbook.get("climbs") or [])
+    if climbs:
+        return len(climbs)
     summary_count = (roadbook.get("summary") or {}).get("climb_count")
     if isinstance(summary_count, int):
         return summary_count
-    climbs = significant_climbs(roadbook.get("climbs") or [])
-    return len(climbs)
+    return 0
 
 
 def _download_bytes(path: str, access_token: str | None = None) -> bytes:
@@ -286,6 +288,27 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
     }
 
 
+def _cloud_bundle_is_stale(
+    user_id: str,
+    cloud_race_id: str,
+    roadbook: dict[str, Any],
+    access_token: str | None = None,
+) -> bool:
+    """True when stored companion-bundle.json is older than local analysis."""
+    try:
+        bundle = get_companion_bundle(user_id, cloud_race_id, access_token)
+    except CloudSyncError:
+        return True
+    schema = int(bundle.get("schemaVersion") or 0)
+    if schema < CURRENT_SCHEMA_VERSION:
+        return True
+    local_climb_count = _significant_climb_count(roadbook)
+    bundle_climb_count = len(bundle.get("climbs") or [])
+    if local_climb_count is not None and bundle_climb_count != int(local_climb_count):
+        return True
+    return False
+
+
 def _race_needs_upload(
     race_id: str,
     existing: dict[str, Any] | None,
@@ -298,8 +321,9 @@ def _race_needs_upload(
     if roadbook is None:
         return False
     race = race_store.get_race(race_id)
+    cloud_race_id = race_id
     if user_id:
-        _, existing = _resolve_cloud_race_target(
+        cloud_race_id, existing = _resolve_cloud_race_target(
             user_id,
             race_id,
             race.meta.gpx_fingerprint,
@@ -311,15 +335,19 @@ def _race_needs_upload(
         return True
     preparation = existing.get("preparation") or {}
     cloud_schema = preparation.get("bundle_schema_version")
+    cloud_climb_count = preparation.get("significant_climb_count")
+    if cloud_schema is None or cloud_climb_count is None:
+        return True
     if isinstance(cloud_schema, int) and cloud_schema < CURRENT_SCHEMA_VERSION:
         return True
     local_climb_count = _significant_climb_count(roadbook)
-    cloud_climb_count = preparation.get("significant_climb_count")
     if (
         local_climb_count is not None
         and cloud_climb_count is not None
         and int(local_climb_count) != int(cloud_climb_count)
     ):
+        return True
+    if user_id and _cloud_bundle_is_stale(user_id, cloud_race_id, roadbook, access_token):
         return True
     summary = race_store.get_summary(race_id)
     local_updated = summary.updated_at
@@ -343,7 +371,13 @@ def push_all_local_races(user_id: str, access_token: str | None = None) -> dict[
     failed: list[dict[str, str]] = []
     skipped: list[dict[str, str]] = []
     for summary in race_store.list_races():
-        existing = _get_race_row(user_id, summary.id, access_token)
+        race = race_store.get_race(summary.id)
+        _, existing = _resolve_cloud_race_target(
+            user_id,
+            summary.id,
+            race.meta.gpx_fingerprint,
+            access_token,
+        )
         if existing and not _race_needs_upload(
             summary.id,
             existing,
@@ -773,10 +807,15 @@ def compare_desktop_companion(
     if roadbook is None:
         raise CloudSyncError("Local analysis not found.")
 
-    row = _get_race_row(user_id, race_id, access_token)
+    cloud_race_id, row = _resolve_cloud_race_target(
+        user_id,
+        race_id,
+        race.meta.gpx_fingerprint,
+        access_token,
+    )
     cloud_revision = int((row or {}).get("companion_revision") or 0)
     local_bundle = build_companion_bundle(
-        race_id,
+        cloud_race_id,
         roadbook,
         race.preparation.to_dict(),
         revision=cloud_revision,
@@ -785,7 +824,7 @@ def compare_desktop_companion(
     cloud_bundle: dict[str, Any] | None = None
     if row and row.get("has_bundle"):
         try:
-            cloud_bundle = get_companion_bundle(user_id, race_id, access_token)
+            cloud_bundle = get_companion_bundle(user_id, cloud_race_id, access_token)
         except CloudSyncError:
             cloud_bundle = None
 
@@ -837,6 +876,7 @@ def compare_desktop_companion(
 
     return {
         "raceId": race_id,
+        "cloudRaceId": cloud_race_id,
         "identical": len(differences) == 0 and cloud_bundle is not None,
         "differences": differences,
         "desktop": {

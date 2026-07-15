@@ -189,6 +189,7 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
       bundle_checksum: (preparation.bundle_checksum as string | undefined) ?? null,
       bundle_schema_version: (preparation.bundle_schema_version as number | undefined) ?? null,
       significant_climb_count: (preparation.significant_climb_count as number | undefined) ?? null,
+      gpx_fingerprint: (preparation.gpx_fingerprint as string | undefined) ?? null,
     };
   });
 }

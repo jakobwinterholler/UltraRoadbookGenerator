@@ -8,6 +8,7 @@ import {
 } from "../sync/bundleMigration";
 import {
   canMigrateLocally,
+  CURRENT_SCHEMA_VERSION,
   requiresServerRegeneration,
 } from "../sync/bundleContract";
 import { logSyncDebug } from "../sync/syncDebugLog";
@@ -115,6 +116,32 @@ export async function fetchCompanionBundleSelfHealing(
   };
 
   let raw = await downloadRaw();
+  const initialSchema =
+    raw && typeof raw === "object"
+      ? (raw as { schemaVersion?: number }).schemaVersion ?? null
+      : null;
+
+  if (
+    getApiBaseUrl() &&
+    initialSchema != null &&
+    initialSchema < CURRENT_SCHEMA_VERSION
+  ) {
+    logSyncDebug(
+      "bundle-regenerate",
+      `Legacy schema ${initialSchema} for ${raceId} — regenerating before migration`,
+    );
+    try {
+      await regenerateCompanionBundle(accessToken, raceId);
+      regenerated = true;
+      notes.push(`Regenerated legacy schema ${initialSchema} bundle from analysis.json`);
+      raw = await downloadRaw();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Regeneration failed";
+      logSyncDebug("bundle-regenerate", `Legacy schema regeneration failed for ${raceId}: ${message}`);
+      notes.push(message);
+    }
+  }
+
   let prepared = await tryPrepare(raw, raceId, "initial");
 
   if (!prepared.bundle) {

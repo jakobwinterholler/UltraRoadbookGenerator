@@ -1101,6 +1101,7 @@ def sync_list_races(
                 "bundle_checksum": race.get("bundle_checksum"),
                 "bundle_schema_version": race.get("bundle_schema_version"),
                 "significant_climb_count": race.get("significant_climb_count"),
+                "gpx_fingerprint": race.get("gpx_fingerprint"),
             }
             for race in races
         ]

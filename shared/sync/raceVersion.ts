@@ -22,6 +22,37 @@ export function raceVersionFields(race: {
   };
 }
 
+/** Pick the canonical cloud row for a local race (fingerprint wins over id). */
+export function resolveCloudRaceForLocal(
+  local: { id: string; gpx_fingerprint?: string | null },
+  cloudRaces: SyncRaceSummary[],
+): SyncRaceSummary | undefined {
+  const fingerprint = local.gpx_fingerprint?.trim();
+  if (fingerprint) {
+    const matches = cloudRaces.filter((race) => race.gpx_fingerprint === fingerprint);
+    if (matches.length > 0) {
+      return [...matches].sort(
+        (left, right) =>
+          (right.companion_revision ?? 0) - (left.companion_revision ?? 0),
+      )[0];
+    }
+  }
+  return cloudRaces.find((race) => race.id === local.id);
+}
+
+function cloudBundleMetadataIsStale(cloud: SyncRaceSummary): boolean {
+  if (!cloud.has_bundle) {
+    return false;
+  }
+  if (cloud.bundle_schema_version == null || cloud.significant_climb_count == null) {
+    return true;
+  }
+  if (cloud.bundle_schema_version < CURRENT_SCHEMA_VERSION) {
+    return true;
+  }
+  return false;
+}
+
 export function needsCompanionDownload(
   cloud: SyncRaceSummary,
   downloadedRevision: number | null,
@@ -31,6 +62,9 @@ export function needsCompanionDownload(
 ): boolean {
   if (!cloud.has_bundle) {
     return false;
+  }
+  if (cloudBundleMetadataIsStale(cloud)) {
+    return true;
   }
   if (!offlineReady || downloadedRevision === null) {
     return true;
@@ -54,7 +88,11 @@ export function needsCompanionDownload(
 }
 
 export function needsDesktopUpload(
-  local: { id: string; updated_at: string; has_analysis: boolean },
+  local: {
+    id: string;
+    updated_at: string;
+    has_analysis: boolean;
+  },
   cloud: SyncRaceSummary | undefined,
   pendingSync: Set<string>,
 ): boolean {
@@ -68,6 +106,9 @@ export function needsDesktopUpload(
     return true;
   }
   if (!cloud.has_bundle) {
+    return true;
+  }
+  if (cloudBundleMetadataIsStale(cloud)) {
     return true;
   }
   const localTime = new Date(local.updated_at).getTime();

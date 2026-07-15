@@ -109,12 +109,15 @@ class RaceSyncReliabilityTests(unittest.TestCase):
         summary.updated_at = datetime(2025, 12, 1, tzinfo=timezone.utc).isoformat()
 
         with patch.object(race_sync.race_store, "list_races", return_value=[summary]), patch.object(
+            race_sync.race_store, "get_race"
+        ) as get_race_mock, patch.object(
             race_sync, "_get_race_row", return_value=existing_row
         ), patch.object(
             race_sync,
             "_resolve_cloud_race_target",
             return_value=("race-1", existing_row),
         ), patch.object(race_sync, "push_race") as push_mock:
+            get_race_mock.return_value.meta.gpx_fingerprint = "fp123"
             result = race_sync.push_all_local_races("user-1", "token")
 
         push_mock.assert_not_called()
@@ -217,6 +220,75 @@ class RaceSyncReliabilityTests(unittest.TestCase):
         upsert_payload = upsert_mock.call_args.args[0]
         self.assertEqual(upsert_payload["id"], "626b3103-c50d-49eb-b5de-8a129a5f27f3")
         self.assertEqual(upsert_payload["preparation"]["significant_climb_count"], 2)
+
+    def test_race_needs_upload_when_cloud_metadata_missing(self):
+        from cloud import race_sync
+
+        roadbook = {
+            "summary": {"climb_count": 13},
+            "climbs": [{"id": "C001", "length_km": 9.5, "elevation_gain_m": 390, "avg_gradient_pct": 4.1}] * 13,
+        }
+        existing_row = {
+            "has_bundle": True,
+            "updated_at": datetime(2026, 7, 15, 4, 54, tzinfo=timezone.utc).isoformat(),
+            "preparation": {},
+        }
+
+        with patch.object(race_sync.race_store, "load_analysis", return_value=roadbook), patch.object(
+            race_sync.race_store, "get_summary"
+        ) as summary_mock, patch.object(race_sync.race_store, "get_race") as race_mock, patch.object(
+            race_sync,
+            "_resolve_cloud_race_target",
+            return_value=("d836e1d9-1fa9-49ea-8476-694c6c00d090", existing_row),
+        ), patch.object(race_sync, "_cloud_bundle_is_stale", return_value=False):
+            summary_mock.return_value.updated_at = datetime(
+                2026, 7, 14, 0, 14, tzinfo=timezone.utc
+            ).isoformat()
+            race_mock.return_value.meta.gpx_fingerprint = "6e5333b6e8b2d663"
+            self.assertTrue(
+                race_sync._race_needs_upload(
+                    "d836e1d9-1fa9-49ea-8476-694c6c00d090",
+                    existing_row,
+                    user_id="user-1",
+                    access_token="token",
+                )
+            )
+
+    def test_race_needs_upload_when_cloud_bundle_schema_is_stale(self):
+        from cloud import race_sync
+
+        roadbook = {
+            "summary": {"climb_count": 13},
+            "climbs": [{"id": "C001", "length_km": 9.5, "elevation_gain_m": 390, "avg_gradient_pct": 4.1}] * 13,
+        }
+        existing_row = {
+            "has_bundle": True,
+            "updated_at": datetime(2026, 7, 15, 4, 54, tzinfo=timezone.utc).isoformat(),
+            "preparation": {
+                "bundle_schema_version": 5,
+                "significant_climb_count": 13,
+            },
+        }
+
+        with patch.object(race_sync.race_store, "load_analysis", return_value=roadbook), patch.object(
+            race_sync.race_store, "get_summary"
+        ) as summary_mock, patch.object(race_sync.race_store, "get_race") as race_mock, patch.object(
+            race_sync,
+            "_resolve_cloud_race_target",
+            return_value=("d836e1d9-1fa9-49ea-8476-694c6c00d090", existing_row),
+        ), patch.object(race_sync, "_cloud_bundle_is_stale", return_value=True):
+            summary_mock.return_value.updated_at = datetime(
+                2026, 7, 14, 0, 14, tzinfo=timezone.utc
+            ).isoformat()
+            race_mock.return_value.meta.gpx_fingerprint = "6e5333b6e8b2d663"
+            self.assertTrue(
+                race_sync._race_needs_upload(
+                    "d836e1d9-1fa9-49ea-8476-694c6c00d090",
+                    existing_row,
+                    user_id="user-1",
+                    access_token="token",
+                )
+            )
 
     def test_push_race_returns_version_fields(self):
         from cloud import race_sync

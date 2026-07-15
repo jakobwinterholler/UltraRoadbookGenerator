@@ -15,6 +15,8 @@ export interface SyncRaceSummary {
   bundle_schema_version?: number | null;
   /** Significant climbs in the latest cloud analysis/bundle. */
   significant_climb_count?: number | null;
+  /** GPX content fingerprint for deduplicating cloud rows. */
+  gpx_fingerprint?: string | null;
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean;

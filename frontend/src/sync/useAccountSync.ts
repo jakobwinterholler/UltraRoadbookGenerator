@@ -9,7 +9,7 @@ import {
   hasPendingSyncRaces,
   removePendingSyncRace,
 } from "@shared/sync/pendingSync";
-import { needsDesktopUpload } from "@shared/sync/raceVersion";
+import { needsDesktopUpload, resolveCloudRaceForLocal } from "@shared/sync/raceVersion";
 import {
   formatRelativeTime,
   getLastSyncAt,
@@ -98,7 +98,11 @@ export function useAccountSync() {
       const pending = getPendingSyncRaces(userId);
 
       const toUpload = localRaces.filter((race) =>
-        needsDesktopUpload(race, cloudById.get(race.id), pending),
+        needsDesktopUpload(
+          race,
+          resolveCloudRaceForLocal(race, cloudRaces),
+          pending,
+        ),
       );
 
       if (toUpload.length === 0) {
