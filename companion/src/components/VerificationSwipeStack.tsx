@@ -7,9 +7,9 @@ import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
 import { serviceLabels, stopStatusLabel } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
 
-export type VerificationQuickAction = "verified" | "closed" | "wrong_location" | "needs_review";
+export type VerificationAction = "verified" | "skip";
 
-type ExitDirection = "left" | "right" | "up";
+type ExitDirection = "left" | "right";
 
 interface VerificationSwipeStackProps {
   stops: CompanionStop[];
@@ -17,34 +17,13 @@ interface VerificationSwipeStackProps {
   gpsLat: number | null;
   gpsLon: number | null;
   routeCoordinates?: [number, number][];
-  onAction: (stop: CompanionStop, action: VerificationQuickAction) => void;
+  onAction: (stop: CompanionStop, action: VerificationAction) => void;
+  onOpenDetails?: (stop: CompanionStop) => void;
 }
 
 const SWIPE_THRESHOLD = 90;
 const MAX_ROTATION = 10;
 const EXIT_MS = 280;
-
-const QUICK_ACTIONS: {
-  action: VerificationQuickAction;
-  label: string;
-  exit: ExitDirection;
-  className: string;
-}[] = [
-  { action: "verified", label: "✓ Verified", exit: "right", className: "verification-chip--verified" },
-  { action: "closed", label: "✗ Closed", exit: "left", className: "verification-chip--closed" },
-  {
-    action: "wrong_location",
-    label: "📍 Wrong location",
-    exit: "left",
-    className: "verification-chip--wrong",
-  },
-  {
-    action: "needs_review",
-    label: "❓ Needs review",
-    exit: "left",
-    className: "verification-chip--review",
-  },
-];
 
 function stopDistanceLabel(
   stop: CompanionStop,
@@ -72,9 +51,6 @@ function exitTransform(direction: ExitDirection): string {
   if (direction === "right") {
     return `translate3d(${window.innerWidth * 1.2}px, -24px, 0) rotate(12deg)`;
   }
-  if (direction === "up") {
-    return "translate3d(0, -120%, 0) rotate(-4deg)";
-  }
   return `translate3d(${-window.innerWidth * 1.2}px, -24px, 0) rotate(-12deg)`;
 }
 
@@ -87,6 +63,7 @@ function SwipeCard({
   style,
   isTop,
   onAction,
+  onOpenDetails,
 }: {
   stop: CompanionStop;
   totalKm: number;
@@ -95,7 +72,8 @@ function SwipeCard({
   routeCoordinates?: [number, number][];
   style: React.CSSProperties;
   isTop: boolean;
-  onAction: (action: VerificationQuickAction) => void;
+  onAction: (action: VerificationAction) => void;
+  onOpenDetails?: (stop: CompanionStop) => void;
 }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   const startRef = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -114,7 +92,7 @@ function SwipeCard({
   }, []);
 
   const finishExit = useCallback(
-    (direction: ExitDirection, action: VerificationQuickAction) => {
+    (direction: ExitDirection, action: VerificationAction) => {
       setExiting(direction);
       window.setTimeout(() => onAction(action), EXIT_MS);
     },
@@ -123,7 +101,7 @@ function SwipeCard({
 
   const finishSwipe = useCallback(
     (direction: "left" | "right") => {
-      const action = direction === "right" ? "verified" : "needs_review";
+      const action = direction === "right" ? "verified" : "skip";
       setExiting(direction);
       const exitX = direction === "right" ? window.innerWidth * 1.2 : -window.innerWidth * 1.2;
       applyOffset(exitX);
@@ -156,7 +134,6 @@ function SwipeCard({
       return;
     }
     const delta = event.clientX - startRef.current.x;
-    const elapsed = Date.now() - startRef.current.time;
     startRef.current = null;
 
     if (Math.abs(delta) >= SWIPE_THRESHOLD) {
@@ -170,13 +147,11 @@ function SwipeCard({
     } catch {
       // ignore
     }
-
-    void elapsed;
   }
 
   const rotation = Math.max(-MAX_ROTATION, Math.min(MAX_ROTATION, offset / 24));
   const verifyOpacity = Math.min(1, Math.max(0, offset / SWIPE_THRESHOLD));
-  const rejectOpacity = Math.min(1, Math.max(0, -offset / SWIPE_THRESHOLD));
+  const skipOpacity = Math.min(1, Math.max(0, -offset / SWIPE_THRESHOLD));
   const confidence = computeStopConfidence({
     verificationStatus: stop.verificationStatus,
     verifiedAt: stop.verificationDate,
@@ -219,18 +194,23 @@ function SwipeCard({
       </div>
       <div
         className="verification-swipe-card__stamp verification-swipe-card__stamp--reject"
-        style={{ opacity: rejectOpacity }}
+        style={{ opacity: skipOpacity }}
       >
-        Needs review
+        Skip
+      </div>
+
+      <div className="verification-swipe-card__icon-block" aria-hidden>
+        <span className="verification-swipe-card__icon">{stop.icon}</span>
+        <span className="verification-swipe-card__icon-category">{stop.categoryLabel}</span>
       </div>
 
       <div className="verification-swipe-card__body">
         <div className="verification-swipe-card__title-block">
           <h3 className="verification-swipe-card__name">{stop.name}</h3>
-          <p className="verification-swipe-card__category">{stop.categoryLabel}</p>
-          {distanceLabel ? (
-            <span className="verification-swipe-card__distance">{distanceLabel}</span>
-          ) : null}
+          <p className="verification-swipe-card__meta">
+            {formatKm(stop.km)}
+            {distanceLabel ? ` · ${distanceLabel}` : ""}
+          </p>
         </div>
 
         <a
@@ -243,82 +223,50 @@ function SwipeCard({
           👁 Open Street View
         </a>
 
-        <div className="verification-action-chips">
-          {QUICK_ACTIONS.map((chip) => (
-            <button
-              key={chip.action}
-              type="button"
-              className={`verification-chip ${chip.className}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                finishExit(chip.exit, chip.action);
-              }}
-            >
-              {chip.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="verification-secondary-links">
-          <a
-            href={mapsHref}
-            target="_blank"
-            rel="noreferrer"
-            className="verification-secondary-link"
-            onClick={(event) => event.stopPropagation()}
+        <div className="verification-primary-actions">
+          <button
+            type="button"
+            className="verification-primary-btn verification-primary-btn--verify"
+            onClick={(event) => {
+              event.stopPropagation();
+              finishExit("right", "verified");
+            }}
           >
-            Google Maps
-          </a>
-          {stop.website ? (
-            <a
-              href={normalizeWebsite(stop.website)}
-              target="_blank"
-              rel="noreferrer"
-              className="verification-secondary-link"
-              onClick={(event) => event.stopPropagation()}
-            >
-              Website
-            </a>
-          ) : null}
-          {stop.phone ? (
-            <a
-              href={`tel:${stop.phone}`}
-              className="verification-secondary-link"
-              onClick={(event) => event.stopPropagation()}
-            >
-              Call
-            </a>
-          ) : null}
+            ✓ Verify
+          </button>
+          <button
+            type="button"
+            className="verification-primary-btn verification-primary-btn--skip"
+            onClick={(event) => {
+              event.stopPropagation();
+              finishExit("left", "skip");
+            }}
+          >
+            Skip
+          </button>
         </div>
-
-        <dl className="verification-card-stats">
-          <div>
-            <dt>Route km</dt>
-            <dd>{formatKm(stop.km)}</dd>
-          </div>
-          <div>
-            <dt>Remaining</dt>
-            <dd>{formatKm(Math.max(0, totalKm - stop.km))}</dd>
-          </div>
-          <div>
-            <dt>Confidence</dt>
-            <dd>
-              <span
-                className={`verification-card-stats__badge ${stopConfidenceBadgeClass(confidence.level, true)}`}
-              >
-                {confidence.label}
-              </span>
-            </dd>
-          </div>
-          <div>
-            <dt>Last verified</dt>
-            <dd>{formatVerifiedDate(stop.verificationDate)}</dd>
-          </div>
-        </dl>
 
         <details className="verification-card-details">
           <summary>Details</summary>
           <dl className="verification-card-details__list">
+            <div>
+              <dt>Remaining</dt>
+              <dd>{formatKm(Math.max(0, totalKm - stop.km))}</dd>
+            </div>
+            <div>
+              <dt>Confidence</dt>
+              <dd>
+                <span
+                  className={`verification-card-stats__badge ${stopConfidenceBadgeClass(confidence.level, true)}`}
+                >
+                  {confidence.label}
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt>Last verified</dt>
+              <dd>{formatVerifiedDate(stop.verificationDate)}</dd>
+            </div>
             <div>
               <dt>Hours</dt>
               <dd>{stop.openingHours ?? "Unknown"}</dd>
@@ -338,12 +286,50 @@ function SwipeCard({
               </div>
             ) : null}
           </dl>
+          <div className="verification-secondary-links px-3 pb-3">
+            <a
+              href={mapsHref}
+              target="_blank"
+              rel="noreferrer"
+              className="verification-secondary-link"
+              onClick={(event) => event.stopPropagation()}
+            >
+              Google Maps
+            </a>
+            {stop.website ? (
+              <a
+                href={normalizeWebsite(stop.website)}
+                target="_blank"
+                rel="noreferrer"
+                className="verification-secondary-link"
+                onClick={(event) => event.stopPropagation()}
+              >
+                Website
+              </a>
+            ) : null}
+            {stop.phone ? (
+              <a
+                href={`tel:${stop.phone}`}
+                className="verification-secondary-link"
+                onClick={(event) => event.stopPropagation()}
+              >
+                Call
+              </a>
+            ) : null}
+            {onOpenDetails ? (
+              <button
+                type="button"
+                className="verification-secondary-link"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onOpenDetails(stop);
+                }}
+              >
+                Full detail sheet
+              </button>
+            ) : null}
+          </div>
         </details>
-      </div>
-
-      <div className="verification-swipe-card__photo" aria-hidden>
-        <span className="verification-swipe-card__photo-icon">{stop.icon}</span>
-        <span className="verification-swipe-card__photo-label">Storefront photo</span>
       </div>
     </div>
   );
@@ -356,6 +342,7 @@ export default function VerificationSwipeStack({
   gpsLon,
   routeCoordinates,
   onAction,
+  onOpenDetails,
 }: VerificationSwipeStackProps) {
   const [index, setIndex] = useState(0);
   const current = stops[index] ?? null;
@@ -366,7 +353,7 @@ export default function VerificationSwipeStack({
   }, [stops]);
 
   const handleAction = useCallback(
-    (action: VerificationQuickAction) => {
+    (action: VerificationAction) => {
       if (!current) {
         return;
       }
@@ -394,7 +381,7 @@ export default function VerificationSwipeStack({
         <p className="text-xs font-semibold uppercase tracking-[0.12em] text-white/45">
           {index + 1} of {stops.length}
         </p>
-        <p className="text-xs text-white/35">Tap a chip · swipe optional</p>
+        <p className="text-xs text-white/35">Street View → Verify or Skip</p>
       </div>
 
       <div className="verification-swipe-stack__deck">
@@ -421,6 +408,7 @@ export default function VerificationSwipeStack({
           isTop
           style={{ zIndex: 2 }}
           onAction={handleAction}
+          onOpenDetails={onOpenDetails}
         />
       </div>
     </div>

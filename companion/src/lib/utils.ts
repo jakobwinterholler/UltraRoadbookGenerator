@@ -5,6 +5,87 @@ import {
   type StreetViewUrlOptions,
 } from "@shared/race/streetViewUrl";
 
+export interface ResupplyGapInfo {
+  distanceKm: number;
+  elevationGainM: number;
+  unsupportedLabel?: string;
+}
+
+export interface ResupplyCardEntry {
+  stop: CompanionStop;
+  gapBefore?: ResupplyGapInfo;
+}
+
+export function elevationGainBetweenKm(
+  bundle: CompanionBundle,
+  fromKm: number,
+  toKm: number,
+): number {
+  const elevations = bundle.route.elevationsM;
+  const coordinates = bundle.route.coordinates;
+  if (
+    !elevations?.length ||
+    elevations.length !== coordinates.length ||
+    toKm <= fromKm
+  ) {
+    const total = bundle.race.distanceKm;
+    const ratio = total > 0 ? (toKm - fromKm) / total : 0;
+    return Math.round(bundle.race.elevationGainM * ratio);
+  }
+
+  const total = bundle.race.distanceKm;
+  let gain = 0;
+  for (let index = 1; index < elevations.length; index += 1) {
+    const startKm = total * ((index - 1) / Math.max(elevations.length - 1, 1));
+    const endKm = total * (index / Math.max(elevations.length - 1, 1));
+    if (endKm <= fromKm || startKm >= toKm) {
+      continue;
+    }
+    const delta = elevations[index] - elevations[index - 1];
+    if (delta > 0) {
+      gain += delta;
+    }
+  }
+  return Math.round(gain);
+}
+
+export function unsupportedLabelBetweenKm(
+  bundle: CompanionBundle,
+  fromKm: number,
+  toKm: number,
+): string | undefined {
+  const section = bundle.unsupportedSections.find(
+    (item) => item.startKm < toKm && item.endKm > fromKm && item.distanceKm >= 5,
+  );
+  return section?.displayLabel;
+}
+
+export function buildResupplyCards(
+  bundle: CompanionBundle,
+  verifiedOnly: boolean,
+): ResupplyCardEntry[] {
+  const stops = bundle.stops
+    .filter((stop) => !verifiedOnly || stop.verificationStatus === "verified")
+    .sort((left, right) => left.km - right.km);
+
+  return stops.map((stop, index) => {
+    const previous = stops[index - 1];
+    if (!previous) {
+      return { stop };
+    }
+    const fromKm = previous.km;
+    const toKm = stop.km;
+    return {
+      stop,
+      gapBefore: {
+        distanceKm: Math.max(0, toKm - fromKm),
+        elevationGainM: elevationGainBetweenKm(bundle, fromKm, toKm),
+        unsupportedLabel: unsupportedLabelBetweenKm(bundle, fromKm, toKm),
+      },
+    };
+  });
+}
+
 export function buildResupplyTimeline(
   bundle: CompanionBundle,
   includeUnverified: boolean,

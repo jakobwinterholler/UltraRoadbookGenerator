@@ -1,24 +1,16 @@
-import type { CompanionStop } from "../types";
+import type { CompanionBundle, CompanionStop } from "../types";
 import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
 import { stopStatusLabel } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
+import { findNearbyStopAlternatives } from "../lib/nearbyStopAlternatives";
+import RouteMapView from "./RouteMapView";
 import BottomSheet from "./BottomSheet";
 
 interface StopSheetProps {
   stop: CompanionStop | null;
-  totalKm: number;
-  routeCoordinates?: [number, number][];
+  bundle: CompanionBundle;
   onClose: () => void;
-}
-
-function statusTone(status: CompanionStop["verificationStatus"]): string {
-  if (status === "verified") {
-    return "text-emerald-300";
-  }
-  if (status === "pending" || status === "needs_review") {
-    return "text-amber-200";
-  }
-  return "text-white/60";
+  onSelectAlternative?: (stop: CompanionStop) => void;
 }
 
 function statusBadgeClass(status: CompanionStop["verificationStatus"]): string {
@@ -31,10 +23,18 @@ function statusBadgeClass(status: CompanionStop["verificationStatus"]): string {
   return "bg-white/8 text-white/60 ring-white/15";
 }
 
-export default function StopSheet({ stop, totalKm, routeCoordinates, onClose }: StopSheetProps) {
-  const streetViewOptions = routeCoordinates
-    ? { routeCoordinates, totalDistanceKm: totalKm }
-    : undefined;
+export default function StopSheet({
+  stop,
+  bundle,
+  onClose,
+  onSelectAlternative,
+}: StopSheetProps) {
+  const totalKm = bundle.race.distanceKm;
+  const streetViewOptions = {
+    routeCoordinates: bundle.route.coordinates,
+    totalDistanceKm: totalKm,
+  };
+  const alternatives = stop ? findNearbyStopAlternatives(stop, bundle.stops) : [];
 
   return (
     <BottomSheet open={stop !== null} onClose={onClose}>
@@ -42,7 +42,7 @@ export default function StopSheet({ stop, totalKm, routeCoordinates, onClose }: 
         <div className="space-y-5 pb-1">
           <div>
             <div className="flex items-start gap-3">
-              <span className="text-3xl leading-none" aria-hidden>
+              <span className="text-4xl leading-none" aria-hidden>
                 {stop.icon}
               </span>
               <div className="min-w-0 flex-1">
@@ -61,6 +61,50 @@ export default function StopSheet({ stop, totalKm, routeCoordinates, onClose }: 
               </span>
             </div>
           </div>
+
+          <div className="relative h-44 overflow-hidden rounded-2xl border border-white/10">
+            <RouteMapView embedded />
+          </div>
+
+          {alternatives.length > 0 ? (
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-white/40">
+                Nearby alternatives
+              </p>
+              <ul className="mt-2 space-y-2">
+                {alternatives.map((alternative) => (
+                  <li key={alternative.stop.zoneId}>
+                    <button
+                      type="button"
+                      onClick={() => onSelectAlternative?.(alternative.stop)}
+                      className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition active:bg-white/8"
+                    >
+                      <span className="text-xl" aria-hidden>
+                        {alternative.stop.icon}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-white">
+                          {alternative.stop.name}
+                        </p>
+                        <p className="truncate text-xs text-white/45">
+                          {alternative.stop.categoryLabel} · {alternative.positionLabel}
+                        </p>
+                      </div>
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                          alternative.stop.verificationStatus === "verified"
+                            ? "bg-emerald-500/20 text-emerald-200"
+                            : "bg-white/10 text-white/50"
+                        }`}
+                      >
+                        {alternative.stop.verificationStatus === "verified" ? "✓" : "?"}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
 
           <a
             href={googleStreetViewUrl(stop, streetViewOptions)}
@@ -120,31 +164,13 @@ export default function StopSheet({ stop, totalKm, routeCoordinates, onClose }: 
                 {stop.confidenceScore != null ? `${Math.round(stop.confidenceScore)}` : "—"}
               </dd>
             </div>
-            {stop.hasCoffee ? (
-              <div>
-                <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Coffee</dt>
-                <dd className="mt-0.5 text-white/85">Available</dd>
-              </div>
-            ) : null}
-            {stop.verificationDate ? (
-              <div>
-                <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Verified</dt>
-                <dd className={`mt-0.5 font-medium ${statusTone(stop.verificationStatus)}`}>
-                  {new Date(stop.verificationDate).toLocaleDateString(undefined, {
-                    month: "short",
-                    day: "numeric",
-                  })}
-                </dd>
+            {stop.notes ? (
+              <div className="col-span-2">
+                <dt className="text-[11px] font-medium uppercase tracking-wide text-white/40">Notes</dt>
+                <dd className="mt-0.5 text-white/85">{stop.notes}</dd>
               </div>
             ) : null}
           </dl>
-
-          {stop.notes ? (
-            <div className="rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3">
-              <p className="text-[11px] font-medium uppercase tracking-wide text-white/40">Notes</p>
-              <p className="mt-1 text-sm leading-relaxed text-white/80">{stop.notes}</p>
-            </div>
-          ) : null}
         </div>
       ) : null}
     </BottomSheet>

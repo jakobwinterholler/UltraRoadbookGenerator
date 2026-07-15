@@ -63,8 +63,8 @@ export function googleMapsUrl(lat: number, lon: number, placeId?: string | null)
 }
 
 /**
- * Opens nearest Street View panorama facing the POI entrance.
- * Google Maps falls back to the map when no panorama exists at the viewpoint.
+ * Opens the closest Street View panorama to the POI, facing the entrance from the route approach.
+ * Google Maps shows the map when no panorama exists at the viewpoint.
  */
 export function googleStreetViewUrl(
   location: StreetViewLocation,
@@ -77,12 +77,11 @@ export function googleStreetViewUrl(
   const params = new URLSearchParams({
     api: "1",
     map_action: "pano",
+    viewpoint: `${location.lat},${location.lon}`,
   });
 
   if (location.placeId?.trim()) {
     params.set("query", `place_id:${location.placeId.trim()}`);
-  } else {
-    params.set("viewpoint", `${location.lat},${location.lon}`);
   }
 
   if (heading != null && Number.isFinite(heading)) {
@@ -92,6 +91,13 @@ export function googleStreetViewUrl(
   params.set("fov", String(fov));
 
   return `https://www.google.com/maps/@?${params.toString()}`;
+}
+
+/** Maps search URL — use when Street View has no coverage at the POI. */
+export function googleStreetViewFallbackMapsUrl(
+  location: Pick<StreetViewLocation, "lat" | "lon" | "placeId">,
+): string {
+  return googleMapsUrl(location.lat, location.lon, location.placeId);
 }
 
 export function normalizeWebsite(url: string): string {

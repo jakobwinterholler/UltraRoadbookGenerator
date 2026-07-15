@@ -39,6 +39,21 @@ export interface CompanionStop {
   verificationDate?: string | null;
 }
 
+export interface CompanionClimb {
+  id: string;
+  name: string;
+  startKm: number;
+  endKm: number;
+  lengthKm: number;
+  elevationGainM: number;
+  avgGradientPct: number;
+  max50mPct?: number | null;
+  max100mPct?: number | null;
+  max250mPct?: number | null;
+  max500mPct?: number | null;
+  max1000mPct?: number | null;
+}
+
 export interface CompanionUnsupportedSection {
   id: string;
   startKm: number;
@@ -76,6 +91,8 @@ export interface CompanionBundle {
   };
   route: {
     coordinates: [number, number][];
+    /** Parallel elevation samples (m) for each coordinate when available. */
+    elevationsM?: number[];
     bounds: {
       south: number;
       west: number;
@@ -84,6 +101,7 @@ export interface CompanionBundle {
     };
   };
   stops: CompanionStop[];
+  climbs?: CompanionClimb[];
   unsupportedSections: CompanionUnsupportedSection[];
   dashboardStats?: CompanionDashboardStats;
   riderAssumptions?: {

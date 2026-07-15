@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { verificationStatsLine } from "@shared/race/applyVerificationToBundle";
 import { countNearbyVerificationStops } from "@shared/race/sortVerificationQueue";
@@ -7,38 +7,25 @@ import { useCompanion } from "../context/CompanionContext";
 import { sortedVerificationQueue } from "../lib/verificationProximity";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import type { CompanionStop } from "../types";
+import StopDetailSheet from "../components/StopDetailSheet";
 import UndoToast from "../components/UndoToast";
-import VerificationSwipeStack, {
-  type VerificationQuickAction,
-} from "../components/VerificationSwipeStack";
+import VerificationSwipeStack, { type VerificationAction } from "../components/VerificationSwipeStack";
 
-function updatesForAction(action: VerificationQuickAction): CompanionVerificationUpdates {
-  switch (action) {
-    case "verified":
-      return { status: "verified" };
-    case "closed":
-      return {
-        status: "rejected",
-        rejectReason: "closed",
-        temporarilyClosed: true,
-      };
-    case "wrong_location":
-      return {
-        status: "rejected",
-        rejectReason: "different_location",
-      };
-    case "needs_review":
-      return {
-        status: "rejected",
-        rejectReason: "could_not_verify",
-      };
+function updatesForAction(action: VerificationAction): CompanionVerificationUpdates {
+  if (action === "verified") {
+    return { status: "verified" };
   }
+  return {
+    status: "rejected",
+    rejectReason: "could_not_verify",
+  };
 }
 
 export default function VerificationScreen() {
   const { bundle, gps, currentKm } = useCompanion();
   const { user } = useAuth();
   const { submitVerification, undo, performUndo } = useVerificationActions(user?.id ?? null);
+  const [detailStop, setDetailStop] = useState<CompanionStop | null>(null);
 
   const queue = useMemo(
     () =>
@@ -57,7 +44,7 @@ export default function VerificationScreen() {
 
   const statsLine = useMemo(() => verificationStatsLine(bundle), [bundle]);
 
-  async function handleAction(stop: CompanionStop, action: VerificationQuickAction) {
+  async function handleAction(stop: CompanionStop, action: VerificationAction) {
     await submitVerification(stop, {
       ...updatesForAction(action),
       category: stop.category,
@@ -90,6 +77,7 @@ export default function VerificationScreen() {
           onAction={(stop, action) => {
             void handleAction(stop, action);
           }}
+          onOpenDetails={setDetailStop}
         />
       </div>
 
@@ -98,6 +86,16 @@ export default function VerificationScreen() {
           stopName={undo.stopName}
           message="Pending desktop review"
           onUndo={() => void performUndo()}
+        />
+      ) : null}
+
+      {detailStop ? (
+        <StopDetailSheet
+          stop={detailStop}
+          totalKm={bundle.race.distanceKm}
+          gpsLat={gps.lat}
+          gpsLon={gps.lon}
+          onClose={() => setDetailStop(null)}
         />
       ) : null}
     </div>

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useCompanion } from "../context/CompanionContext";
-import { buildResupplyTimeline, formatKm } from "../lib/utils";
+import { buildResupplyCards, formatKm } from "../lib/utils";
+import { readResupplyFilter, writeResupplyFilter, type ResupplyFilter } from "../lib/resupplyFilter";
 import StopSheet from "../components/StopSheet";
 import UnsupportedSectionSheet from "../components/UnsupportedSectionSheet";
 import { GpsStatusBadge } from "../components/GpsStatusBadge";
@@ -26,24 +27,23 @@ function VerificationBadge({ status }: { status: string }) {
 
 export default function ResupplyScreen() {
   const listRef = useRef<HTMLDivElement | null>(null);
-  const {
-    bundle,
-    currentKm,
-    selectedStop,
-    selectStop,
-    showUnverified,
-  } = useCompanion();
+  const { bundle, currentKm, selectedStop, selectStop } = useCompanion();
+  const [filter, setFilter] = useState<ResupplyFilter>(() => readResupplyFilter());
   const [selectedSection, setSelectedSection] = useState<CompanionUnsupportedSection | null>(null);
 
-  const timeline = useMemo(
-    () => buildResupplyTimeline(bundle, showUnverified),
-    [bundle, showUnverified],
+  const cards = useMemo(
+    () => buildResupplyCards(bundle, filter === "verified"),
+    [bundle, filter],
   );
 
   const nextIndex = useMemo(
-    () => timeline.findIndex((entry) => entry.km >= currentKm - 0.5),
-    [timeline, currentKm],
+    () => cards.findIndex((entry) => entry.stop.km >= currentKm - 0.5),
+    [cards, currentKm],
   );
+
+  useEffect(() => {
+    writeResupplyFilter(filter);
+  }, [filter]);
 
   useEffect(() => {
     if (nextIndex < 0 || !listRef.current) {
@@ -63,84 +63,106 @@ export default function ResupplyScreen() {
           </div>
           <GpsStatusBadge />
         </div>
-        {nextIndex >= 0 && timeline[nextIndex]?.kind === "stop" ? (
+
+        <div className="mt-3 flex gap-2">
+          {(["all", "verified"] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setFilter(value)}
+              className={`min-h-[44px] flex-1 rounded-xl px-3 py-2.5 text-sm font-semibold transition ${
+                filter === value
+                  ? "bg-sky-500/20 text-sky-100 ring-1 ring-sky-400/35"
+                  : "bg-white/5 text-white/55"
+              }`}
+            >
+              {value === "all" ? "All stops" : "Verified only"}
+            </button>
+          ))}
+        </div>
+
+        {nextIndex >= 0 ? (
           <p className="mt-2 text-sm text-sky-200">
-            Next: {timeline[nextIndex].stop.icon} {timeline[nextIndex].stop.name}
+            Next: {cards[nextIndex].stop.icon} {cards[nextIndex].stop.name}
           </p>
         ) : null}
       </header>
 
       <div ref={listRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-        {timeline.map((entry, index) => {
-          const isPast = entry.km < currentKm - 0.25;
+        {cards.map((entry, index) => {
+          const { stop, gapBefore } = entry;
+          const isPast = stop.km < currentKm - 0.25;
           const isNext = index === nextIndex;
 
-          if (entry.kind === "stop") {
-            const { stop } = entry;
-            return (
+          return (
+            <div key={`card-${stop.zoneId}`} data-index={index}>
+              {gapBefore ? (
+                <div className="mb-2 flex items-center gap-2 px-1 py-1 text-xs text-white/40">
+                  <span className="tabular-nums">{formatKm(gapBefore.distanceKm)}</span>
+                  <span aria-hidden>·</span>
+                  <span className="tabular-nums">+{gapBefore.elevationGainM} m</span>
+                  {gapBefore.unsupportedLabel ? (
+                    <>
+                      <span aria-hidden>·</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const section = bundle.unsupportedSections.find(
+                            (item) => item.displayLabel === gapBefore.unsupportedLabel,
+                          );
+                          if (section) {
+                            setSelectedSection(section);
+                          }
+                        }}
+                        className="text-left text-amber-300/90 underline-offset-2 hover:underline"
+                      >
+                        Unsupported section
+                      </button>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
+
               <button
-                key={`stop-${stop.zoneId}`}
                 type="button"
-                data-index={index}
                 onClick={() => selectStop(stop)}
-                className={`mb-2 flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition ${
+                className={`mb-3 flex min-h-[72px] w-full flex-col rounded-2xl border px-4 py-4 text-left transition ${
                   isNext
-                    ? "bg-sky-500/15 ring-1 ring-sky-400/35"
-                    : "hover:bg-white/5"
+                    ? "border-sky-400/35 bg-sky-500/12"
+                    : "border-white/10 bg-white/[0.03] hover:bg-white/[0.05]"
                 } ${isPast ? "opacity-60" : ""}`}
               >
-                <p className="w-16 shrink-0 text-sm font-medium tabular-nums text-white/50">
-                  {formatKm(stop.km)}
-                </p>
-                <div className="min-w-0 flex-1">
-                  <p className="flex items-center gap-2 text-base font-medium text-white">
-                    <VerificationBadge status={stop.verificationStatus} />
-                    <span className="truncate">
-                      {stop.icon} {stop.name}
-                    </span>
-                  </p>
-                  <p className="mt-0.5 truncate text-sm text-white/45">{stop.categoryLabel}</p>
-                </div>
-                {isNext ? (
-                  <span className="shrink-0 rounded-full bg-sky-500/20 px-2.5 py-1 text-[11px] font-semibold text-sky-200">
-                    Next
+                <div className="flex items-start gap-3">
+                  <span className="text-3xl leading-none" aria-hidden>
+                    {stop.icon}
                   </span>
-                ) : null}
+                  <div className="min-w-0 flex-1">
+                    <p className="flex items-center gap-2 text-base font-semibold text-white">
+                      <VerificationBadge status={stop.verificationStatus} />
+                      <span className="truncate">{stop.name}</span>
+                    </p>
+                    <p className="mt-0.5 truncate text-sm text-white/45">{stop.categoryLabel}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold tabular-nums text-white/70">{formatKm(stop.km)}</p>
+                    {isNext ? (
+                      <span className="mt-1 inline-block rounded-full bg-sky-500/20 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
+                        Next
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               </button>
-            );
-          }
-
-          return (
-            <button
-              key={`section-${entry.section.id}`}
-              type="button"
-              data-index={index}
-              onClick={() => setSelectedSection(entry.section)}
-              className={`mb-2 flex min-h-[56px] w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left transition hover:bg-white/5 ${
-                isNext ? "bg-amber-500/10 ring-1 ring-amber-400/30" : ""
-              } ${isPast ? "opacity-45" : ""}`}
-            >
-              <p className="w-16 shrink-0 text-sm font-medium tabular-nums text-white/50">
-                {formatKm(entry.km)}
-              </p>
-              <div className="min-w-0 flex-1">
-                <p className="text-base font-medium text-amber-200">
-                  ⚠ {entry.section.displayLabel}
-                </p>
-                <p className="mt-0.5 text-sm text-white/45">
-                  {formatKm(entry.section.distanceKm)} unsupported
-                </p>
-              </div>
-            </button>
+            </div>
           );
         })}
       </div>
 
       <StopSheet
         stop={selectedStop}
-        totalKm={bundle.race.distanceKm}
-        routeCoordinates={bundle.route.coordinates}
+        bundle={bundle}
         onClose={() => selectStop(null)}
+        onSelectAlternative={selectStop}
       />
       <UnsupportedSectionSheet
         section={selectedSection}

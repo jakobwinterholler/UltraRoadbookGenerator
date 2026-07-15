@@ -122,8 +122,11 @@ export default function StopDetailSheet({
             <p className="mt-1 text-sm text-sky-200">{distanceLabel}</p>
           ) : null}
 
-          <div className="mt-4 rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-8 text-center text-sm text-white/35">
-            Photo placeholder
+          <div className="mt-4 flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/15 bg-white/5 px-4 py-10 text-center">
+            <span className="text-5xl leading-none" aria-hidden>
+              {stop.icon}
+            </span>
+            <p className="mt-2 text-sm text-white/45">{stop.categoryLabel}</p>
           </div>
 
           <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">

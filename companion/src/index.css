@@ -152,6 +152,38 @@ body {
     opacity: 0.85;
   }
 
+  .verification-swipe-card__icon-block {
+    @apply flex shrink-0 flex-col items-center justify-center gap-1 border-b border-white/10 bg-white/[0.03] px-4 py-6;
+  }
+
+  .verification-swipe-card__icon {
+    @apply text-5xl leading-none;
+  }
+
+  .verification-swipe-card__icon-category {
+    @apply text-xs font-medium uppercase tracking-[0.12em] text-white/40;
+  }
+
+  .verification-swipe-card__meta {
+    @apply mt-1 text-sm tabular-nums text-white/50;
+  }
+
+  .verification-primary-actions {
+    @apply mt-3 grid grid-cols-2 gap-2;
+  }
+
+  .verification-primary-btn {
+    @apply min-h-[52px] rounded-2xl px-4 py-3.5 text-base font-bold transition active:scale-[0.97];
+  }
+
+  .verification-primary-btn--verify {
+    @apply bg-emerald-500 text-white shadow-lg shadow-emerald-500/25;
+  }
+
+  .verification-primary-btn--skip {
+    @apply border border-white/15 bg-white/[0.08] text-white/80;
+  }
+
   .verification-swipe-card__photo {
     @apply relative flex h-24 shrink-0 flex-col items-center justify-center gap-1 border-t border-dashed border-white/15 bg-white/[0.03];
   }

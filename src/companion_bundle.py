@@ -8,7 +8,7 @@ from typing import Any
 from race_dashboard import compute_race_dashboard_stats
 from unsupported_sections import analyze_unsupported_sections
 
-COMPANION_SCHEMA_VERSION = 3
+COMPANION_SCHEMA_VERSION = 4
 
 POI_ICONS: dict[str, str] = {
     "water": "💧",
@@ -16,8 +16,9 @@ POI_ICONS: dict[str, str] = {
     "fuel": "⛽",
     "supermarket": "🛒",
     "convenience": "🏪",
-    "restaurant": "🍴",
+    "restaurant": "🍽",
     "cafe": "☕",
+    "café": "☕",
     "bakery": "🥐",
 }
 
@@ -78,10 +79,72 @@ def _format_poi_name(poi: dict[str, Any] | None, zone: dict[str, Any]) -> str:
 
 def _poi_icon(category: str) -> str:
     lowered = category.lower()
+    if "supermarket" in lowered:
+        return "🛒"
+    if "convenience" in lowered:
+        return "🏪"
+    if "cafe" in lowered or "café" in lowered or "coffee" in lowered:
+        return "☕"
+    if "restaurant" in lowered:
+        return "🍽"
+    if "water" in lowered or "drinking" in lowered:
+        return "💧"
+    if "fuel" in lowered or "gas" in lowered:
+        return "⛽"
     for key, icon in POI_ICONS.items():
         if key in lowered:
             return icon
     return "📍"
+
+
+def _poi_place_id(poi: dict[str, Any] | None) -> str | None:
+    if not poi:
+        return None
+    direct = poi.get("place_id") or poi.get("placeId")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    tags = poi.get("tags") or {}
+    if isinstance(tags, dict):
+        for key in ("place_id", "google_place_id", "google:place_id"):
+            value = tags.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+    return None
+
+
+def _climb_name(climb: dict[str, Any], index: int) -> str:
+    for key in ("nickname", "suggested_name"):
+        value = climb.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    climb_id = str(climb.get("id") or "").strip()
+    if climb_id:
+        return f"Climb {climb_id.replace('C', '')}"
+    return f"Climb {index + 1}"
+
+
+def _build_climbs(roadbook: dict[str, Any]) -> list[dict[str, Any]]:
+    climbs: list[dict[str, Any]] = []
+    for index, climb in enumerate(roadbook.get("climbs") or []):
+        if not isinstance(climb, dict):
+            continue
+        climbs.append(
+            {
+                "id": str(climb.get("id") or f"climb-{index + 1}"),
+                "name": _climb_name(climb, index),
+                "startKm": climb.get("start_km"),
+                "endKm": climb.get("end_km"),
+                "lengthKm": climb.get("length_km"),
+                "elevationGainM": climb.get("elevation_gain_m"),
+                "avgGradientPct": climb.get("avg_gradient_pct"),
+                "max50mPct": climb.get("max_50_m_pct"),
+                "max100mPct": climb.get("max_100_m_pct"),
+                "max250mPct": climb.get("max_250_m_pct"),
+                "max500mPct": climb.get("max_500_m_pct"),
+                "max1000mPct": climb.get("max_1000_m_pct"),
+            }
+        )
+    return climbs
 
 
 def _verified_stop_key(zone_id: int | str) -> str:
@@ -195,6 +258,7 @@ def build_companion_bundle(
                 "hasCoffee": _is_coffee_category(category),
                 "confidenceScore": (poi or {}).get("score"),
                 "verificationDate": (record or {}).get("updated_at") if status == "verified" else None,
+                "placeId": _poi_place_id(poi),
             }
         )
 
@@ -236,6 +300,21 @@ def build_companion_bundle(
         "readinessReasons": dashboard["readiness_reasons"],
     }
 
+    elevation_samples = [
+        float(point["ele_m"]) if point.get("ele_m") is not None else None
+        for point in track_points
+    ]
+    route_payload: dict[str, Any] = {
+        "coordinates": [
+            [float(point["lon"]), float(point["lat"])] for point in track_points
+        ],
+        "bounds": _build_bounds(track_points),
+    }
+    if any(value is not None for value in elevation_samples):
+        route_payload["elevationsM"] = [
+            value if value is not None else 0.0 for value in elevation_samples
+        ]
+
     return {
         "schemaVersion": COMPANION_SCHEMA_VERSION,
         "revision": revision,
@@ -248,13 +327,9 @@ def build_companion_bundle(
             "elevationGainM": float(summary.get("elevation_gain_m") or 0),
             "analyzedAt": roadbook.get("analyzed_at"),
         },
-        "route": {
-            "coordinates": [
-                [float(point["lon"]), float(point["lat"])] for point in track_points
-            ],
-            "bounds": _build_bounds(track_points),
-        },
+        "route": route_payload,
         "stops": stops,
+        "climbs": _build_climbs(roadbook),
         "unsupportedSections": unsupported,
         "dashboardStats": dashboard_stats,
         "riderAssumptions": assumptions,

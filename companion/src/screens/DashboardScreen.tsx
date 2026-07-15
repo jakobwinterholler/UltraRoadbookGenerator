@@ -215,8 +215,9 @@ export default function DashboardScreen() {
 
       <StopSheet
         stop={selectedStop}
-        totalKm={bundle.race.distanceKm}
+        bundle={bundle}
         onClose={() => selectStop(null)}
+        onSelectAlternative={selectStop}
       />
       <UnsupportedSectionSheet
         section={selectedSection}
