@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { resolveRenderedStop } from "@shared/race/bundlePois";
 import { computeStopConfidence, stopConfidenceBadgeClass } from "@shared/race/stopConfidence";
 import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionVerificationUpdates } from "@shared/types/verification";
 import type { CompanionBundle, CompanionStop } from "../types";
-import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
+import { formatKm, googleMapsUrl } from "../lib/utils";
 import {
   canVerifyStop,
   canConfirmOnRoute,
@@ -14,7 +14,8 @@ import {
   serviceLabels,
   stopStatusLabel,
 } from "../lib/raceExecution";
-import { checkStreetViewAvailability, normalizeWebsite } from "@shared/race/streetViewUrl";
+import { normalizeWebsite } from "@shared/race/streetViewUrl";
+import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 import { buildStopAlternatives, type StopAlternativeView } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import { useCompanion } from "../context/CompanionContext";
@@ -134,12 +135,23 @@ export default function StopSheet({
   );
   const { submitVerification } = useVerificationActions(user?.id ?? null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [streetViewAvailable, setStreetViewAvailable] = useState<boolean | null>(null);
   const totalKm = bundle.race.distanceKm;
   const streetViewOptions = {
     routeCoordinates: bundle.route.coordinates,
     totalDistanceKm: totalKm,
   };
+  const streetView = useStreetViewLink(
+    stop
+      ? {
+          lat: stop.lat,
+          lon: stop.lon,
+          placeId: stop.placeId,
+          routeKm: stop.km,
+          name: stop.name,
+        }
+      : null,
+    streetViewOptions,
+  );
   const alternatives = stop ? buildStopAlternatives(stop, bundle.stops) : [];
   const showVerifyActions = stop ? canVerifyStop(stop.verificationStatus) : false;
   const showConfirmOnRoute = stop ? canConfirmOnRoute(stop.verificationStatus) : false;
@@ -153,32 +165,6 @@ export default function StopSheet({
         phone: stop.phone,
       })
     : null;
-
-  useEffect(() => {
-    if (!stop) {
-      setStreetViewAvailable(null);
-      return;
-    }
-    let cancelled = false;
-    setStreetViewAvailable(null);
-    void checkStreetViewAvailability(
-      {
-        lat: stop.lat,
-        lon: stop.lon,
-        placeId: stop.placeId,
-        routeKm: stop.km,
-        name: stop.name,
-      },
-      streetViewOptions,
-    ).then((result) => {
-      if (!cancelled) {
-        setStreetViewAvailable(result.available);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [stop?.km, stop?.lat, stop?.lon, stop?.name, stop?.placeId, stop?.poiId]);
 
   async function handleVerify(target: CompanionStop) {
     setActionError(null);
@@ -330,18 +316,26 @@ export default function StopSheet({
             >
               Google Maps
             </a>
-            {streetViewAvailable === false ? (
-              <span className="poi-quick-actions__btn poi-quick-actions__btn--disabled">
-                Street View unavailable
-              </span>
+            {streetView.available === false ? (
+              <div className="flex min-h-[44px] flex-col justify-center px-1">
+                <span className="text-xs text-white/45">{streetView.unavailableMessage}</span>
+                <a
+                  href={streetView.mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-1 text-xs font-medium text-sky-300 underline"
+                >
+                  Open in Google Maps
+                </a>
+              </div>
             ) : (
               <a
-                href={googleStreetViewUrl(stop, streetViewOptions)}
+                href={streetView.streetViewUrl}
                 target="_blank"
                 rel="noreferrer"
                 className="poi-quick-actions__btn poi-quick-actions__btn--streetview"
               >
-                {streetViewAvailable === null ? "Street View…" : "Street View"}
+                {streetView.loading ? "Street View…" : "Street View"}
               </a>
             )}
           </div>

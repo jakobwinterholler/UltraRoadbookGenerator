@@ -3,9 +3,10 @@ import { computeStopConfidence, stopConfidenceBadgeClass } from "@shared/race/st
 import { formatStopDistanceM } from "@shared/race/sortVerificationQueue";
 import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionStop } from "../types";
-import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
+import { formatKm, googleMapsUrl } from "../lib/utils";
 import { serviceLabels, stopStatusLabel } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
+import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 
 export type VerificationAction = "verified" | "skip";
 
@@ -95,6 +96,16 @@ function SwipeCard({
     routeCoordinates,
     totalDistanceKm: totalKm,
   };
+  const streetView = useStreetViewLink(
+    {
+      lat: stop.lat,
+      lon: stop.lon,
+      placeId: stop.placeId,
+      routeKm: stop.km,
+      name: stop.name,
+    },
+    streetViewOptions,
+  );
 
   const finishExit = useCallback(
     (direction: ExitDirection, action: VerificationAction) => {
@@ -180,7 +191,6 @@ function SwipeCard({
     phone: stop.phone,
   });
   const distanceLabel = stopDistanceLabel(stop, gpsLat, gpsLon);
-  const streetViewHref = googleStreetViewUrl(stop, streetViewOptions);
   const mapsHref = googleMapsUrl(stop.lat, stop.lon, stop.placeId);
 
   const transform = exiting
@@ -232,15 +242,24 @@ function SwipeCard({
           </p>
         </div>
 
-        <a
-          href={streetViewHref}
-          target="_blank"
-          rel="noreferrer"
-          className="verification-street-view-btn"
-          onClick={(event) => event.stopPropagation()}
-        >
-          👁 Open Street View
-        </a>
+        {streetView.available === false ? (
+          <div className="verification-street-view-btn verification-street-view-btn--unavailable">
+            <span>{streetView.unavailableMessage}</span>
+            <a href={streetView.mapsUrl} target="_blank" rel="noreferrer">
+              Google Maps
+            </a>
+          </div>
+        ) : (
+          <a
+            href={streetView.streetViewUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="verification-street-view-btn"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {streetView.loading ? "Street View…" : "👁 Open Street View"}
+          </a>
+        )}
 
         <div className="verification-primary-actions">
           <button

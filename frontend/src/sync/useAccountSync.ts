@@ -94,7 +94,6 @@ export function useAccountSync() {
         fetchRaces(),
         fetchSyncRaces(accessToken),
       ]);
-      const cloudById = new Map(cloudRaces.map((race) => [race.id, race]));
       const pending = getPendingSyncRaces(userId);
 
       const toUpload = localRaces.filter((race) =>

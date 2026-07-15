@@ -5,7 +5,7 @@ export interface StreetViewLocation {
   lon: number;
   /** Google Place ID when available on the POI. */
   placeId?: string | null;
-  /** Route km — used to aim the camera from the approach direction. */
+  /** Route km — used for debug logging and heading fallback only. */
   routeKm?: number;
   /** POI / business name — used for Maps fallback links only. */
   name?: string | null;
@@ -14,13 +14,13 @@ export interface StreetViewLocation {
 export interface StreetViewUrlOptions {
   routeCoordinates?: [number, number][];
   totalDistanceKm?: number;
-  /** Meters before the stop on the route when computing camera heading. */
-  approachOffsetM?: number;
   /** Field of view in degrees (default 75). */
   fov?: number;
   /** Camera pitch in degrees (default 0). */
   pitch?: number;
 }
+
+export const STREET_VIEW_SEARCH_RADIUS_M = 100;
 
 const DEFAULT_FOV = 75;
 const DEFAULT_PITCH = 0;
@@ -38,7 +38,7 @@ function normalizeBearing(degrees: number): number {
   return ((degrees % 360) + 360) % 360;
 }
 
-function bearingBetween(
+export function bearingBetween(
   from: { lat: number; lon: number },
   to: { lat: number; lon: number },
 ): number {
@@ -52,36 +52,50 @@ function bearingBetween(
   return normalizeBearing((Math.atan2(y, x) * 180) / Math.PI);
 }
 
-interface ApproachCamera {
-  viewpoint: { lat: number; lon: number };
-  heading: number;
-}
-
-/**
- * Places the Street View camera on the route at the stop km, facing the POI.
- * Gas stations and other off-route POIs otherwise snap to the wrong road panorama.
- */
-export function computeStreetViewApproach(
+/** GPX point on the route at stop km — for debug logging only. */
+export function gpxPointAtStopKm(
   location: StreetViewLocation,
   options?: StreetViewUrlOptions,
-): ApproachCamera {
-  const poi = { lat: location.lat, lon: location.lon };
+): { lat: number; lon: number } | null {
   const coords = options?.routeCoordinates;
-
-  if (coords?.length && location.routeKm != null) {
-    const track = buildRouteTrack(coords, options?.totalDistanceKm);
-    const routePoint = interpolateTrackAtKm(track, location.routeKm);
-    const viewpoint = { lat: routePoint.lat, lon: routePoint.lon };
-
-    if (haversineM(viewpoint.lat, viewpoint.lon, poi.lat, poi.lon) >= 5) {
-      return {
-        viewpoint,
-        heading: bearingBetween(viewpoint, poi),
-      };
-    }
+  if (!coords?.length || location.routeKm == null) {
+    return null;
   }
+  const track = buildRouteTrack(coords, options?.totalDistanceKm);
+  const routePoint = interpolateTrackAtKm(track, location.routeKm);
+  return { lat: routePoint.lat, lon: routePoint.lon };
+}
 
-  return { viewpoint: poi, heading: 0 };
+export interface StreetViewDebugInfo {
+  poiLat: number;
+  poiLon: number;
+  gpxLat: number | null;
+  gpxLon: number | null;
+  gpxDistanceFromPoiM: number | null;
+  panoramaLat: number | null;
+  panoramaLon: number | null;
+  panoramaDistanceFromPoiM: number | null;
+  heading: number | null;
+  status: StreetViewMetadataStatus;
+  poiName?: string | null;
+}
+
+export function logStreetViewDebug(debug: StreetViewDebugInfo): void {
+  console.info("[StreetView]", {
+    poi: `${debug.poiLat.toFixed(6)},${debug.poiLon.toFixed(6)}${debug.poiName ? ` (${debug.poiName})` : ""}`,
+    gpx:
+      debug.gpxLat != null && debug.gpxLon != null
+        ? `${debug.gpxLat.toFixed(6)},${debug.gpxLon.toFixed(6)}`
+        : null,
+    gpxDistanceFromPoiM: debug.gpxDistanceFromPoiM,
+    panorama:
+      debug.panoramaLat != null && debug.panoramaLon != null
+        ? `${debug.panoramaLat.toFixed(6)},${debug.panoramaLon.toFixed(6)}`
+        : null,
+    panoramaDistanceFromPoiM: debug.panoramaDistanceFromPoiM,
+    heading: debug.heading,
+    status: debug.status,
+  });
 }
 
 function buildMapsSearchQuery(location: StreetViewLocation): string | undefined {
@@ -99,27 +113,61 @@ export function googleMapsUrl(lat: number, lon: number, placeId?: string | null)
   return `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`;
 }
 
+export function buildStreetViewUrlFromPanorama(
+  panorama: { lat: number; lon: number },
+  poi: { lat: number; lon: number },
+  options?: Pick<StreetViewUrlOptions, "fov" | "pitch"> & {
+    placeId?: string | null;
+    name?: string | null;
+  },
+): string {
+  const fov = options?.fov ?? DEFAULT_FOV;
+  const pitch = options?.pitch ?? DEFAULT_PITCH;
+  const heading = bearingBetween(panorama, poi);
+  const placeId = isGooglePlaceId(options?.placeId) ? options!.placeId!.trim() : null;
+
+  const params = new URLSearchParams({
+    api: "1",
+    map_action: "pano",
+    viewpoint: `${panorama.lat.toFixed(6)},${panorama.lon.toFixed(6)}`,
+    heading: String(Math.round(heading)),
+    pitch: String(pitch),
+    fov: String(fov),
+  });
+
+  if (placeId) {
+    params.set("query", `place_id:${placeId}`);
+  } else if (options?.name?.trim()) {
+    params.set("query", buildMapsSearchQuery({ lat: poi.lat, lon: poi.lon, name: options.name })!);
+  }
+
+  return `https://www.google.com/maps/@?${params.toString()}`;
+}
+
 /**
- * Opens Street View at the POI with the camera facing the building from the route approach.
+ * Best-effort Street View URL using POI coordinates (sync fallback before metadata resolves).
  */
 export function googleStreetViewUrl(
   location: StreetViewLocation,
   options?: StreetViewUrlOptions,
 ): string {
-  const fov = options?.fov ?? DEFAULT_FOV;
-  const pitch = options?.pitch ?? DEFAULT_PITCH;
-  const approach = computeStreetViewApproach(location, options);
-  const placeId = isGooglePlaceId(location.placeId) ? location.placeId!.trim() : null;
+  const poi = { lat: location.lat, lon: location.lon };
+  const gpx = gpxPointAtStopKm(location, options);
+  const heading =
+    gpx != null && haversineM(gpx.lat, gpx.lon, poi.lat, poi.lon) >= 3
+      ? bearingBetween(gpx, poi)
+      : 0;
 
   const params = new URLSearchParams({
     api: "1",
     map_action: "pano",
-    viewpoint: `${approach.viewpoint.lat.toFixed(6)},${approach.viewpoint.lon.toFixed(6)}`,
-    heading: String(Math.round(approach.heading)),
-    pitch: String(pitch),
-    fov: String(fov),
+    viewpoint: `${poi.lat.toFixed(6)},${poi.lon.toFixed(6)}`,
+    heading: String(Math.round(heading)),
+    pitch: String(options?.pitch ?? DEFAULT_PITCH),
+    fov: String(options?.fov ?? DEFAULT_FOV),
   });
 
+  const placeId = isGooglePlaceId(location.placeId) ? location.placeId!.trim() : null;
   if (placeId) {
     params.set("query", `place_id:${placeId}`);
   } else {
@@ -160,6 +208,10 @@ export interface StreetViewAvailability {
   status: StreetViewMetadataStatus;
 }
 
+export interface StreetViewMetadataResult extends StreetViewAvailability {
+  panorama: { lat: number; lon: number } | null;
+}
+
 export function parseStreetViewMetadataStatus(status: string | undefined): StreetViewAvailability {
   if (status === "OK") {
     return { available: true, status: "OK" };
@@ -170,35 +222,133 @@ export function parseStreetViewMetadataStatus(status: string | undefined): Stree
   return { available: true, status: "UNKNOWN" };
 }
 
-/** Check whether Google has Street View coverage near the route approach point. */
-export async function checkStreetViewAvailability(
+function streetViewApiKey(options?: { apiKey?: string }): string | undefined {
+  if (options?.apiKey) {
+    return options.apiKey;
+  }
+  if (typeof import.meta !== "undefined") {
+    return (import.meta as { env?: { VITE_GOOGLE_MAPS_API_KEY?: string } }).env
+      ?.VITE_GOOGLE_MAPS_API_KEY;
+  }
+  return undefined;
+}
+
+/** Fetch nearest Street View panorama within {@link STREET_VIEW_SEARCH_RADIUS_M} of the POI. */
+export async function fetchStreetViewMetadata(
   location: StreetViewLocation,
-  options?: StreetViewUrlOptions & { apiKey?: string },
-): Promise<StreetViewAvailability> {
-  const approach = computeStreetViewApproach(location, options);
-  const envKey =
-    typeof import.meta !== "undefined"
-      ? (import.meta as { env?: { VITE_GOOGLE_MAPS_API_KEY?: string } }).env?.VITE_GOOGLE_MAPS_API_KEY
-      : undefined;
+  options?: StreetViewUrlOptions & { apiKey?: string; radiusM?: number },
+): Promise<StreetViewMetadataResult> {
+  const poi = { lat: location.lat, lon: location.lon };
+  const radius = options?.radiusM ?? STREET_VIEW_SEARCH_RADIUS_M;
   const params = new URLSearchParams({
-    location: `${approach.viewpoint.lat},${approach.viewpoint.lon}`,
+    location: `${poi.lat},${poi.lon}`,
+    radius: String(radius),
   });
-  const apiKey = options?.apiKey ?? envKey;
+  const apiKey = streetViewApiKey(options);
   if (apiKey) {
     params.set("key", apiKey);
   }
+
   try {
     const response = await fetch(
       `https://maps.googleapis.com/maps/api/streetview/metadata?${params.toString()}`,
     );
     if (!response.ok) {
-      return { available: true, status: "UNKNOWN" };
+      return { available: true, status: "UNKNOWN", panorama: null };
     }
-    const data = (await response.json()) as { status?: string };
-    return parseStreetViewMetadataStatus(data.status);
+    const data = (await response.json()) as {
+      status?: string;
+      location?: { lat: number; lng: number };
+    };
+    const parsed = parseStreetViewMetadataStatus(data.status);
+    const panorama =
+      parsed.available && data.location
+        ? { lat: data.location.lat, lon: data.location.lng }
+        : null;
+    return { ...parsed, panorama };
   } catch {
-    return { available: true, status: "UNKNOWN" };
+    return { available: true, status: "UNKNOWN", panorama: null };
   }
+}
+
+export interface ResolvedStreetView {
+  available: boolean;
+  streetViewUrl: string | null;
+  mapsFallbackUrl: string;
+  debug: StreetViewDebugInfo;
+}
+
+/** Resolve Street View at the POI with nearest panorama search and POI-facing heading. */
+export async function resolveStreetView(
+  location: StreetViewLocation,
+  options?: StreetViewUrlOptions & { apiKey?: string },
+): Promise<ResolvedStreetView> {
+  const poi = { lat: location.lat, lon: location.lon };
+  const gpx = gpxPointAtStopKm(location, options);
+  const mapsFallbackUrl = googleStreetViewFallbackMapsUrl(location);
+
+  const metadata = await fetchStreetViewMetadata(location, options);
+
+  const debugBase: StreetViewDebugInfo = {
+    poiLat: poi.lat,
+    poiLon: poi.lon,
+    poiName: location.name,
+    gpxLat: gpx?.lat ?? null,
+    gpxLon: gpx?.lon ?? null,
+    gpxDistanceFromPoiM:
+      gpx != null ? Math.round(haversineM(gpx.lat, gpx.lon, poi.lat, poi.lon)) : null,
+    panoramaLat: null,
+    panoramaLon: null,
+    panoramaDistanceFromPoiM: null,
+    heading: null,
+    status: metadata.status,
+  };
+
+  if (!metadata.available || metadata.status === "ZERO_RESULTS" || !metadata.panorama) {
+    const debug = { ...debugBase, status: metadata.status === "UNKNOWN" ? metadata.status : "ZERO_RESULTS" as const };
+    logStreetViewDebug(debug);
+    return {
+      available: false,
+      streetViewUrl: null,
+      mapsFallbackUrl,
+      debug,
+    };
+  }
+
+  const panorama = metadata.panorama;
+  const heading = bearingBetween(panorama, poi);
+  const debug: StreetViewDebugInfo = {
+    ...debugBase,
+    panoramaLat: panorama.lat,
+    panoramaLon: panorama.lon,
+    panoramaDistanceFromPoiM: Math.round(
+      haversineM(panorama.lat, panorama.lon, poi.lat, poi.lon),
+    ),
+    heading: Math.round(heading),
+    status: "OK",
+  };
+  logStreetViewDebug(debug);
+
+  return {
+    available: true,
+    streetViewUrl: buildStreetViewUrlFromPanorama(panorama, poi, {
+      fov: options?.fov,
+      pitch: options?.pitch,
+      placeId: location.placeId,
+      name: location.name,
+    }),
+    mapsFallbackUrl,
+    debug,
+  };
+}
+
+/** @deprecated Use resolveStreetView — kept for callers migrating incrementally. */
+export async function checkStreetViewAvailability(
+  location: StreetViewLocation,
+  options?: StreetViewUrlOptions & { apiKey?: string },
+): Promise<StreetViewAvailability> {
+  const result = await fetchStreetViewMetadata(location, options);
+  return { available: result.available, status: result.status };
 }
 
 export function placeIdFromTags(

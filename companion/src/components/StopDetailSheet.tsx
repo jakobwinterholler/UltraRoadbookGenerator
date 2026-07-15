@@ -4,7 +4,8 @@ import { formatStopDistanceM } from "@shared/race/sortVerificationQueue";
 import { haversineM } from "@shared/race/mapMatching";
 import type { CompanionVerificationServices, CompanionVerificationUpdates } from "@shared/types/verification";
 import type { CompanionStop } from "../types";
-import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
+import { formatKm, googleMapsUrl } from "../lib/utils";
+import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 import { serviceLabels, isVerifiedEverywhere, isVerifiedLocally, stopStatusLabel } from "../lib/raceExecution";
 
 interface StopDetailSheetProps {
@@ -58,6 +59,16 @@ export default function StopDetailSheet({
   const streetViewOptions = routeCoordinates
     ? { routeCoordinates, totalDistanceKm: totalKm }
     : undefined;
+  const streetView = useStreetViewLink(
+    {
+      lat: stop.lat,
+      lon: stop.lon,
+      placeId: stop.placeId,
+      routeKm: stop.km,
+      name: stop.name,
+    },
+    streetViewOptions,
+  );
   const confidence = computeStopConfidence({
     verificationStatus: stop.verificationStatus,
     verifiedAt: stop.verificationDate,
@@ -233,14 +244,28 @@ export default function StopDetailSheet({
             >
               Google Maps
             </a>
-            <a
-              href={googleStreetViewUrl(stop, streetViewOptions)}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white"
-            >
-              Street View
-            </a>
+            {streetView.available === false ? (
+              <div className="rounded-full border border-white/20 px-4 py-2 text-sm text-white/60">
+                <span>{streetView.unavailableMessage}</span>
+                <a
+                  href={streetView.mapsUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-2 font-medium text-sky-300 underline"
+                >
+                  Google Maps
+                </a>
+              </div>
+            ) : (
+              <a
+                href={streetView.streetViewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-full border border-white/20 px-4 py-2 text-sm font-medium text-white"
+              >
+                {streetView.loading ? "Street View…" : "Street View"}
+              </a>
+            )}
             {stop.website ? (
               <a
                 href={stop.website}
