@@ -68,23 +68,22 @@ export function resolveCorosWptIcon(input: {
 }): CorosWptIcon {
   const category = input.category.toLowerCase();
   if (
-    input.hasWater ||
-    category.includes("water") ||
-    category.includes("drinking") ||
-    category.includes("fountain")
-  ) {
-    return "Water";
-  }
-  if (
-    input.hasFuel ||
     category.includes("fuel") ||
     category.includes("gas station") ||
-    category.includes("gas_station")
+    category.includes("gas_station") ||
+    input.hasFuel
   ) {
     return "Supplies";
   }
   if (
-    input.hasFood ||
+    category.includes("water") ||
+    category.includes("drinking") ||
+    category.includes("fountain") ||
+    input.hasWater
+  ) {
+    return "Water";
+  }
+  if (
     category.includes("supermarket") ||
     category.includes("convenience") ||
     category.includes("mini supermarket") ||
@@ -95,7 +94,9 @@ export function resolveCorosWptIcon(input: {
     category.includes("restaurant") ||
     category.includes("fast food") ||
     category.includes("bakery") ||
-    category.includes("shop")
+    category.includes("shop") ||
+    (category.includes("bike") && category.includes("shop")) ||
+    input.hasFood
   ) {
     return "Supplies";
   }
@@ -133,9 +134,10 @@ export function corosWaypointEmoji(input: {
   hasFood?: boolean;
 }): string {
   const sym = resolveCorosWptIcon(input);
+  const category = input.category.toLowerCase();
   const map: Record<CorosWptIcon, string> = {
     Water: "💧",
-    Supplies: input.hasFuel ? "⛽" : input.hasFood ? "🛒" : "📦",
+    Supplies: category.includes("fuel") || category.includes("gas") || input.hasFuel ? "⛽" : input.hasFood ? "🛒" : "📦",
     Hazard: "⚠️",
     Bathroom: "🚻",
     Hut: "🏠",

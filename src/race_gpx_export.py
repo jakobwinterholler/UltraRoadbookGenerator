@@ -122,11 +122,11 @@ def _is_excluded_export_category(category: str) -> bool:
 
 def _resolve_coros_wpt_sym(*, category: str, zone: dict[str, Any]) -> str:
     cat = category.lower()
-    if _zone_has_category(zone, "water") or any(token in cat for token in ("water", "drinking", "fountain")):
-        return "Water"
-    if _zone_has_category(zone, "fuel") or "fuel" in cat or "gas station" in cat or "gas_station" in cat:
+    if "fuel" in cat or "gas station" in cat or "gas_station" in cat:
         return "Supplies"
-    if _zone_has_category(zone, "food") or any(
+    if any(token in cat for token in ("water", "drinking", "fountain")):
+        return "Water"
+    if any(
         token in cat
         for token in (
             "supermarket",
@@ -141,7 +141,13 @@ def _resolve_coros_wpt_sym(*, category: str, zone: dict[str, Any]) -> str:
             "bakery",
             "shop",
         )
-    ):
+    ) or ("bike" in cat and "shop" in cat):
+        return "Supplies"
+    if _zone_has_category(zone, "fuel"):
+        return "Supplies"
+    if _zone_has_category(zone, "water"):
+        return "Water"
+    if _zone_has_category(zone, "food"):
         return "Supplies"
     if "hazard" in cat or "danger" in cat:
         return "Hazard"
@@ -160,9 +166,10 @@ def _resolve_coros_wpt_sym(*, category: str, zone: dict[str, Any]) -> str:
 
 def _coros_waypoint_emoji(*, category: str, zone: dict[str, Any]) -> str:
     sym = _resolve_coros_wpt_sym(category=category, zone=zone)
+    cat = category.lower()
     mapping = {
         "Water": "💧",
-        "Supplies": "⛽" if _zone_has_category(zone, "fuel") else ("🛒" if _zone_has_category(zone, "food") else "📦"),
+        "Supplies": "⛽" if ("fuel" in cat or "gas" in cat) else ("🛒" if _zone_has_category(zone, "food") else "📦"),
         "Hazard": "⚠️",
         "Bathroom": "🚻",
         "Hut": "🏠",
