@@ -41,7 +41,14 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
 
   return (
     <div className="relative h-full min-h-0">
-      {!selectedStop ? (
+      <div
+        className={
+          selectedStop
+            ? "pointer-events-none absolute inset-0 invisible"
+            : "absolute inset-0"
+        }
+        aria-hidden={selectedStop ? true : undefined}
+      >
         <RouteMapView
           ref={mapRef}
           showClimbs={showClimbs}
@@ -50,9 +57,7 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
             setSelectedClimb(climb);
           }}
         />
-      ) : (
-        <div className="absolute inset-0 bg-[#0c1018]" aria-hidden />
-      )}
+      </div>
 
       {!selectedStop ? (
         <>

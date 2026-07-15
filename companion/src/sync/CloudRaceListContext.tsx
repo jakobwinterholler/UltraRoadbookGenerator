@@ -21,6 +21,7 @@ import {
   saveRaceList,
   type StoredRaceListItem,
 } from "../db";
+import { isRaceDownloading } from "../lib/downloadRaceAssets";
 
 async function resolveOfflineReady(
   race: SyncRaceSummary,
@@ -35,6 +36,10 @@ async function resolveOfflineReady(
 
   if (!existing?.offlineReady || downloadedRevision === null) {
     return { downloadedRevision, downloadedChecksum, offlineReady: false };
+  }
+
+  if (isRaceDownloading(race.id)) {
+    return { downloadedRevision, downloadedChecksum, offlineReady: true };
   }
 
   const bundleExists = await hasValidCompanionBundle(race.id);

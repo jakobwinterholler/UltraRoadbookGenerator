@@ -5,6 +5,7 @@ import {
   useImperativeHandle,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import { buildRouteTrack, interpolateTrackAtKm } from "@shared/race/mapMatching";
@@ -181,6 +182,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
   const stopsRef = useRef<CompanionStop[]>([]);
   const onClimbSelectRef = useRef(onClimbSelect);
   const selectStopRef = useRef<(stop: CompanionStop | null) => void>(() => undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const {
     bundle,
@@ -252,9 +254,11 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       return;
     }
 
+    let cancelled = false;
     readyRef.current = false;
     userExploringRef.current = false;
     initialFitDoneRef.current = false;
+    setLoadError(null);
 
     const map = new maplibregl.Map({
       container: host,
@@ -273,11 +277,23 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     });
     mapRef.current = map;
 
+    const fail = (message: string) => {
+      if (cancelled) {
+        return;
+      }
+      setLoadError(message);
+    };
+
+    map.on("error", (event) => {
+      fail(event.error?.message ?? "Map failed to load.");
+    });
+
     const setup = () => {
-      if (map.getSource("route")) {
+      if (cancelled || map.getSource("route")) {
         return;
       }
 
+      try {
       map.addSource("route", {
         type: "geojson",
         data: {
@@ -538,6 +554,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       }
 
       readyRef.current = true;
+      } catch (error) {
+        fail(error instanceof Error ? error.message : "Map failed to set up.");
+      }
     };
 
     if (map.loaded()) {
@@ -583,6 +602,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     map.on("pitchstart", pauseFollow);
 
     return () => {
+      cancelled = true;
       readyRef.current = false;
       map.remove();
       mapRef.current = null;
@@ -682,7 +702,17 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     }
   }, [followGps]);
 
-  return <div ref={hostRef} className="absolute inset-0 bg-[#0c1018]" />;
+  return (
+    <div className="absolute inset-0 bg-[#0c1018]">
+      <div ref={hostRef} className="absolute inset-0" />
+      {loadError ? (
+        <div className="absolute inset-0 flex flex-col items-center justify-center px-6 text-center">
+          <p className="text-sm font-medium text-white/75">Map unavailable</p>
+          <p className="mt-1 text-xs text-white/45">{loadError}</p>
+        </div>
+      ) : null}
+    </div>
+  );
 });
 
 export default RouteMapView;
