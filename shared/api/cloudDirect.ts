@@ -117,6 +117,8 @@ export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
     distance_km: race.distance_km,
     elevation_gain_m: race.elevation_gain_m,
     companion_revision: race.companion_revision ?? 0,
+    version: race.companion_revision ?? 0,
+    bundle_version: race.companion_revision ?? 0,
     updated_at: race.updated_at,
     analyzed_at: race.analyzed_at,
     has_bundle: Boolean(race.has_bundle),

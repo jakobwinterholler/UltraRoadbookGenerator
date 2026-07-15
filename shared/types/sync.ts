@@ -3,11 +3,30 @@ export interface SyncRaceSummary {
   name: string;
   distance_km: number | null;
   elevation_gain_m: number | null;
+  /** Monotonic cloud revision; bumps on each bundle upload. */
   companion_revision: number;
+  /** Alias for companion_revision in API responses. */
+  version?: number;
+  /** Alias for companion_revision — embedded bundle revision. */
+  bundle_version?: number;
   updated_at: string | null;
   analyzed_at: string | null;
   has_bundle: boolean;
   readiness_score?: number | null;
+}
+
+export interface SyncPushRaceResult {
+  race_id: string;
+  name?: string;
+  companion_revision: number;
+  has_bundle: boolean;
+  synced_at: string;
+}
+
+export interface SyncPushAllResult {
+  uploaded: SyncPushRaceResult[];
+  failed: Array<{ race_id: string; name?: string; error: string }>;
+  skipped?: Array<{ race_id: string; name?: string; reason: string }>;
 }
 
 export interface AuthProfile {
@@ -15,8 +34,30 @@ export interface AuthProfile {
   email: string | null;
 }
 
+export interface CompanionStopAlternative {
+  osmId: number;
+  osmType: string;
+  name: string;
+  category: string;
+  categoryLabel: string;
+  icon: string;
+  distanceOffRouteM: number;
+  distanceAlongKm: number;
+  score: number;
+  verificationStatus: "verified" | "unverified" | "needs_review" | "pending";
+  openingHours: string | null;
+  lat: number;
+  lon: number;
+  phone?: string | null;
+  website?: string | null;
+  placeId?: string | null;
+}
+
 export interface CompanionStop {
   zoneId: number;
+  /** Primary POI identity when available. */
+  osmId?: number;
+  osmType?: string;
   km: number;
   lat: number;
   lon: number;
@@ -24,6 +65,7 @@ export interface CompanionStop {
   category: string;
   categoryLabel: string;
   icon: string;
+  distanceOffRouteM?: number;
   verificationStatus: "verified" | "unverified" | "needs_review" | "pending";
   openingHours: string | null;
   notes: string | null;
@@ -37,6 +79,8 @@ export interface CompanionStop {
   hasCoffee?: boolean;
   confidenceScore?: number | null;
   verificationDate?: string | null;
+  /** Ranked POI alternatives within the same resupply area. */
+  alternatives?: CompanionStopAlternative[];
 }
 
 export interface CompanionClimb {
@@ -80,6 +124,8 @@ export interface CompanionDashboardStats {
 export interface CompanionBundle {
   schemaVersion: number;
   revision?: number;
+  /** Alias for revision. */
+  bundle_version?: number;
   syncedAt?: string;
   exportedAt: string;
   race: {

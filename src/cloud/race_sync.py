@@ -153,24 +153,70 @@ def push_race(user_id: str, race_id: str, access_token: str | None = None) -> di
         },
         access_token,
     )
+    revision = int(row.get("companion_revision", next_revision))
     return {
         "race_id": race_id,
-        "companion_revision": row.get("companion_revision", next_revision),
+        "name": summary.name,
+        "companion_revision": revision,
+        "version": revision,
+        "bundle_version": revision,
         "has_bundle": has_bundle,
         "synced_at": _utc_now(),
     }
 
 
+def _race_needs_upload(
+    race_id: str,
+    existing: dict[str, Any] | None,
+) -> bool:
+    """Return True when local race should be pushed to cloud."""
+    roadbook = race_store.load_analysis(race_id)
+    if roadbook is None:
+        return False
+    if existing is None:
+        return True
+    if not existing.get("has_bundle"):
+        return True
+    summary = race_store.get_summary(race_id)
+    local_updated = summary.updated_at
+    cloud_updated = existing.get("updated_at")
+    if not cloud_updated:
+        return True
+    try:
+        local_dt = datetime.fromisoformat(str(local_updated).replace("Z", "+00:00"))
+        cloud_dt = datetime.fromisoformat(str(cloud_updated).replace("Z", "+00:00"))
+        if local_dt.tzinfo is None:
+            local_dt = local_dt.replace(tzinfo=timezone.utc)
+        if cloud_dt.tzinfo is None:
+            cloud_dt = cloud_dt.replace(tzinfo=timezone.utc)
+        return local_dt > cloud_dt
+    except ValueError:
+        return True
+
+
 def push_all_local_races(user_id: str, access_token: str | None = None) -> dict[str, Any]:
-    uploaded: list[str] = []
+    uploaded: list[dict[str, Any]] = []
     failed: list[dict[str, str]] = []
+    skipped: list[dict[str, str]] = []
     for summary in race_store.list_races():
+        existing = _get_race_row(user_id, summary.id, access_token)
+        if existing and not _race_needs_upload(summary.id, existing):
+            skipped.append({
+                "race_id": summary.id,
+                "name": summary.name,
+                "reason": "unchanged",
+            })
+            continue
         try:
-            push_race(user_id, summary.id, access_token)
-            uploaded.append(summary.id)
+            result = push_race(user_id, summary.id, access_token)
+            uploaded.append(result)
         except Exception as exc:  # pragma: no cover - surfaced to client
-            failed.append({"race_id": summary.id, "error": str(exc)})
-    return {"uploaded": uploaded, "failed": failed}
+            failed.append({
+                "race_id": summary.id,
+                "name": summary.name,
+                "error": str(exc),
+            })
+    return {"uploaded": uploaded, "failed": failed, "skipped": skipped}
 
 
 def list_sync_races(user_id: str, access_token: str | None = None) -> list[dict[str, Any]]:
@@ -385,16 +431,7 @@ def review_companion_verification(
             action=action,
         )
         if updated is not None and (cloud_config.sync_enabled or access_token):
-            row = _get_race_row(user_id, race_id, access_token)
-            if row is not None:
-                _upsert_race_row(
-                    {
-                        **row,
-                        "preparation": updated.preparation.to_dict(),
-                        "updated_at": _utc_now(),
-                    },
-                    access_token,
-                )
+            push_race(user_id, race_id, access_token)
         return updated is not None
     except FileNotFoundError:
         pass
@@ -436,4 +473,6 @@ def review_companion_verification(
         },
         access_token,
     )
+    if cloud_config.sync_enabled or access_token:
+        push_race(user_id, race_id, access_token)
     return True

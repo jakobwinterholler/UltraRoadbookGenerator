@@ -2,70 +2,72 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
+import unittest
 
 from companion_bundle import COMPANION_SCHEMA_VERSION, build_companion_bundle
 
 
-FIXTURE = Path(__file__).resolve().parent.parent / "data" / "races"
-
-
-def test_build_companion_bundle_minimal():
-    roadbook = {
-        "summary": {
-            "route_name": "Test Route",
-            "distance_km": 100.0,
-            "elevation_gain_m": 2000.0,
-        },
-        "route": {
-            "track_points": [
-                {"lat": 46.0, "lon": 7.0},
-                {"lat": 46.1, "lon": 7.1},
-            ],
-        },
-        "resupply_zones": [
-            {
-                "zone_id": 1,
-                "distance_along_km": 50.0,
-                "lat": 46.05,
-                "lon": 7.05,
-                "name": "Stop 1",
-                "categories": [
-                    {
-                        "key": "water",
-                        "label": "Water",
-                        "primary": {
-                            "name": "Fountain",
-                            "poi_category": "water",
-                            "opening_hours": "24/7",
-                            "lat": 46.051,
-                            "lon": 7.051,
-                            "tags": {"google_place_id": "ChIJtest1234"},
-                        },
-                    }
+class CompanionBundleTests(unittest.TestCase):
+    def test_build_companion_bundle_minimal(self):
+        roadbook = {
+            "summary": {
+                "route_name": "Test Route",
+                "distance_km": 100.0,
+                "elevation_gain_m": 2000.0,
+            },
+            "route": {
+                "track_points": [
+                    {"lat": 46.0, "lon": 7.0},
+                    {"lat": 46.1, "lon": 7.1},
                 ],
-            }
-        ],
-    }
-    preparation = {
-        "verified_stops": {
-            "1": {"status": "verified", "reject_notes": "Good stop"},
+            },
+            "resupply_zones": [
+                {
+                    "zone_id": 1,
+                    "distance_along_km": 50.0,
+                    "lat": 46.05,
+                    "lon": 7.05,
+                    "name": "Stop 1",
+                    "categories": [
+                        {
+                            "key": "water",
+                            "label": "Water",
+                            "primary": {
+                                "name": "Fountain",
+                                "poi_category": "water",
+                                "opening_hours": "24/7",
+                                "lat": 46.051,
+                                "lon": 7.051,
+                                "tags": {"google_place_id": "ChIJtest1234"},
+                            },
+                        }
+                    ],
+                }
+            ],
         }
-    }
+        preparation = {
+            "verified_stops": {
+                "1": {"status": "verified", "reject_notes": "Good stop"},
+            }
+        }
 
-    bundle = build_companion_bundle("test-id", roadbook, preparation, revision=3)
+        bundle = build_companion_bundle("test-id", roadbook, preparation, revision=3)
 
-    assert bundle["schemaVersion"] == COMPANION_SCHEMA_VERSION
-    assert bundle["revision"] == 3
-    assert bundle["race"]["name"] == "Test Route"
-    assert len(bundle["stops"]) == 1
-    assert bundle["stops"][0]["verificationStatus"] == "verified"
-    assert bundle["stops"][0]["notes"] == "Good stop"
-    assert bundle["stops"][0]["hasWater"] is True
-    assert bundle["stops"][0]["lat"] == 46.051
-    assert bundle["stops"][0]["lon"] == 7.051
-    assert bundle["stops"][0]["placeId"] == "ChIJtest1234"
-    assert bundle["climbs"] == []
-    assert bundle["dashboardStats"]["readinessScore"] >= 0
-    assert len(bundle["route"]["coordinates"]) == 2
+        self.assertEqual(bundle["schemaVersion"], COMPANION_SCHEMA_VERSION)
+        self.assertEqual(bundle["revision"], 3)
+        self.assertEqual(bundle["bundle_version"], 3)
+        self.assertEqual(bundle["race"]["name"], "Test Route")
+        self.assertEqual(len(bundle["stops"]), 1)
+        self.assertEqual(bundle["stops"][0]["verificationStatus"], "verified")
+        self.assertEqual(bundle["stops"][0]["notes"], "Good stop")
+        self.assertTrue(bundle["stops"][0]["hasWater"])
+        self.assertEqual(bundle["stops"][0]["lat"], 46.051)
+        self.assertEqual(bundle["stops"][0]["lon"], 7.051)
+        self.assertEqual(bundle["stops"][0]["placeId"], "ChIJtest1234")
+        self.assertEqual(bundle["climbs"], [])
+        self.assertGreaterEqual(bundle["dashboardStats"]["readinessScore"], 0)
+        self.assertEqual(len(bundle["route"]["coordinates"]), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()

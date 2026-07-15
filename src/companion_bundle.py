@@ -48,14 +48,66 @@ def _is_coffee_category(category: str) -> bool:
 
 
 def _primary_poi(zone: dict[str, Any]) -> dict[str, Any] | None:
-    for key in ("water", "food", "fuel"):
-        for group in zone.get("categories") or []:
-            if group.get("key") == key and group.get("primary"):
-                return group["primary"]
+    """Select the single best primary POI across all categories in a zone."""
+    ranked = _rank_zone_pois(zone)
+    return ranked[0] if ranked else None
+
+
+def _planning_score(poi: dict[str, Any]) -> float:
+    score = float(poi.get("score") or 0)
+    detour = float(poi.get("distance_off_route_m") or 0)
+    return score - min(detour / 8.0, 35.0)
+
+
+def _rank_zone_pois(zone: dict[str, Any]) -> list[tuple[dict[str, Any], str, str]]:
+    """Flatten and rank all POIs in a zone. Returns (poi, category_key, category_label)."""
+    seen: set[str] = set()
+    items: list[tuple[dict[str, Any], str, str]] = []
     for group in zone.get("categories") or []:
-        if group.get("primary"):
-            return group["primary"]
-    return None
+        category_key = str(group.get("key") or "")
+        category_label = str(group.get("label") or category_key)
+        for option in [group.get("primary"), *(group.get("alternatives") or [])]:
+            if not isinstance(option, dict):
+                continue
+            osm_key = f"{option.get('osm_type')}-{option.get('osm_id')}"
+            if osm_key in seen:
+                continue
+            seen.add(osm_key)
+            items.append((option, category_key, category_label))
+    items.sort(key=lambda entry: _planning_score(entry[0]), reverse=True)
+    return items
+
+
+def _alternative_payload(
+    poi: dict[str, Any],
+    category_key: str,
+    category_label: str,
+    verified_stops: dict[str, Any],
+    zone_id: int | str,
+) -> dict[str, Any]:
+    category = str(poi.get("poi_category") or category_label)
+    return {
+        "osmId": poi.get("osm_id"),
+        "osmType": poi.get("osm_type"),
+        "name": _format_poi_name(poi, {"name": f"KM {zone_id}"}),
+        "category": category,
+        "categoryLabel": category_label,
+        "icon": _poi_icon(category),
+        "distanceOffRouteM": poi.get("distance_off_route_m"),
+        "distanceAlongKm": poi.get("distance_along_km"),
+        "score": poi.get("score"),
+        "verificationStatus": _verification_status(
+            verified_stops.get(_verified_stop_key(zone_id))
+            if isinstance(verified_stops.get(_verified_stop_key(zone_id)), dict)
+            else None
+        ),
+        "openingHours": poi.get("opening_hours"),
+        "lat": poi.get("lat"),
+        "lon": poi.get("lon"),
+        "phone": poi.get("phone"),
+        "website": poi.get("website"),
+        "placeId": _poi_place_id(poi),
+    }
 
 
 def _category_label(zone: dict[str, Any]) -> str:
@@ -237,8 +289,10 @@ def build_companion_bundle(
     stops: list[dict[str, Any]] = []
     for zone in zones:
         zone_id = zone.get("zone_id")
-        poi = _primary_poi(zone)
-        category = str((poi or {}).get("poi_category") or "Resupply")
+        ranked = _rank_zone_pois(zone)
+        poi = ranked[0][0] if ranked else None
+        poi_category_label = ranked[0][2] if ranked else "Resupply"
+        category = str((poi or {}).get("poi_category") or poi_category_label or "Resupply")
         poi_lat = (poi or {}).get("lat")
         poi_lon = (poi or {}).get("lon")
         stop_lat = float(poi_lat if poi_lat is not None else zone.get("lat") or 0)
@@ -246,9 +300,15 @@ def build_companion_bundle(
         record = verified_stops.get(_verified_stop_key(zone_id))
         status = _verification_status(record if isinstance(record, dict) else None)
         notes = str((record or {}).get("reject_notes") or (record or {}).get("rejectNotes") or "").strip() or None
+        alternatives = [
+            _alternative_payload(alt_poi, alt_key, alt_label, verified_stops, zone_id)
+            for alt_poi, alt_key, alt_label in ranked[1:6]
+        ]
         stops.append(
             {
                 "zoneId": zone_id,
+                "osmId": (poi or {}).get("osm_id"),
+                "osmType": (poi or {}).get("osm_type"),
                 "km": zone.get("distance_along_km"),
                 "lat": stop_lat,
                 "lon": stop_lon,
@@ -256,6 +316,7 @@ def build_companion_bundle(
                 "category": category,
                 "categoryLabel": _category_label(zone),
                 "icon": _poi_icon(category),
+                "distanceOffRouteM": (poi or {}).get("distance_off_route_m"),
                 "verificationStatus": status,
                 "openingHours": (poi or {}).get("opening_hours"),
                 "notes": notes,
@@ -268,6 +329,7 @@ def build_companion_bundle(
                 "confidenceScore": (poi or {}).get("score"),
                 "verificationDate": (record or {}).get("updated_at") if status == "verified" else None,
                 "placeId": _poi_place_id(poi),
+                "alternatives": alternatives,
             }
         )
 
@@ -327,6 +389,7 @@ def build_companion_bundle(
     return {
         "schemaVersion": COMPANION_SCHEMA_VERSION,
         "revision": revision,
+        "bundle_version": revision,
         "syncedAt": _utc_now(),
         "exportedAt": _utc_now(),
         "race": {

@@ -167,10 +167,14 @@ export default function AccountSection({ account }: AccountSectionProps) {
   const {
     syncing,
     cloudRaceCount,
+    maxCloudRevision,
     lastSyncLabel,
     syncError,
+    syncMessage,
     hasPending,
-    syncNow,
+    syncProgress,
+    raceResults,
+    syncToCompanion,
   } = useAccountSync();
   const [localError, setLocalError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
@@ -319,7 +323,50 @@ export default function AccountSection({ account }: AccountSectionProps) {
         <div className="mt-4 divide-y divide-line/70">
           <StatRow label="Last sync" value={lastSyncLabel} />
           <StatRow label="Races in cloud" value={cloudRaceCount ?? "—"} />
+          <StatRow label="Cloud version" value={maxCloudRevision != null ? `v${maxCloudRevision}` : "—"} />
         </div>
+
+        {syncProgress ? (
+          <div className="mt-4 rounded-xl bg-canvas px-4 py-3">
+            <div className="mb-2 flex items-center justify-between text-xs text-muted">
+              <span>
+                Uploading {syncProgress.raceName} ({syncProgress.current}/{syncProgress.total})
+              </span>
+              <span>{Math.round((syncProgress.current / syncProgress.total) * 100)}%</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-line/60">
+              <div
+                className="h-full rounded-full bg-accent transition-all duration-200"
+                style={{ width: `${(syncProgress.current / syncProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {syncMessage ? (
+          <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{syncMessage}</p>
+        ) : null}
+
+        {raceResults.length > 0 ? (
+          <ul className="mt-4 space-y-2 rounded-xl border border-line/70 bg-canvas px-4 py-3 text-sm">
+            {raceResults.map((result) => (
+              <li key={result.raceId} className="flex items-center justify-between gap-3">
+                <span className="truncate text-ink">{result.name}</span>
+                <span
+                  className={
+                    result.status === "success"
+                      ? "shrink-0 text-success"
+                      : "shrink-0 text-red-600"
+                  }
+                >
+                  {result.status === "success"
+                    ? `Uploaded v${result.companionRevision ?? "?"}`
+                    : result.error ?? "Failed"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         {(syncError || authError) && (
           <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -330,10 +377,10 @@ export default function AccountSection({ account }: AccountSectionProps) {
         <button
           type="button"
           disabled={!account.cloud_sync_enabled || syncing}
-          onClick={() => void syncNow().catch(() => undefined)}
+          onClick={() => void syncToCompanion().catch(() => undefined)}
           className="mt-5 w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {syncing ? "Syncing…" : "Sync now"}
+          {syncing ? "Syncing to Companion…" : "Sync to Companion"}
         </button>
 
         {!account.cloud_sync_enabled ? (

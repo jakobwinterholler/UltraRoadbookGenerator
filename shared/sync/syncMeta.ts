@@ -1,4 +1,5 @@
 const LAST_SYNC_PREFIX = "ultra:last-sync:";
+const LAST_CHECK_PREFIX = "ultra:last-check:";
 const SYNCING_PREFIX = "ultra:sync-in-progress:";
 
 export function getLastSyncAt(userId: string): string | null {
@@ -13,6 +14,20 @@ export function setLastSyncAt(userId: string, iso: string): void {
     return;
   }
   localStorage.setItem(`${LAST_SYNC_PREFIX}${userId}`, iso);
+}
+
+export function getLastCheckAt(userId: string): string | null {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  return localStorage.getItem(`${LAST_CHECK_PREFIX}${userId}`);
+}
+
+export function setLastCheckAt(userId: string, iso: string): void {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  localStorage.setItem(`${LAST_CHECK_PREFIX}${userId}`, iso);
 }
 
 export function isSyncInProgress(userId: string): boolean {

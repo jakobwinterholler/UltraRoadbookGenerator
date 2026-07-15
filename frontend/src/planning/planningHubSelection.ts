@@ -269,3 +269,6 @@ export function selectPlanningHubs(
   pickAt(candidates.length - 1);
   return picked;
 }
+
+/** POI-centric alias — replaces hub terminology. */
+export const selectPlanningStops = selectPlanningHubs;

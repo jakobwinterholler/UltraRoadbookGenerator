@@ -2,7 +2,7 @@ import { useState } from "react";
 import type { ResupplyZone, ZonePoiOption } from "../api";
 import type { TimeMode } from "../planning/types";
 import type { TimeWindowId } from "../planning/timeWindows";
-import { buildHubRecommendations } from "../planning/hubRecommendations";
+import { buildStopRecommendations } from "../planning/stopRecommendations";
 import RecommendedStopRow from "./RecommendedStopRow";
 
 interface HubRecommendationSectionProps {
@@ -21,10 +21,10 @@ export default function HubRecommendationSection({
   showAlternativeSummary = true,
 }: HubRecommendationSectionProps) {
   const [showAll, setShowAll] = useState(false);
-  const summary = buildHubRecommendations(zone);
+  const summary = buildStopRecommendations(zone);
 
   const recommendedKeys = new Set(
-    [summary.best, ...summary.backups]
+    [summary.primary, ...summary.alternatives]
       .filter(Boolean)
       .map((item) => `${item!.poi.osm_type}-${item!.poi.osm_id}`),
   );
@@ -49,21 +49,21 @@ export default function HubRecommendationSection({
         </div>
       )}
 
-      {summary.best && (
+      {summary.primary && (
         <RecommendedStopRow
-          ranked={summary.best}
-          roleLabel="Best option"
+          ranked={summary.primary}
+          roleLabel="Primary stop"
           timeWindowId={timeWindowId}
           timeMode={timeMode}
           onSelect={onSelectPoi}
         />
       )}
 
-      {summary.backups.map((backup, index) => (
+      {summary.alternatives.map((alternative, index) => (
         <RecommendedStopRow
-          key={`${backup.poi.osm_type}-${backup.poi.osm_id}`}
-          ranked={backup}
-          roleLabel={`Backup ${index + 1}`}
+          key={`${alternative.poi.osm_type}-${alternative.poi.osm_id}`}
+          ranked={alternative}
+          roleLabel={`Alternative ${index + 1}`}
           timeWindowId={timeWindowId}
           timeMode={timeMode}
           onSelect={onSelectPoi}

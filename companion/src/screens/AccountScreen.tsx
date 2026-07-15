@@ -134,12 +134,19 @@ function DeleteAccountDialog({
 export default function AccountScreen({ embedded = false }: { embedded?: boolean }) {
   const { user, signOut } = useAuth();
   const {
-    syncing,
+    checking,
     lastSyncLabel,
+    lastCheckLabel,
     downloadedCount,
     cloudRaceCount,
+    maxCloudRevision,
+    maxDownloadedRevision,
+    updatesAvailable,
     syncError,
-    syncNow,
+    checkMessage,
+    updateResults,
+    checkProgress,
+    checkForUpdates,
   } = useCompanionSync();
   const { races: cloudRaces } = useCloudRaceList();
   const [signingOut, setSigningOut] = useState(false);
@@ -155,7 +162,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
   const devices = readDevicesFromMetadata(user?.user_metadata);
   const companionConnected = companionConnectionLabel(devices);
   const desktopConnected = desktopConnectionLabel(devices);
-  const syncStatus = resolveSyncStatus(syncing, syncError);
+  const syncStatus = resolveSyncStatus(checking, syncError);
 
   useEffect(() => {
     if (!user || deviceRecorded.current) {
@@ -167,7 +174,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
 
   useEffect(() => {
     void estimateCompanionStorageBytes().then(setStorageBytes);
-  }, [downloadedCount, syncing]);
+  }, [downloadedCount, checking]);
 
   async function handleSignOut() {
     setError(null);
@@ -245,14 +252,71 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
             <span className="font-medium text-white">{downloadedCount}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
-            <span className="text-white/50">Storage used</span>
-            <span className="font-medium text-white">{formatBytes(storageBytes)}</span>
+            <span className="text-white/50">Cloud version</span>
+            <span className="font-medium text-white">
+              {maxCloudRevision != null ? `v${maxCloudRevision}` : "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Phone version</span>
+            <span className="font-medium text-white">
+              {maxDownloadedRevision != null ? `v${maxDownloadedRevision}` : "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Updates available</span>
+            <span className={`font-medium ${updatesAvailable > 0 ? "text-orange-300" : "text-white"}`}>
+              {updatesAvailable > 0 ? updatesAvailable : "None"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Last checked</span>
+            <span className="font-medium text-white">{lastCheckLabel}</span>
           </div>
           <div className="flex items-center justify-between text-sm">
             <span className="text-white/50">Last sync</span>
             <span className="font-medium text-white">{lastSyncLabel}</span>
           </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Storage used</span>
+            <span className="font-medium text-white">{formatBytes(storageBytes)}</span>
+          </div>
         </div>
+
+        {checkProgress ? (
+          <div className="mt-4 rounded-xl bg-white/5 px-3 py-3">
+            <div className="mb-2 flex items-center justify-between text-[11px] text-white/55">
+              <span>
+                Downloading {checkProgress.raceName} ({checkProgress.current}/{checkProgress.total})
+              </span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-sky-400 transition-all duration-200"
+                style={{ width: `${(checkProgress.current / checkProgress.total) * 100}%` }}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {checkMessage ? (
+          <p className="mt-4 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+            {checkMessage}
+          </p>
+        ) : null}
+
+        {updateResults.length > 0 ? (
+          <ul className="mt-3 space-y-1 text-xs text-white/55">
+            {updateResults.map((result) => (
+              <li key={result.raceId} className="flex justify-between gap-3">
+                <span className="truncate">{result.name}</span>
+                <span className={result.status === "failed" ? "text-red-300" : "text-emerald-300"}>
+                  {result.status === "failed" ? result.error ?? "Failed" : "Downloaded"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
 
         {(syncError || error) && (
           <p className="mt-4 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-300">
@@ -262,11 +326,11 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
 
         <button
           type="button"
-          disabled={syncing}
-          onClick={() => void syncNow().catch(() => undefined)}
+          disabled={checking}
+          onClick={() => void checkForUpdates().catch(() => undefined)}
           className="mt-5 min-h-[48px] w-full rounded-xl bg-white px-4 py-3 text-sm font-semibold text-black disabled:opacity-50"
         >
-          {syncing ? "Syncing…" : "Sync now"}
+          {checking ? "Checking for updates…" : "Check for updates"}
         </button>
       </section>
 
@@ -302,7 +366,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
         onConfirm={() => void handleDeleteAccount()}
       />
 
-      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.6</p>
+      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.7</p>
     </div>
   );
 }

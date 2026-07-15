@@ -123,15 +123,19 @@ export function getCompanionRaceSyncStatus(race: {
 
 export function getDesktopRaceSyncStatus(
   race: { id: string; updated_at: string; has_analysis: boolean },
-  cloudById: Map<string, { updated_at: string | null }>,
+  cloudById: Map<string, { updated_at: string | null; companion_revision?: number; has_bundle?: boolean }>,
   syncing: boolean,
   signedIn: boolean,
   pendingSync: Set<string> = new Set(),
+  syncingRaceId?: string | null,
 ): SyncIndicator | null {
   if (!signedIn || !race.has_analysis) {
     return null;
   }
-  if (syncing) {
+  if (syncing && syncingRaceId === race.id) {
+    return "syncing";
+  }
+  if (syncing && !syncingRaceId) {
     return "syncing";
   }
   if (pendingSync.has(race.id)) {
@@ -139,6 +143,9 @@ export function getDesktopRaceSyncStatus(
   }
   const cloud = cloudById.get(race.id);
   if (!cloud) {
+    return "needs-upload";
+  }
+  if (!cloud.has_bundle) {
     return "needs-upload";
   }
   const localTime = new Date(race.updated_at).getTime();

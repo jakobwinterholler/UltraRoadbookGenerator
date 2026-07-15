@@ -4,7 +4,7 @@ import type { CompanionBundle, CompanionStop } from "../types";
 import { formatKm, googleMapsUrl, googleStreetViewUrl } from "../lib/utils";
 import { stopStatusLabel } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
-import { findNearbyStopAlternatives } from "../lib/nearbyStopAlternatives";
+import { buildStopAlternatives } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
 import RouteMapView from "./RouteMapView";
 import BottomSheet from "./BottomSheet";
@@ -70,7 +70,7 @@ export default function StopSheet({
     routeCoordinates: bundle.route.coordinates,
     totalDistanceKm: totalKm,
   };
-  const alternatives = stop ? findNearbyStopAlternatives(stop, bundle.stops) : [];
+  const alternatives = stop ? buildStopAlternatives(stop, bundle.stops) : [];
   const showVerifyActions = stop ? canVerifyStop(stop.verificationStatus) : false;
 
   async function handleVerify() {
@@ -140,31 +140,57 @@ export default function StopSheet({
                 </p>
                 <ul className="mt-2 space-y-2">
                   {alternatives.map((alternative) => (
-                    <li key={alternative.stop.zoneId}>
+                    <li key={alternative.key}>
                       <button
                         type="button"
-                        onClick={() => onSelectAlternative?.(alternative.stop)}
+                        onClick={() => {
+                          if (alternative.stop) {
+                            onSelectAlternative?.(alternative.stop);
+                          } else if (alternative.alternative) {
+                            onSelectAlternative?.({
+                              ...stop,
+                              zoneId: stop.zoneId,
+                              osmId: alternative.alternative.osmId,
+                              osmType: alternative.alternative.osmType,
+                              name: alternative.alternative.name,
+                              category: alternative.alternative.category,
+                              categoryLabel: alternative.alternative.categoryLabel,
+                              icon: alternative.alternative.icon,
+                              lat: alternative.alternative.lat,
+                              lon: alternative.alternative.lon,
+                              distanceOffRouteM: alternative.alternative.distanceOffRouteM,
+                              confidenceScore: alternative.alternative.score,
+                              verificationStatus: alternative.alternative.verificationStatus,
+                              openingHours: alternative.alternative.openingHours,
+                              phone: alternative.alternative.phone,
+                              website: alternative.alternative.website,
+                              placeId: alternative.alternative.placeId,
+                              alternatives: stop.alternatives,
+                            });
+                          }
+                        }}
                         className="flex min-h-[48px] w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 text-left transition active:bg-white/8"
                       >
                         <span className="text-xl" aria-hidden>
-                          {alternative.stop.icon}
+                          {alternative.icon}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium text-white">
-                            {alternative.stop.name}
+                            {alternative.name}
                           </p>
                           <p className="truncate text-xs text-white/45">
-                            {alternative.stop.categoryLabel} · {alternative.positionLabel}
+                            {alternative.categoryLabel} · {alternative.distanceLabel}
+                            {alternative.score != null ? ` · score ${Math.round(alternative.score)}` : ""}
                           </p>
                         </div>
                         <span
                           className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                            alternative.stop.verificationStatus === "verified"
+                            alternative.verificationStatus === "verified"
                               ? "bg-emerald-500/20 text-emerald-200"
                               : "bg-white/10 text-white/50"
                           }`}
                         >
-                          {alternative.stop.verificationStatus === "verified" ? "✓" : "?"}
+                          {alternative.verificationStatus === "verified" ? "✓" : "?"}
                         </span>
                       </button>
                     </li>

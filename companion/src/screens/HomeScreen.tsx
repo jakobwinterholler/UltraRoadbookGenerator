@@ -16,6 +16,7 @@ import {
   type StoredRaceListItem,
 } from "../db";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
+import { useCompanionSync } from "../sync/useCompanionSync";
 
 interface HomeScreenProps {
   onOpenRace: (bundle: CompanionBundle) => void;
@@ -46,6 +47,13 @@ function EmptyRaces() {
 export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProps) {
   const { accessToken, user } = useAuth();
   const { races, loading, error, refresh } = useCloudRaceList();
+  const {
+    checking,
+    updatesAvailable,
+    checkMessage,
+    checkForUpdates,
+    lastCheckLabel,
+  } = useCompanionSync();
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -107,23 +115,45 @@ export default function HomeScreen({ onOpenRace, onOpenAccount }: HomeScreenProp
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
       <header className="flex shrink-0 items-start justify-between gap-4 px-4 pb-3 pt-safe-top">
-        <div>
+        <div className="min-w-0 flex-1">
           <p className="text-2xl font-semibold tracking-tight text-white">{greeting}</p>
           <p className="mt-1 text-sm text-white/45">Your races</p>
+          {updatesAvailable > 0 ? (
+            <p className="mt-1 text-xs font-medium text-orange-300">
+              {updatesAvailable} update{updatesAvailable === 1 ? "" : "s"} available
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-white/30">Checked {lastCheckLabel}</p>
+          )}
         </div>
-        <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
-          <Avatar
-            name={getDisplayName(user)}
-            imageUrl={getAvatarUrl(user)}
-            size="md"
-            variant="dark"
-          />
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={checking}
+            onClick={() => void checkForUpdates().catch(() => undefined)}
+            className="min-h-[40px] rounded-full border border-white/15 bg-white/5 px-3 text-xs font-semibold text-white/85 disabled:opacity-50"
+          >
+            {checking ? "Checking…" : "Check for updates"}
+          </button>
+          <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
+            <Avatar
+              name={getDisplayName(user)}
+              imageUrl={getAvatarUrl(user)}
+              size="md"
+              variant="dark"
+            />
+          </button>
+        </div>
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
         {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
         {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
+        {checkMessage ? (
+          <p className="mb-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+            {checkMessage}
+          </p>
+        ) : null}
 
         {loading ? (
           <div className="space-y-3">
