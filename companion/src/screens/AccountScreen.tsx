@@ -17,6 +17,7 @@ import { formatStorage } from "@shared/ui/formatStorage";
 import { estimateCompanionStorageBytes, clearCompanionData } from "../db";
 import { useCompanionSync } from "../sync/useCompanionSync";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
+import { usePwaUpdate } from "../pwa/PwaUpdateProvider";
 
 function formatBytes(bytes: number | null): string {
   return formatStorage(bytes);
@@ -149,6 +150,13 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
     checkForUpdates,
   } = useCompanionSync();
   const { races: cloudRaces } = useCloudRaceList();
+  const {
+    versionLabel,
+    pendingVersionLabel,
+    updateAvailable,
+    applyUpdate,
+    applying: applyingUpdate,
+  } = usePwaUpdate();
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
@@ -234,6 +242,29 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
             <span className="text-white/50">Companion connected</span>
             <span className="font-medium text-white">{companionConnected}</span>
           </div>
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/40">App</h2>
+        <div className="mt-4 space-y-3">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-white/50">Version</span>
+            <span className="font-medium tabular-nums text-white">{versionLabel}</span>
+          </div>
+          {updateAvailable && pendingVersionLabel ? (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-white/50">Update</span>
+              <button
+                type="button"
+                disabled={applyingUpdate}
+                onClick={() => void applyUpdate()}
+                className="font-medium tabular-nums text-sky-300 transition hover:text-sky-200 disabled:opacity-60"
+              >
+                {versionLabel} → {pendingVersionLabel} available
+              </button>
+            </div>
+          ) : null}
         </div>
       </section>
 
@@ -366,7 +397,6 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
         onConfirm={() => void handleDeleteAccount()}
       />
 
-      <p className="pb-2 text-center text-[11px] text-white/25">Companion v0.1.12</p>
     </div>
   );
 }

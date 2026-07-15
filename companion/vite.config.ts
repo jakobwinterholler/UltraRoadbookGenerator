@@ -1,10 +1,42 @@
-import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react";
+import { writeFileSync } from "node:fs";
 import path from "node:path";
+import { defineConfig, type Plugin } from "vite";
+import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+import pkg from "./package.json" with { type: "json" };
+
+function companionVersionManifest(): Plugin {
+  const manifest = {
+    version: pkg.version,
+    builtAt: new Date().toISOString(),
+  };
+  return {
+    name: "companion-version-manifest",
+    configureServer(server) {
+      server.middlewares.use("/version.json", (_req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.end(JSON.stringify(manifest));
+      });
+    },
+    writeBundle(options) {
+      const outDir = options.dir ?? "dist";
+      writeFileSync(
+        path.join(outDir, "version.json"),
+        JSON.stringify({
+          version: pkg.version,
+          builtAt: new Date().toISOString(),
+        }),
+      );
+    },
+  };
+}
 
 export default defineConfig({
   envPrefix: ["VITE_", "NEXT_PUBLIC_"],
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   resolve: {
     alias: {
       "@shared": path.resolve(__dirname, "../shared"),
@@ -12,8 +44,9 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    companionVersionManifest(),
     VitePWA({
-      registerType: "autoUpdate",
+      registerType: "prompt",
       injectRegister: "auto",
       includeAssets: [
         "favicon.svg",
@@ -58,9 +91,8 @@ export default defineConfig({
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api\//],
         cleanupOutdatedCaches: true,
-        skipWaiting: true,
+        skipWaiting: false,
         clientsClaim: true,
-        mode: "development",
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/tiles\.openfreemap\.org\/.*/i,
