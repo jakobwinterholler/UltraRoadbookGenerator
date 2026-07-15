@@ -121,7 +121,13 @@ def _supplement_observed_uphills(
         elif gain_m < config.min_elevation_gain_m:
             reason = "minimum_elevation_gain_not_reached"
             label = REJECTION_LABELS[reason]
-        elif avg_gradient_pct < config.min_average_gradient_pct:
+        elif not _passes_gradient_acceptance(
+            length_km,
+            gain_m,
+            avg_gradient_pct,
+            max_gradient_pct,
+            config,
+        ):
             reason = "average_gradient_too_low"
             label = REJECTION_LABELS[reason]
 
@@ -288,12 +294,35 @@ def _build_candidate_metrics(
     return start_km, end_km, length_km, gain_m, net_gain_m, avg_gradient_pct, max_gradient_pct
 
 
+def _passes_gradient_acceptance(
+    length_km: float,
+    gain_m: float,
+    avg_gradient_pct: float,
+    max_gradient_pct: float | None,
+    config: ClimbDetectionConfig,
+) -> bool:
+    """Accept by average grade, or by meaningful gain with locally steep pitches."""
+    if avg_gradient_pct >= config.min_average_gradient_pct:
+        return True
+    if max_gradient_pct is None or gain_m < config.min_elevation_gain_m or length_km <= 0:
+        return False
+    # Long undulating climbs often dip below the average-grade threshold because
+    # flat or downhill recovery sections dilute the segment average, even when
+    # total gain and steepest pitches are clearly meaningful to a rider.
+    if max_gradient_pct >= 5.0 and length_km >= 1.0 and gain_m >= 150:
+        return True
+    if max_gradient_pct >= 6.0 and length_km >= 0.75 and gain_m >= config.min_elevation_gain_m:
+        return True
+    return False
+
+
 def _rejection_for_metrics(
     length_km: float,
     gain_m: float,
     avg_gradient_pct: float,
     config: ClimbDetectionConfig,
     *,
+    max_gradient_pct: float | None = None,
     route_ended: bool = False,
 ) -> tuple[str | None, str | None]:
     if length_km <= 0:
@@ -306,7 +335,13 @@ def _rejection_for_metrics(
         reasons.append("minimum_elevation_gain_not_reached")
         labels.append(REJECTION_LABELS["minimum_elevation_gain_not_reached"])
 
-    if avg_gradient_pct < config.min_average_gradient_pct:
+    if not _passes_gradient_acceptance(
+        length_km,
+        gain_m,
+        avg_gradient_pct,
+        max_gradient_pct,
+        config,
+    ):
         reasons.append("average_gradient_too_low")
         labels.append(REJECTION_LABELS["average_gradient_too_low"])
 
@@ -388,6 +423,7 @@ def detect_climbs_with_debug(
             gain_m,
             avg_gradient_pct,
             resolved_config,
+            max_gradient_pct=max_gradient_pct,
             route_ended=route_ended,
         )
 

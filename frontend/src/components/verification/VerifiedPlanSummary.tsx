@@ -4,6 +4,8 @@ import {
   gapAvailabilityClass,
   gapAvailabilityLabel,
 } from "../../planning/stopVerification/verifiedPlan";
+import { formatRidingTime, estimateRidingHours } from "@shared/race/riderAssumptions";
+import { analyzeRouteSegmentDifficulty } from "@shared/race/routeSegmentDifficulty";
 import VerificationStatusIcon from "./VerificationStatusIcon";
 
 interface VerifiedPlanSummaryProps {
@@ -17,11 +19,23 @@ function GapBlock({
   gap: VerifiedPlan["gaps"][number];
   isWeakest: boolean;
 }) {
+  const elevationLossM = gap.elevationLossM ?? 0;
+  const ridingTimeHours =
+    gap.ridingTimeHours ??
+    estimateRidingHours(gap.distanceKm, gap.elevationGainM);
+  const difficulty = analyzeRouteSegmentDifficulty({
+    distanceKm: gap.distanceKm,
+    elevationGainM: gap.elevationGainM,
+    elevationLossM,
+    ridingTimeHours,
+  });
+
   return (
     <div
       className={`my-1 border-l-2 py-2 pl-4 ${
-        isWeakest ? "border-l-amber-500 bg-amber-50/50" : "border-l-line/80"
+        isWeakest ? "border-l-amber-500 bg-amber-50/50" : "border-line/80"
       }`}
+      style={!isWeakest ? { borderLeftColor: difficulty.color } : undefined}
     >
       <div className="flex items-center gap-2 text-xs text-muted">
         <span aria-hidden>↓</span>
@@ -33,7 +47,15 @@ function GapBlock({
       </div>
       <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-3">
         <Metric label="Distance" value={`${gap.distanceKm} km`} />
-        <Metric label="Elevation" value={`+${gap.elevationGainM} m`} />
+        <Metric label="Elevation gain" value={`+${gap.elevationGainM} m`} />
+        <Metric label="Elevation loss" value={`−${elevationLossM} m`} />
+        <Metric label="Riding time" value={formatRidingTime(ridingTimeHours)} />
+        <Metric
+          label="Difficulty"
+          value={difficulty.label}
+          valueClass=""
+          style={{ color: difficulty.color }}
+        />
         <Metric label="Gravel" value={`${gap.gravelPct}%`} />
         <Metric
           label="Food"
@@ -54,15 +76,19 @@ function Metric({
   label,
   value,
   valueClass = "text-ink",
+  style,
 }: {
   label: string;
   value: string;
   valueClass?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div>
       <p className="text-muted">{label}</p>
-      <p className={`font-medium tabular-nums ${valueClass}`}>{value}</p>
+      <p className={`font-medium tabular-nums ${valueClass}`} style={style}>
+        {value}
+      </p>
     </div>
   );
 }

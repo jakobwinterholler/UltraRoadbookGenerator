@@ -9,6 +9,7 @@ import {
   type GapAvailability,
 } from "./stopVerification/verifiedPlan";
 import { elevationLossInKmRange, gravelPctInKmRange } from "./unsupportedSections";
+import { estimateRidingHours } from "@shared/race/riderAssumptions";
 import type { KmRangeSelection } from "./useRouteWorkspaceSelection";
 
 export interface ResupplySegmentRange {
@@ -30,6 +31,7 @@ export interface ResupplySegmentSummary {
   distanceKm: number;
   elevationGainM: number;
   elevationLossM: number;
+  ridingTimeHours: number;
   gravelPct: number;
   surfaceMix: SurfaceMixRow[];
   verifiedStopsInside: Array<{ zoneId: number; name: string; km: number }>;
@@ -161,6 +163,8 @@ export function buildResupplySegmentSummary(
   verifiedStops: Record<string, VerifiedStopRecord>,
 ): ResupplySegmentSummary {
   const { startKm, endKm } = segment;
+  const distanceKm = Math.round(endKm - startKm);
+  const elevationGainM = elevationGainInKmRange(route.track_points, startKm, endKm);
   const verifiedStopsInside = sortedByKm(hubs)
     .filter(
       (zone) =>
@@ -176,9 +180,10 @@ export function buildResupplySegmentSummary(
 
   return {
     range: segment,
-    distanceKm: Math.round(endKm - startKm),
-    elevationGainM: elevationGainInKmRange(route.track_points, startKm, endKm),
+    distanceKm,
+    elevationGainM,
     elevationLossM: elevationLossInKmRange(route.track_points, startKm, endKm),
+    ridingTimeHours: estimateRidingHours(distanceKm, elevationGainM),
     gravelPct: gravelPctInKmRange(route, startKm, endKm),
     surfaceMix: surfaceMixInKmRange(route, startKm, endKm),
     verifiedStopsInside,

@@ -8,7 +8,6 @@ import VerificationStatusBadge from "../verification/VerificationStatusBadge";
 
 interface ZoneListRowProps {
   zone: ResupplyZone;
-  gapKm: number | null;
   selected: boolean;
   dimmed: boolean;
   timeMode: "day" | "night";
@@ -17,7 +16,7 @@ interface ZoneListRowProps {
 }
 
 const ZoneListRow = forwardRef<HTMLButtonElement, ZoneListRowProps>(function ZoneListRow(
-  { zone, gapKm, selected, dimmed, timeMode, onSelect, onHover },
+  { zone, selected, dimmed, timeMode, onSelect, onHover },
   ref,
 ) {
   const { arrivalTimeWindow } = usePlanningAssumptions();
@@ -62,12 +61,6 @@ const ZoneListRow = forwardRef<HTMLButtonElement, ZoneListRowProps>(function Zon
           {(food || water) && (
             <p className="mt-1 truncate text-xs text-muted">
               {[food, water].filter(Boolean).join(" · ")}
-            </p>
-          )}
-
-          {gapKm !== null && gapKm >= 20 && (
-            <p className={`mt-1 text-xs ${gapKm >= 40 ? "font-medium text-red-700" : "text-muted"}`}>
-              {formatKm(gapKm, 0)} to next stop
             </p>
           )}
         </div>

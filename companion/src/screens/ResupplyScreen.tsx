@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
 import { readResupplyFilter, writeResupplyFilter, type ResupplyFilter } from "../lib/resupplyFilter";
@@ -42,12 +43,27 @@ function ResupplyGapRow({
   onUnsupportedClick: () => void;
 }) {
   return (
-    <div className="my-1.5 flex items-center justify-center gap-3 py-1 text-center text-[11px] tabular-nums text-white/22">
+    <div
+      className="my-1.5 flex flex-wrap items-center justify-center gap-x-3 gap-y-0.5 border-l-2 py-1 pl-2 text-center text-[11px] tabular-nums text-white/35"
+      style={{ borderLeftColor: gap.difficultyColor }}
+    >
       <span>{formatKm(gap.distanceKm)}</span>
       <span className="text-white/15" aria-hidden>
         ·
       </span>
       <span>+{gap.elevationGainM} m</span>
+      <span className="text-white/15" aria-hidden>
+        ·
+      </span>
+      <span>−{gap.elevationLossM} m</span>
+      <span className="text-white/15" aria-hidden>
+        ·
+      </span>
+      <span>{formatRidingTime(gap.ridingTimeHours)}</span>
+      <span className="text-white/15" aria-hidden>
+        ·
+      </span>
+      <span style={{ color: gap.difficultyColor }}>{gap.difficultyLabel}</span>
       {gap.unsupportedLabel ? (
         <>
           <span className="text-white/15" aria-hidden>
@@ -75,6 +91,7 @@ export default function ResupplyScreen() {
   const [filter, setFilter] = useState<ResupplyFilter>(() => readResupplyFilter());
   const [selectedSection, setSelectedSection] = useState<CompanionUnsupportedSection | null>(null);
   const [focusedStop, setFocusedStop] = useState<CompanionStop | null>(null);
+  const [visibleStopIndices, setVisibleStopIndices] = useState<number[]>([]);
 
   const cards = useMemo(
     () => buildResupplyCards(bundle, filter === "verified"),
@@ -100,6 +117,30 @@ export default function ResupplyScreen() {
   }, [currentKm, gps.currentKm, gps.status, selectedStop]);
 
   const focusKm = focusedStop?.km ?? null;
+
+  const nextStopKm = useMemo(() => {
+    if (nextIndex < 0) {
+      return null;
+    }
+    return cards[nextIndex]?.stop.km ?? null;
+  }, [cards, nextIndex]);
+
+  const viewportRange = useMemo(() => {
+    if (visibleStopIndices.length === 0) {
+      if (focusKm != null) {
+        const focusIndex = cards.findIndex((entry) => entry.stop.zoneId === focusedStop?.zoneId);
+        const previousKm = focusIndex > 0 ? cards[focusIndex - 1].stop.km : 0;
+        return { startKm: previousKm, endKm: focusKm };
+      }
+      return { startKm: null, endKm: null };
+    }
+
+    const minIndex = Math.min(...visibleStopIndices);
+    const maxIndex = Math.max(...visibleStopIndices);
+    const startKm = minIndex > 0 ? cards[minIndex - 1].stop.km : 0;
+    const endKm = cards[maxIndex]?.stop.km ?? startKm;
+    return { startKm, endKm };
+  }, [cards, focusKm, focusedStop?.zoneId, visibleStopIndices]);
 
   useEffect(() => {
     writeResupplyFilter(filter);
@@ -137,6 +178,12 @@ export default function ResupplyScreen() {
             .sort((left, right) => right.intersectionRatio - left.intersectionRatio);
           if (visible.length === 0) {
             return;
+          }
+          const indices = visible
+            .map((entry) => Number(entry.target.getAttribute("data-stop-index")))
+            .filter((index) => Number.isFinite(index));
+          if (indices.length > 0) {
+            setVisibleStopIndices(indices);
           }
           const index = Number(visible[0].target.getAttribute("data-stop-index"));
           const stop = cards[index]?.stop;
@@ -283,7 +330,9 @@ export default function ResupplyScreen() {
         <ResupplyElevationProfile
           bundle={bundle}
           riderKm={riderKm}
-          focusKm={focusKm}
+          nextStopKm={nextStopKm}
+          viewportStartKm={viewportRange.startKm}
+          viewportEndKm={viewportRange.endKm}
           onSelectKm={handleProfileSelectKm}
         />
       </div>

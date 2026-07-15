@@ -1,7 +1,8 @@
 import type { ResupplyZone, RouteVisualization } from "../../api";
 import { zoneHasCategory } from "../../components/routeInsights";
 import { elevationGainInKmRange } from "../resupplyGaps";
-import { gravelPctInKmRange } from "../unsupportedSections";
+import { elevationLossInKmRange, gravelPctInKmRange } from "../unsupportedSections";
+import { estimateRidingHours } from "@shared/race/riderAssumptions";
 import type { PrioritizedStop } from "./priority";
 import type { VerifiedStopRecord } from "./types";
 import { verifiedStopKey } from "./types";
@@ -22,6 +23,8 @@ export interface VerifiedPlanGap {
   endKm: number;
   distanceKm: number;
   elevationGainM: number;
+  elevationLossM: number;
+  ridingTimeHours: number;
   gravelPct: number;
   foodAvailability: GapAvailability;
   waterAvailability: GapAvailability;
@@ -96,12 +99,16 @@ function buildGap(
   verifiedStops: Record<string, VerifiedStopRecord>,
 ): VerifiedPlanGap {
   const distanceKm = Math.max(0, endKm - startKm);
+  const elevationGainM = elevationGainInKmRange(route.track_points, startKm, endKm);
+  const elevationLossM = elevationLossInKmRange(route.track_points, startKm, endKm);
   const base = {
     id,
     startKm,
     endKm,
     distanceKm: Math.round(distanceKm),
-    elevationGainM: elevationGainInKmRange(route.track_points, startKm, endKm),
+    elevationGainM,
+    elevationLossM,
+    ridingTimeHours: estimateRidingHours(distanceKm, elevationGainM),
     gravelPct: gravelPctInKmRange(route, startKm, endKm),
     foodAvailability: gapAvailability(hubs, verifiedStops, startKm, endKm, "food"),
     waterAvailability: gapAvailability(hubs, verifiedStops, startKm, endKm, "water"),

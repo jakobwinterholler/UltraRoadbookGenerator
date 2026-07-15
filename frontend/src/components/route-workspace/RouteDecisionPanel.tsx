@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { Fragment, useEffect, useMemo, useRef } from "react";
 import type { ClimbCandidateRow, ClimbRow, ResupplyZone } from "../../api";
 import type { DecisionPanelView } from "../../planning/decisionPanel";
 import type { RouteHighlight } from "../../planning/routeHighlights";
@@ -12,6 +12,7 @@ import { elevationGainInKmRange } from "../../planning/resupplyGaps";
 import RouteBriefing from "./RouteBriefing";
 import CandidateContextSummary from "./CandidateContextSummary";
 import ZoneListRow from "./ZoneListRow";
+import RouteSegmentGapRow, { buildRouteSegmentGapMetrics } from "./RouteSegmentGapRow";
 import { analyzeClimbs } from "../../planning/climbAnalysis";
 import { climbDisplayName } from "../../planning/climbLabels";
 
@@ -102,13 +103,25 @@ export default function RouteDecisionPanel({
 
   const gapsByZone = useMemo(() => {
     const sorted = [...zones].sort((left, right) => left.distance_along_km - right.distance_along_km);
-    const map = new Map<number, number | null>();
+    const map = new Map<number, ReturnType<typeof buildRouteSegmentGapMetrics> | null>();
     for (let index = 0; index < sorted.length; index += 1) {
-      const next = sorted[index + 1];
-      map.set(sorted[index].zone_id, next ? next.distance_along_km - sorted[index].distance_along_km : null);
+      const zone = sorted[index];
+      const previous = sorted[index - 1];
+      if (!previous) {
+        map.set(zone.zone_id, null);
+        continue;
+      }
+      map.set(
+        zone.zone_id,
+        buildRouteSegmentGapMetrics(
+          trackPoints,
+          previous.distance_along_km,
+          zone.distance_along_km,
+        ),
+      );
     }
     return map;
-  }, [zones]);
+  }, [trackPoints, zones]);
 
   useEffect(() => {
     if (selectedZoneId === null) {
@@ -191,18 +204,22 @@ export default function RouteDecisionPanel({
             {zones.length} shown · {totalZones} total
           </p>
           <div className="mt-2">
-            {zones.map((zone) => (
-              <ZoneListRow
-                key={zone.zone_id}
-                ref={selectedZoneId === zone.zone_id ? selectedRowRef : undefined}
-                zone={zone}
-                gapKm={gapsByZone.get(zone.zone_id) ?? null}
-                selected={selectedZoneId === zone.zone_id}
-                dimmed={zoneDimmed(zone)}
-                timeMode={timeMode}
-                onSelect={() => onSelectZone(zone.zone_id)}
-              />
-            ))}
+            {zones.map((zone) => {
+              const gap = gapsByZone.get(zone.zone_id);
+              return (
+                <Fragment key={zone.zone_id}>
+                  {gap ? <RouteSegmentGapRow metrics={gap} compact /> : null}
+                  <ZoneListRow
+                    ref={selectedZoneId === zone.zone_id ? selectedRowRef : undefined}
+                    zone={zone}
+                    selected={selectedZoneId === zone.zone_id}
+                    dimmed={zoneDimmed(zone)}
+                    timeMode={timeMode}
+                    onSelect={() => onSelectZone(zone.zone_id)}
+                  />
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       </aside>
@@ -259,18 +276,22 @@ export default function RouteDecisionPanel({
         </p>
 
         <div className="mt-2">
-          {zones.map((zone) => (
-            <ZoneListRow
-              key={zone.zone_id}
-              ref={selectedZoneId === zone.zone_id ? selectedRowRef : undefined}
-              zone={zone}
-              gapKm={gapsByZone.get(zone.zone_id) ?? null}
-              selected={selectedZoneId === zone.zone_id}
-              dimmed={zoneDimmed(zone)}
-              timeMode={timeMode}
-              onSelect={() => onSelectZone(zone.zone_id)}
-            />
-          ))}
+          {zones.map((zone) => {
+            const gap = gapsByZone.get(zone.zone_id);
+            return (
+              <Fragment key={zone.zone_id}>
+                {gap ? <RouteSegmentGapRow metrics={gap} compact /> : null}
+                <ZoneListRow
+                  ref={selectedZoneId === zone.zone_id ? selectedRowRef : undefined}
+                  zone={zone}
+                  selected={selectedZoneId === zone.zone_id}
+                  dimmed={zoneDimmed(zone)}
+                  timeMode={timeMode}
+                  onSelect={() => onSelectZone(zone.zone_id)}
+                />
+              </Fragment>
+            );
+          })}
         </div>
       </div>
     </aside>

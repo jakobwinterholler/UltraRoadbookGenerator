@@ -3,6 +3,8 @@ import {
   gapAvailabilityClass,
   gapAvailabilityLabel,
 } from "../../planning/resupplySegments";
+import { formatRidingTime } from "@shared/race/riderAssumptions";
+import { analyzeRouteSegmentDifficulty } from "@shared/race/routeSegmentDifficulty";
 import VerificationStatusIcon from "../verification/VerificationStatusIcon";
 
 interface ResupplySegmentSummaryProps {
@@ -16,15 +18,19 @@ function Metric({
   label,
   value,
   valueClass = "text-ink",
+  style,
 }: {
   label: string;
   value: string;
   valueClass?: string;
+  style?: React.CSSProperties;
 }) {
   return (
     <div>
       <p className="text-xs text-muted">{label}</p>
-      <p className={`mt-0.5 text-sm font-semibold tabular-nums ${valueClass}`}>{value}</p>
+      <p className={`mt-0.5 text-sm font-semibold tabular-nums ${valueClass}`} style={style}>
+        {value}
+      </p>
     </div>
   );
 }
@@ -39,6 +45,12 @@ export default function ResupplySegmentSummary({
     summary.surfaceMix.length > 0
       ? summary.surfaceMix.map((row) => `${row.category} ${row.percentage}%`).join(" · ")
       : "—";
+  const difficulty = analyzeRouteSegmentDifficulty({
+    distanceKm: summary.distanceKm,
+    elevationGainM: summary.elevationGainM,
+    elevationLossM: summary.elevationLossM,
+    ridingTimeHours: summary.ridingTimeHours,
+  });
 
   return (
     <section
@@ -81,6 +93,13 @@ export default function ResupplySegmentSummary({
         <Metric label="Distance" value={`${summary.distanceKm} km`} />
         <Metric label="Elevation gain" value={`+${summary.elevationGainM.toLocaleString()} m`} />
         <Metric label="Elevation loss" value={`−${summary.elevationLossM.toLocaleString()} m`} />
+        <Metric label="Riding time" value={formatRidingTime(summary.ridingTimeHours)} />
+        <Metric
+          label="Difficulty"
+          value={difficulty.label}
+          valueClass=""
+          style={{ color: difficulty.color }}
+        />
         <Metric label="Gravel" value={`${summary.gravelPct}%`} />
         <Metric
           label="Food"

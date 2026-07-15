@@ -1,3 +1,4 @@
+import { analyzeRouteSegmentDifficulty } from "@shared/race/routeSegmentDifficulty";
 import type { CompanionBundle, CompanionStop, ResupplyTimelineEntry } from "../types";
 import {
   googleMapsUrl as sharedGoogleMapsUrl,
@@ -11,6 +12,8 @@ export interface ResupplyGapInfo {
   elevationGainM: number;
   elevationLossM: number;
   ridingTimeHours: number;
+  difficultyColor: string;
+  difficultyLabel: string;
   unsupportedLabel?: string;
 }
 
@@ -114,13 +117,25 @@ export function buildResupplyCards(
     }
     const fromKm = previous.km;
     const toKm = stop.km;
+    const distanceKm = Math.max(0, toKm - fromKm);
+    const elevationGainM = elevationGainBetweenKm(bundle, fromKm, toKm);
+    const elevationLossM = elevationLossBetweenKm(bundle, fromKm, toKm);
+    const ridingTimeHours = estimatedRidingToStop(bundle, fromKm, toKm);
+    const difficulty = analyzeRouteSegmentDifficulty({
+      distanceKm,
+      elevationGainM,
+      elevationLossM,
+      ridingTimeHours,
+    });
     return {
       stop,
       gapBefore: {
-        distanceKm: Math.max(0, toKm - fromKm),
-        elevationGainM: elevationGainBetweenKm(bundle, fromKm, toKm),
-        elevationLossM: elevationLossBetweenKm(bundle, fromKm, toKm),
-        ridingTimeHours: estimatedRidingToStop(bundle, fromKm, toKm),
+        distanceKm,
+        elevationGainM,
+        elevationLossM,
+        ridingTimeHours,
+        difficultyColor: difficulty.color,
+        difficultyLabel: difficulty.label,
         unsupportedLabel: unsupportedLabelBetweenKm(bundle, fromKm, toKm),
       },
     };

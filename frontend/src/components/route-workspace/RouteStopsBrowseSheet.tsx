@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { ResupplyZone } from "../../api";
 import type { RouteHighlight } from "../../planning/routeHighlights";
 import type { TimeMode, ZoneDensityMode } from "../../planning/types";
@@ -38,16 +37,6 @@ export default function RouteStopsBrowseSheet({
   onViewFullBriefing,
 }: RouteStopsBrowseSheetProps) {
   const { arrivalTimeWindow } = usePlanningAssumptions();
-
-  const gapsByZone = useMemo(() => {
-    const sorted = [...zones].sort((left, right) => left.distance_along_km - right.distance_along_km);
-    const map = new Map<number, number | null>();
-    for (let index = 0; index < sorted.length; index += 1) {
-      const next = sorted[index + 1];
-      map.set(sorted[index].zone_id, next ? next.distance_along_km - sorted[index].distance_along_km : null);
-    }
-    return map;
-  }, [zones]);
 
   function zoneDimmed(zone: ResupplyZone): boolean {
     if (!arrivalTimeWindow) {
@@ -89,7 +78,6 @@ export default function RouteStopsBrowseSheet({
               <ZoneListRow
                 key={zone.zone_id}
                 zone={zone}
-                gapKm={gapsByZone.get(zone.zone_id) ?? null}
                 selected={selectedZoneId === zone.zone_id}
                 dimmed={zoneDimmed(zone)}
                 timeMode={timeMode}
