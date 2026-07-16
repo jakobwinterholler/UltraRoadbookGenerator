@@ -5,17 +5,12 @@ import { useAuth } from "@shared/auth/AuthProvider";
 import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
 import { Avatar } from "@shared/ui/AuthScreens";
 import { Button } from "@shared/ui/Button";
-import { DeleteRaceDialog } from "@shared/ui/DeleteRaceDialog";
 import { EmptyState } from "@shared/ui/EmptyState";
-import { RaceProjectCard } from "@shared/ui/RaceProjectCard";
-import { metricsFromCompanion } from "@shared/ui/raceCardMetrics";
-import { SectionHeader } from "@shared/ui/SectionHeader";
 import { RaceCardSkeleton } from "@shared/ui/Skeleton";
-import {
-  getCompanionRaceSyncStatus,
-} from "@shared/ui/SyncStatusBadge";
 import { ImportGpxIllustration, NoInternetIllustration, NoRacesIllustration } from "@shared/ui/design/illustrations";
 import { useEffect, useRef, useState } from "react";
+import CompanionDeleteRaceDialog from "../components/CompanionDeleteRaceDialog";
+import CompanionRaceCard from "../components/CompanionRaceCard";
 import GpxImportFlow from "../components/GpxImportFlow";
 import {
   deleteCompanionRace,
@@ -39,79 +34,6 @@ interface HomeScreenProps {
     tab?: CompanionTab;
     autoExport?: "coros" | "garmin" | "wahoo";
   } | null;
-}
-
-function companionSourceBadge(race: StoredRaceListItem): string | null {
-  if (race.offlineReady && race.source === "local-import") {
-    return "Imported";
-  }
-  if (race.offlineReady) {
-    return "Downloaded";
-  }
-  if (race.has_bundle) {
-    return "Cloud";
-  }
-  return null;
-}
-
-function CompanionRaceCard({
-  race,
-  busy,
-  downloadProgress,
-  staggerIndex,
-  onOpen,
-  onDelete,
-}: {
-  race: StoredRaceListItem;
-  busy: boolean;
-  downloadProgress: number | null;
-  staggerIndex: number;
-  onOpen: () => void;
-  onDelete: () => void;
-}) {
-  const syncStatus = getCompanionRaceSyncStatus({ ...race, busy });
-  const metrics = metricsFromCompanion(
-    race.verified_percent,
-    null,
-    race.verified_percent != null && race.verified_percent > 0 ? 1 : 0,
-    race.has_bundle || race.offlineReady,
-  );
-
-  return (
-    <div className="relative">
-      <RaceProjectCard
-        name={race.name}
-        distanceKm={race.distance_km}
-        elevationGainM={race.elevation_gain_m}
-        verificationPercent={metrics.verificationPercent}
-        suggestedStops={metrics.suggestedStops}
-        corosReady={metrics.corosReady}
-        syncStatus={syncStatus}
-        lastUpdated={race.updated_at}
-        dark
-        busy={busy}
-        downloadProgress={downloadProgress}
-        sourceBadge={companionSourceBadge(race)}
-        subtitle={race.has_bundle ? null : "Not analyzed"}
-        staggerIndex={staggerIndex}
-        onOpen={onOpen}
-      />
-      <button
-        type="button"
-        disabled={busy}
-        onClick={(event) => {
-          event.stopPropagation();
-          onDelete();
-        }}
-        aria-label={`Delete ${race.name}`}
-        className="absolute right-3 top-3 z-10 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
-      >
-        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-          <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </button>
-    </div>
-  );
 }
 
 export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: HomeScreenProps) {
@@ -407,7 +329,9 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           <div className="space-y-8">
             {sections.map((section) => (
               <section key={section.id}>
-                <SectionHeader dark title={section.title} className="mb-4" />
+                <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/35">
+                  {section.title}
+                </h2>
                 <ul className="space-y-4">
                   {section.races.map((race, index) => (
                     <li key={race.id}>
@@ -437,15 +361,10 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         />
       ) : null}
 
-      <DeleteRaceDialog
+      <CompanionDeleteRaceDialog
         open={Boolean(deleteTarget)}
         raceName={deleteTarget?.name ?? ""}
-        distanceKm={deleteTarget?.distance_km}
-        elevationGainM={deleteTarget?.elevation_gain_m}
-        cloudSynced={deleteTarget?.has_bundle ?? null}
-        lastModified={deleteTarget?.updated_at}
         busy={deleteBusy}
-        variant="dark"
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDeleteRace()}
       />

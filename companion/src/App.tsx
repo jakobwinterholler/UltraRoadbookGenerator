@@ -9,6 +9,7 @@ import BottomNav, { type CompanionTab } from "./components/BottomNav";
 import AppUpdateBanner from "./components/AppUpdateBanner";
 import ExecutionHeader from "./components/ExecutionHeader";
 import RaceDataBanner from "./components/RaceDataBanner";
+import RaceWorkspaceHeader from "./components/RaceWorkspaceHeader";
 import AccountScreen from "./screens/AccountScreen";
 import HomeScreen from "./screens/HomeScreen";
 import RaceScreen from "./screens/RaceScreen";
@@ -188,15 +189,6 @@ export default function App() {
     ],
   );
 
-  const headerTrailing = bundle ? (
-    <button
-      type="button"
-      onClick={() => void clearRace()}
-      className="min-h-[44px] rounded-xl px-3 py-2 text-sm font-medium text-white/55 hover:bg-white/10 hover:text-white"
-    >
-      Races
-    </button>
-  ) : null;
 
   if (isRestoring || bootLoading) {
     return <SessionRestoreScreen variant="dark" />;
@@ -271,9 +263,11 @@ export default function App() {
     <CompanionContext.Provider value={contextValue}>
       <div key="race" className="urp-animate-workspace-enter flex h-full min-h-0 flex-col bg-[#0a0a0a]">
         <AppUpdateBanner />
-        {showExecutionHeader ? (
-          <ExecutionHeader trailing={headerTrailing} />
-        ) : null}
+        <RaceWorkspaceHeader
+          raceName={bundle.race.name}
+          onBackToLibrary={() => void clearRace()}
+        />
+        {showExecutionHeader ? <ExecutionHeader /> : null}
         {showRaceDataBanner ? (
           <RaceDataBanner bundle={bundle} onBundleUpdate={updateBundle} />
         ) : null}
@@ -285,14 +279,16 @@ export default function App() {
             <ResupplyScreen />
           ) : tab === "verify" ? (
             <VerificationScreen />
-          ) : tab === "share" ? (
-            <ShareScreen autoExportDevice={autoExportDevice} onAutoExportHandled={() => setAutoExportDevice(null)} />
           ) : (
-            <AccountScreen />
+            <ShareScreen autoExportDevice={autoExportDevice} onAutoExportHandled={() => setAutoExportDevice(null)} />
           )}
         </main>
 
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav
+          active={tab}
+          onChange={setTab}
+          onBackToLibrary={() => void clearRace()}
+        />
       </div>
     </CompanionContext.Provider>
   );

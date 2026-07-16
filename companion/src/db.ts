@@ -22,6 +22,7 @@ export interface StoredRaceListItem extends SyncRaceSummary {
   source?: "cloud" | "local-import";
   lastOpenedAt?: string | null;
   verified_percent?: number | null;
+  verified_stops_count?: number | null;
 }
 
 function computeVerifiedPercent(bundle: CompanionBundle): number | null {
@@ -156,6 +157,7 @@ export async function saveCompanionBundle(
           offlineReady: true,
           readiness_score: prepared.dashboardStats?.readinessScore ?? existing.readiness_score ?? null,
           verified_percent: computeVerifiedPercent(prepared),
+          verified_stops_count: prepared.dashboardStats?.verifiedStops ?? null,
         });
         return;
       }
@@ -177,6 +179,7 @@ export async function saveCompanionBundle(
         offlineReady: true,
         readiness_score: prepared.dashboardStats?.readinessScore ?? null,
         verified_percent: computeVerifiedPercent(prepared),
+        verified_stops_count: prepared.dashboardStats?.verifiedStops ?? null,
         source: "local-import",
         lastOpenedAt: new Date().toISOString(),
       });

@@ -53,6 +53,10 @@ body {
     @apply min-h-[44px] min-w-[44px];
   }
 
+  .swipe-race-card__content {
+    touch-action: pan-y;
+  }
+
   .animate-fade-in {
     animation: fade-in 0.35s ease-out both;
   }

@@ -64,7 +64,7 @@ export default function RaceScreen() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 space-y-2 border-b border-white/8 px-4 pb-3 pt-safe-top">
+      <div className="shrink-0 space-y-2 border-b border-white/8 px-4 pb-3">
         <NextVerifiedStopCard bundle={bundle} currentKm={currentKm} compact />
         <ResupplyElevationProfile
           bundle={bundle}

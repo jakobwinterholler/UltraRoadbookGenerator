@@ -574,6 +574,8 @@ Decisions distilled from product conversations and iteration — preserve these 
 
 | Date | Milestone |
 |------|-----------|
+| 2026-07 | **Companion nav & home** — race library always on launch, back-to-library header + tab, simplified cards, swipe/long-press delete |
+| 2026-07 | **Companion mobile polish** — stable stop-detail mini map, safe-area insets, 44px touch targets |
 | 2026-07 | **v0.5 UX** — Plan-first desktop, Race screen, next-stop resupply, simplified import |
 | 2026-07 | **Find Stops** — bounds discovery, 10 temp max, promote on verify |
 | 2026-07 | **Discovery fix** — verified discoveries persist to `suggested_stops` + resupply list |

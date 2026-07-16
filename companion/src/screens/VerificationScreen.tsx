@@ -59,7 +59,7 @@ export default function VerificationScreen() {
 
   return (
     <div className="verify-tab flex h-full min-h-0 flex-col">
-      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-2 pt-safe-top">
+      <header className="verify-tab__header shrink-0 border-b border-white/8 px-4 pb-2">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-orange-300">Verify</p>

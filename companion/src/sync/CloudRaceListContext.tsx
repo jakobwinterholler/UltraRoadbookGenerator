@@ -97,6 +97,8 @@ async function mergeRaceLists(
       ...status,
       source: existing?.source === "local-import" ? "local-import" : "cloud",
       lastOpenedAt: existing?.lastOpenedAt ?? null,
+      verified_percent: existing?.verified_percent ?? null,
+      verified_stops_count: existing?.verified_stops_count ?? null,
     });
   }
 
