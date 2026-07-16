@@ -1,5 +1,6 @@
 import { useMemo, useEffect, useCallback, useState } from "react";
 import type { RoadbookResult } from "../../api";
+import { poiOsmKey } from "@shared/race/discoverStops";
 import { useRenderTrace } from "../../debug/raceOpenTrace";
 import { usePlanning } from "../../planning/PlanningContext";
 import { buildRouteHighlights } from "../../planning/routeHighlights";
@@ -33,6 +34,9 @@ import ClimbDetailView from "../climb/ClimbDetailView";
 import { usePlanningAssumptions } from "../../planning/usePlanningAssumptions";
 import RouteStopsBrowseSheet from "./RouteStopsBrowseSheet";
 import ResupplySegmentSummary from "./ResupplySegmentSummary";
+import DiscoverStopsControls from "../discovery/DiscoverStopsControls";
+import DiscoverCandidateDetail from "../discovery/DiscoverCandidateDetail";
+import { buildPromoteRecord, useDiscoverStops } from "../../planning/useDiscoverStops";
 
 interface RouteWorkspaceProps {
   result: RoadbookResult;
@@ -54,7 +58,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   const { settings } = useSettings();
   const developerMode = settings?.planning.developer_mode_enabled ?? false;
   const { stageSettings, arrivalTimeWindow } = usePlanningAssumptions();
-  const { verifiedStops } = useRace();
+  const { verifiedStops, saveVerifiedStop } = useRace();
   const [stopsBrowseOpen, setStopsBrowseOpen] = useState(false);
   const [poiDebugMode, setPoiDebugMode] = useState(false);
   const [climbDebugMode, setClimbDebugMode] = useState(false);
@@ -100,6 +104,21 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   }, [climbDebugClick, result.climb_candidates, result.climbs, result.route.track_points]);
 
   const selection = useRouteWorkspaceSelection(result, presentedZones, verifiedStops);
+
+  const handlePromoteVerified = useCallback(
+    async (zoneId: number, poi: import("../../api").PoiRow) => {
+      await saveVerifiedStop(zoneId, buildPromoteRecord(poi));
+    },
+    [saveVerifiedStop],
+  );
+
+  const discovery = useDiscoverStops({
+    pois: result.pois,
+    trackPoints: result.route.track_points,
+    presentedZones,
+    onSelectPoi: selection.handleSelectPoi,
+    onPromoteVerified: handlePromoteVerified,
+  });
 
   const hoverHighlightKmRange = useMemo(() => {
     if (selection.hoveredZoneId === null) {
@@ -427,7 +446,28 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 onClimbDebugClick={(lat, lon) => {
                   setClimbDebugClick({ lat, lon });
                 }}
+                discoverActive={discovery.active}
+                discoverCandidates={discovery.candidates}
+                selectedDiscoverKey={discovery.selectedCandidateKey}
+                onDiscoverBoundsChange={discovery.handleBoundsChange}
+                onSelectDiscoverCandidate={(candidate) =>
+                  discovery.selectCandidate(poiOsmKey(candidate.osmType, candidate.osmId))
+                }
               />
+              <DiscoverStopsControls
+                active={discovery.active}
+                loading={discovery.loading}
+                candidateCount={discovery.candidates.length}
+                onToggle={discovery.toggleDiscovery}
+              />
+              {discovery.selectedCandidate && (
+                <DiscoverCandidateDetail
+                  candidate={discovery.selectedCandidate}
+                  promoting={discovery.promoting}
+                  onPromote={() => discovery.promoteCandidate(discovery.selectedCandidate!)}
+                  onDismiss={() => discovery.dismissCandidate(discovery.selectedCandidate!)}
+                />
+              )}
               {poiDebugMode && (
                 <PoiDebugPanel
                   entries={poiDebugNearby}
