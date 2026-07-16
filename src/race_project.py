@@ -953,13 +953,14 @@ class RaceProjectStore:
         snapshot_id = str(uuid.uuid4())
         analysis_path = self._analysis_path(race_id)
         analysis_path.parent.mkdir(parents=True, exist_ok=True)
-        analysis_path.write_text(json.dumps(roadbook, indent=2), encoding="utf-8")
 
         summary = roadbook.get("summary") or {}
         race.meta.distance_km = summary.get("distance_km")
         race.meta.elevation_gain_m = summary.get("elevation_gain_m")
         race.meta.climb_count = summary.get("climb_count")
         race.meta.updated_at = _utc_now()
+        roadbook["analyzed_at"] = race.meta.updated_at
+        analysis_path.write_text(json.dumps(roadbook, indent=2), encoding="utf-8")
         race.analysis = {
             "latest_snapshot_id": snapshot_id,
             "pipeline_version": PIPELINE_VERSION,

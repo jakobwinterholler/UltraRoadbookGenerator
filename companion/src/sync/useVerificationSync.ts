@@ -10,6 +10,7 @@ import {
   markVerificationsSynced,
   removeSyncedVerifications,
 } from "../lib/verificationQueue";
+import { logSyncDebug } from "@shared/sync/syncDebugLog";
 
 export async function syncPendingVerifications(
   accessToken: string,
@@ -72,8 +73,9 @@ export function useVerificationSync(
         getBundle: () => getBundleRef.current?.() ?? null,
         onBundleUpdate: options?.onBundleUpdate,
       });
-    } catch {
-      // Keep queued for next attempt.
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logSyncDebug("verification-sync", `Pending verification sync failed: ${message}`);
     } finally {
       syncingRef.current = false;
     }

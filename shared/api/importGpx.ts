@@ -4,6 +4,8 @@ import {
   formatBundlePrepareFailure,
   prepareCompanionBundle,
 } from "../sync/bundleMigration";
+import { fetchCompanionBundle } from "./sync";
+import { logSyncDebug } from "../sync/syncDebugLog";
 
 export interface ImportStageEvent {
   type: "import_stage";
@@ -27,7 +29,7 @@ export type ImportGpxEvent =
   | { type: "progress"; percent: number; label?: string; stage_id?: string }
   | { type: "race_created"; race_id: string; fingerprint: string; name: string }
   | { type: "complete"; race_id: string; bundle: CompanionBundle; fingerprint: string }
-  | { type: "synced"; sync: { race_id: string; companion_revision: number; synced_at: string } }
+  | { type: "synced"; sync: ImportSyncResult }
   | { type: "sync_warning"; detail: string }
   | { type: "error"; detail: string }
   | { type: "step"; step_id: string; status: string; label: string };
@@ -41,11 +43,22 @@ export interface ImportGpxOptions {
   replaceRaceId?: string;
 }
 
+export interface ImportSyncResult {
+  race_id: string;
+  local_race_id?: string;
+  companion_revision: number;
+  bundle_checksum?: string | null;
+  synced_at: string;
+}
+
 export interface ImportGpxResult {
   raceId: string;
+  /** Server-local race id before cloud dedup (if different from raceId). */
+  localRaceId?: string;
   bundle: CompanionBundle;
   fingerprint: string;
   companionRevision: number | null;
+  syncWarning?: string;
 }
 
 export function importApiAvailable(): boolean {
@@ -131,6 +144,8 @@ export async function importGpxStream(
   const decoder = new TextDecoder();
   let buffer = "";
   let result: ImportGpxResult | null = null;
+  let cloudRaceId: string | null = null;
+  let syncWarning: string | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -160,9 +175,15 @@ export async function importGpxStream(
         };
       }
       if (event.type === "synced") {
+        cloudRaceId = event.sync.race_id;
         if (result) {
           result.companionRevision = event.sync.companion_revision;
+          result.localRaceId = event.sync.local_race_id ?? result.raceId;
         }
+      }
+      if (event.type === "sync_warning") {
+        syncWarning = event.detail;
+        logSyncDebug("import", `Cloud sync warning: ${event.detail}`);
       }
       if (event.type === "error") {
         throw new Error(event.detail);
@@ -173,5 +194,32 @@ export async function importGpxStream(
   if (!result) {
     throw new Error("Import finished without a bundle.");
   }
+
+  if (cloudRaceId) {
+    try {
+      const canonical = await fetchCompanionBundle(accessToken, cloudRaceId);
+      result.localRaceId = result.localRaceId ?? result.raceId;
+      result.raceId = cloudRaceId;
+      result.bundle = canonical;
+      result.companionRevision =
+        canonical.revision ?? canonical.bundle_version ?? result.companionRevision;
+      logSyncDebug("import", `Reconciled import to cloud bundle ${cloudRaceId}`, {
+        localRaceId: result.localRaceId,
+        revision: result.companionRevision,
+        checksum: canonical.bundleChecksum,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logSyncDebug("import", `Could not fetch canonical cloud bundle: ${message}`, {
+        cloudRaceId,
+        localRaceId: result.raceId,
+      });
+    }
+  }
+
+  if (syncWarning) {
+    result.syncWarning = syncWarning;
+  }
+
   return result;
 }

@@ -9,7 +9,7 @@ import {
 import { useAuth } from "@shared/auth/AuthProvider";
 import type { CompanionBundle } from "@shared/types/sync";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { saveCompanionBundle, saveOriginalGpx, saveRaceList, loadRaceList } from "../db";
+import { saveCompanionBundle, saveOriginalGpx, saveRaceList, loadRaceList, deleteCompanionRace } from "../db";
 import { fingerprintGpxFile } from "../lib/gpxFingerprint";
 import DuplicateRaceDialog from "./DuplicateRaceDialog";
 
@@ -49,6 +49,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
   const { accessToken } = useAuth();
   const [stages, setStages] = useState<ImportStageState[]>(DEFAULT_STAGES);
   const [error, setError] = useState<string | null>(null);
+  const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [duplicates, setDuplicates] = useState<ImportDuplicateMatch[] | null>(null);
   const [pendingFile] = useState<File | null>(file);
@@ -90,9 +91,29 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
   }, []);
 
   const persistImport = useCallback(
-    async (result: { raceId: string; bundle: CompanionBundle; companionRevision: number | null }, sourceFile: File) => {
+    async (
+      result: {
+        raceId: string;
+        localRaceId?: string;
+        bundle: CompanionBundle;
+        companionRevision: number | null;
+        fingerprint: string;
+      },
+      sourceFile: File,
+    ) => {
       const gpxBytes = await sourceFile.arrayBuffer();
-      await saveCompanionBundle(result.bundle);
+      const localRaceId = result.localRaceId ?? result.raceId;
+      if (localRaceId !== result.raceId) {
+        await deleteCompanionRace(localRaceId);
+      }
+
+      await saveCompanionBundle(result.bundle, {
+        syncFromCloud: {
+          revision: result.companionRevision ?? result.bundle.revision ?? 1,
+          checksum: result.bundle.bundleChecksum ?? null,
+          climbCount: result.bundle.climbs?.length ?? null,
+        },
+      });
       await saveOriginalGpx(result.raceId, gpxBytes);
 
       const existing = await loadRaceList();
@@ -101,7 +122,9 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         result.bundle.revision ??
         result.bundle.bundle_version ??
         1;
-      const others = existing.filter((race) => race.id !== result.raceId);
+      const others = existing.filter(
+        (race) => race.id !== result.raceId && race.id !== localRaceId,
+      );
       await saveRaceList([
         {
           id: result.raceId,
@@ -113,12 +136,14 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
           bundle_version: revision,
           bundle_checksum: result.bundle.bundleChecksum ?? null,
           bundle_schema_version: result.bundle.schemaVersion,
+          gpx_fingerprint: result.fingerprint,
           updated_at: result.bundle.syncedAt ?? new Date().toISOString(),
           analyzed_at: result.bundle.race.analyzedAt ?? null,
           has_bundle: true,
           readiness_score: result.bundle.dashboardStats?.readinessScore ?? null,
           downloadedRevision: revision,
           downloadedChecksum: result.bundle.bundleChecksum ?? null,
+          downloadedClimbCount: result.bundle.climbs?.length ?? null,
           offlineReady: true,
           source: "local-import",
           lastOpenedAt: new Date().toISOString(),
@@ -148,6 +173,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
 
       setRunning(true);
       setError(null);
+      setSyncWarning(null);
       setStages(DEFAULT_STAGES.map((stage, index) => ({
         ...stage,
         status: index === 0 ? "active" : "pending",
@@ -165,6 +191,10 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
           applyEvent,
         );
         await persistImport(result, sourceFile);
+        if (result.syncWarning) {
+          setSyncWarning(result.syncWarning);
+        }
+        setRunning(false);
         onComplete(result.bundle);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed.");
@@ -306,6 +336,11 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
           </ul>
 
           {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
+          {syncWarning ? (
+            <p className="mt-4 text-sm text-amber-200">
+              Route saved locally. Cloud sync failed: {syncWarning}
+            </p>
+          ) : null}
         </div>
       </div>
     </>

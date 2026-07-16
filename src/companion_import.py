@@ -172,6 +172,7 @@ def run_companion_import(
     def emit(event: dict) -> None:
         asyncio.run_coroutine_threadsafe(queue.put(event), loop)
 
+    watchdog: StageWatchdog | None = None
     try:
         fingerprint = gpx_fingerprint(gpx_bytes)
         emit(
@@ -270,6 +271,8 @@ def run_companion_import(
         logger.exception("Companion import failed")
         emit({"type": "error", "detail": f"Import failed: {exc}"})
     finally:
+        if watchdog is not None:
+            watchdog.stop()
         asyncio.run_coroutine_threadsafe(queue.put(None), loop)
 
 
