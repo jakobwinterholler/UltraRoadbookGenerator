@@ -24,6 +24,8 @@ import {
   ROUTE_HALO_WIDTH,
   SELECTED_STOP_CORE,
   SELECTED_STOP_HALO,
+  SKIPPED_STOP_COLOR,
+  SUGGESTED_STOP_COLOR,
 } from "@shared/race/companionMapTheme";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -48,10 +50,6 @@ function stopPoiId(stop: Pick<CompanionStop, "poiId" | "zoneId">): string {
   return stop.poiId ?? `zone-${stop.zoneId}`;
 }
 
-function isStopVerified(status: CompanionStop["verificationStatus"]): boolean {
-  return status === "verified" || status === "pending";
-}
-
 export interface RouteMapHandle {
   recenter: () => void;
   zoomIn: () => void;
@@ -68,6 +66,16 @@ interface RouteMapViewProps {
   selectedDiscoverKey?: string | null;
   onDiscoverBoundsChange?: (bounds: MapBounds) => void;
   onSelectDiscoverCandidate?: (candidate: DiscoverCandidate) => void;
+}
+
+function stopMarkerTone(status: CompanionStop["verificationStatus"]): "verified" | "suggested" | "skipped" {
+  if (status === "verified" || status === "pending") {
+    return "verified";
+  }
+  if (status === "needs_review") {
+    return "skipped";
+  }
+  return "suggested";
 }
 
 function stopsGeoJson(
@@ -93,13 +101,16 @@ function stopsGeoJson(
         selectedZoneId != null &&
         entry.parentZoneId === selectedZoneId;
       const dimmed = focusActive && !isSelected && !isAlternative;
+      const tone = stopMarkerTone(stop.verificationStatus);
       return [
         {
           type: "Feature" as const,
           properties: {
             zoneId: stop.zoneId,
             poiId,
-            verified: isStopVerified(stop.verificationStatus) ? 1 : 0,
+            verified: tone === "verified" ? 1 : 0,
+            suggested: tone === "suggested" ? 1 : 0,
+            skipped: tone === "skipped" ? 1 : 0,
             selected: isSelected ? 1 : 0,
             alternative: isAlternative ? 1 : 0,
             dimmed: dimmed ? 1 : 0,
@@ -506,13 +517,26 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       });
 
       map.addLayer({
-        id: "stops-unverified",
+        id: "stops-suggested",
         type: "circle",
         source: "stops",
-        filter: ["all", ["==", ["get", "verified"], 0], ["==", ["get", "selected"], 0], ["==", ["get", "dimmed"], 0], ["==", ["get", "alternative"], 0]],
+        filter: ["all", ["==", ["get", "suggested"], 1], ["==", ["get", "selected"], 0], ["==", ["get", "dimmed"], 0], ["==", ["get", "alternative"], 0]],
         paint: {
           "circle-radius": embedded ? 8 : 11,
-          "circle-color": "#64748b",
+          "circle-color": SUGGESTED_STOP_COLOR,
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+      });
+
+      map.addLayer({
+        id: "stops-skipped",
+        type: "circle",
+        source: "stops",
+        filter: ["all", ["==", ["get", "skipped"], 1], ["==", ["get", "selected"], 0], ["==", ["get", "dimmed"], 0], ["==", ["get", "alternative"], 0]],
+        paint: {
+          "circle-radius": embedded ? 8 : 11,
+          "circle-color": SKIPPED_STOP_COLOR,
           "circle-stroke-width": 2,
           "circle-stroke-color": "#ffffff",
         },
@@ -686,7 +710,8 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       const stopFeatures = map.queryRenderedFeatures(event.point, {
         layers: [
           "stops-verified-bg",
-          "stops-unverified",
+          "stops-suggested",
+          "stops-skipped",
           "stops-alternative",
           "stops-selected-ring",
           "stops-selected-core",

@@ -1,7 +1,8 @@
 import type { DiscoverCandidate } from "@shared/race/discoverStops";
+import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 import { formatPoiName, formatOffRouteDistance } from "../poiUi";
 import { formatKm } from "../routeInsights";
-import { googleMapsUrl } from "../stopQuickActions";
+import { googleMapsUrl, placeIdFromTags } from "../stopQuickActions";
 
 interface DiscoverCandidateDetailProps {
   candidate: DiscoverCandidate;
@@ -18,6 +19,13 @@ export default function DiscoverCandidateDetail({
 }: DiscoverCandidateDetailProps) {
   const title = formatPoiName(candidate.name, candidate.brand ?? null, {
     poiCategory: candidate.category,
+  });
+  const streetView = useStreetViewLink({
+    lat: candidate.lat,
+    lon: candidate.lon,
+    routeKm: candidate.distanceAlongKm,
+    name: title,
+    placeId: placeIdFromTags(candidate.tags),
   });
 
   return (
@@ -61,6 +69,16 @@ export default function DiscoverCandidateDetail({
         >
           Google Maps
         </a>
+        {streetView.available !== false ? (
+          <a
+            href={streetView.streetViewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-xl border border-line px-3 py-2 text-sm font-medium text-muted transition hover:text-ink"
+          >
+            {streetView.loading ? "Street View…" : "Street View"}
+          </a>
+        ) : null}
       </div>
 
       <div className="mt-4 flex gap-2">

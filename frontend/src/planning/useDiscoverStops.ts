@@ -44,7 +44,6 @@ export function useDiscoverStops({
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [candidates, setCandidates] = useState<DiscoverCandidate[]>([]);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
-  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
   const [verifiedKeys, setVerifiedKeys] = useState<Set<string>>(() => new Set());
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [promoting, setPromoting] = useState(false);
@@ -67,11 +66,6 @@ export function useDiscoverStops({
     [climbs],
   );
 
-  const excludedKeys = useMemo(
-    () => new Set([...dismissedKeys, ...verifiedKeys]),
-    [dismissedKeys, verifiedKeys],
-  );
-
   const findStops = useCallback(() => {
     if (!bounds) {
       return;
@@ -87,7 +81,7 @@ export function useDiscoverStops({
       trackPoints: trackInputs,
       existingStopKms,
       primaryPoiKeys: primaryKeys,
-      dismissedPoiKeys: excludedKeys,
+      dismissedPoiKeys: new Set(),
       verifiedPoiKeys: verifiedKeys,
       climbRanges,
       limit: DISCOVERY_MAX_RESULTS,
@@ -100,7 +94,6 @@ export function useDiscoverStops({
     bounds,
     climbRanges,
     discoverInputs,
-    excludedKeys,
     existingStopKms,
     primaryKeys,
     trackInputs,
@@ -121,7 +114,6 @@ export function useDiscoverStops({
 
   const skipCandidate = useCallback((candidate: DiscoverCandidate) => {
     const key = poiOsmKey(candidate.osmType, candidate.osmId);
-    setDismissedKeys((current) => new Set([...current, key]));
     setCandidates((current) =>
       current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
     );

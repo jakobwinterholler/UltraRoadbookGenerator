@@ -454,11 +454,13 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                   discovery.selectCandidate(poiOsmKey(candidate.osmType, candidate.osmId))
                 }
               />
-              <DiscoverStopsControls
-                loading={discovery.loading}
-                resultMessage={discovery.resultMessage}
-                onFindStops={discovery.findStops}
-              />
+              <div className="pointer-events-none absolute bottom-4 right-4 z-[1000]">
+                <DiscoverStopsControls
+                  loading={discovery.loading}
+                  resultMessage={discovery.resultMessage}
+                  onFindStops={discovery.findStops}
+                />
+              </div>
               {discovery.selectedCandidate && (
                 <DiscoverCandidateDetail
                   candidate={discovery.selectedCandidate}

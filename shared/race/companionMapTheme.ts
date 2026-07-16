@@ -10,6 +10,8 @@ export const SELECTED_STOP_HALO = "#a78bfa";
 export const SELECTED_STOP_CORE = "#7c3aed";
 export const ALTERNATIVE_STOP_COLOR = "#64748b";
 export const DIMMED_STOP_COLOR = "#475569";
+export const SUGGESTED_STOP_COLOR = "#E85D04";
+export const SKIPPED_STOP_COLOR = "#9ca3af";
 
 /** Street-level focus — matches the pre-overhaul detail map feel. */
 export const POI_FOCUS_ZOOM = 17.8;

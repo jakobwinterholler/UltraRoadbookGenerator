@@ -28,6 +28,7 @@ import OverlayLegend from "./OverlayLegend";
 import { zoneHasCategory } from "./routeInsights";
 import { useRace } from "../races/RaceContext";
 import {
+  verificationStatusPresentation,
   verificationStatusTooltipLabel,
   zoneVerificationStatus,
 } from "../planning/stopVerification/verificationStatusPresentation";
@@ -562,7 +563,9 @@ export default function RouteMap({
           const dimmed =
             availability?.status === "closed" ||
             (focusActive && selectedZoneId !== null && !selected);
-          const fillColor = zoneMarkerColor(zone, overlay, timeMode, route);
+          const statusPresentation = verificationStatusPresentation(verificationStatus);
+          const fillColor =
+            statusPresentation.markerColor ?? zoneMarkerColor(zone, overlay, timeMode, route);
 
           return (
             <Marker

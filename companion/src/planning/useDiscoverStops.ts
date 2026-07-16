@@ -73,7 +73,6 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [candidates, setCandidates] = useState<DiscoverCandidate[]>([]);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
-  const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
   const [verifiedKeys, setVerifiedKeys] = useState<Set<string>>(() => new Set());
   const [resultMessage, setResultMessage] = useState<string | null>(null);
 
@@ -88,11 +87,6 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
         endKm: climb.endKm,
       })),
     [bundle.climbs],
-  );
-
-  const excludedKeys = useMemo(
-    () => new Set([...dismissedKeys, ...verifiedKeys]),
-    [dismissedKeys, verifiedKeys],
   );
 
   const findStops = useCallback(() => {
@@ -110,7 +104,7 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
       trackPoints: trackInputs,
       existingStopKms,
       primaryPoiKeys: primaryKeys,
-      dismissedPoiKeys: excludedKeys,
+      dismissedPoiKeys: new Set(),
       verifiedPoiKeys: verifiedKeys,
       climbRanges,
       limit: DISCOVERY_MAX_RESULTS,
@@ -123,7 +117,6 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
     bounds,
     climbRanges,
     discoverInputs,
-    excludedKeys,
     existingStopKms,
     primaryKeys,
     trackInputs,
@@ -144,7 +137,6 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
 
   const skipCandidate = useCallback((candidate: DiscoverCandidate) => {
     const key = poiOsmKey(candidate.osmType, candidate.osmId);
-    setDismissedKeys((current) => new Set([...current, key]));
     setCandidates((current) =>
       current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
     );
@@ -185,7 +177,6 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
       if (!candidates.some((item) => poiOsmKey(item.osmType, item.osmId) === key)) {
         return;
       }
-      setDismissedKeys((current) => new Set([...current, key]));
       setCandidates((current) =>
         current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
       );
