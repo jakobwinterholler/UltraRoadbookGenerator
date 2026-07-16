@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { sameStop } from "@shared/race/stopMatching";
+import { sameStop, stopIdentity } from "@shared/race/stopMatching";
 import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
@@ -346,7 +346,7 @@ export default function ResupplyScreen() {
           const isFocused = focusedStop ? sameStop(stop, focusedStop) : false;
 
           return (
-            <div key={`card-${stop.zoneId}`} data-stop-index={index}>
+            <div key={`card-${stopIdentity(stop)}`} data-stop-index={index}>
               {gapBefore ? (
                 <ResupplyGapRow
                   gap={gapBefore}

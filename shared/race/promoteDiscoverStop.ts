@@ -73,7 +73,10 @@ export function buildPromotedSuggestedStop(
   >,
 ): PromotedSuggestedStop {
   const category = poi.category?.trim() || "Resupply";
-  const zoneId = poi.zoneId ?? Math.round(poi.distanceAlongKm * 1000);
+  const zoneId = poi.zoneId;
+  if (zoneId == null) {
+    throw new Error("Discovered stop is missing a resupply zone.");
+  }
   return {
     zone_id: zoneId,
     osm_id: poi.osmId,

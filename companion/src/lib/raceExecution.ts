@@ -4,6 +4,7 @@ import {
   estimateRidingHours,
   type RiderAssumptions,
 } from "@shared/race/riderAssumptions";
+import { filterStopsForResupplyView } from "@shared/race/resupplyView";
 
 export function bundleAssumptions(bundle: CompanionBundle): RiderAssumptions {
   return {
@@ -13,9 +14,7 @@ export function bundleAssumptions(bundle: CompanionBundle): RiderAssumptions {
 }
 
 export function visibleStops(bundle: CompanionBundle, includeUnverified: boolean): CompanionStop[] {
-  return bundle.stops.filter(
-    (stop) => stop.verificationStatus === "verified" || includeUnverified,
-  );
+  return filterStopsForResupplyView(bundle.stops, !includeUnverified);
 }
 
 export function nextResupplyStop(

@@ -6,6 +6,9 @@ import ResupplyHubDetailContent from "../components/resupply/ResupplyHubDetailCo
 import { usePlanning } from "../planning/PlanningContext";
 import { usePlanningAssumptions } from "../planning/usePlanningAssumptions";
 import {
+  filterResupplyZonesForView,
+} from "../planning/resupplyView";
+import {
   filterResupplyZones,
   sortResupplyZones,
 } from "../planning/viewModel";
@@ -13,6 +16,7 @@ import { presentSuggestedStops } from "../planning/suggestedStops";
 import type { DetourFilter, ResupplyCategoryFilter } from "../planning/types";
 import type { StopSelection } from "../planning/stopSelection";
 import { zoneAvailability } from "../planning/stopAvailability";
+import { useRace } from "../races/RaceContext";
 
 interface ResupplyPageProps {
   result: RoadbookResult;
@@ -53,6 +57,8 @@ export default function ResupplyPage({ result }: ResupplyPageProps) {
     timeMode,
   } = usePlanning();
   const { arrivalTimeWindow } = usePlanningAssumptions();
+  const { verifiedStops } = useRace();
+  const [showVerifiedOnly, setShowVerifiedOnly] = useState(false);
   const [detailSelection, setDetailSelection] = useState<StopSelection>(null);
   const [selectedZoneId, setSelectedZoneId] = useState<number | null>(null);
 
@@ -62,9 +68,15 @@ export default function ResupplyPage({ result }: ResupplyPageProps) {
   );
 
   const visibleZones = useMemo(() => {
-    const filtered = filterResupplyZones(planningZones, resupplyFilters);
+    const verifiedFiltered = filterResupplyZonesForView(
+      planningZones,
+      result,
+      verifiedStops,
+      showVerifiedOnly,
+    );
+    const filtered = filterResupplyZones(verifiedFiltered, resupplyFilters);
     return sortResupplyZones(filtered, resupplySort);
-  }, [planningZones, resupplyFilters, resupplySort]);
+  }, [planningZones, result, verifiedStops, showVerifiedOnly, resupplyFilters, resupplySort]);
 
   function handleSelectZone(zone: ResupplyZone) {
     setSelectedZoneId(zone.zone_id);
@@ -88,7 +100,7 @@ export default function ResupplyPage({ result }: ResupplyPageProps) {
       <div>
         <h2 className="text-display font-semibold tracking-tight text-ink">Resupply</h2>
         <p className="mt-2 text-sm text-muted">
-          {visibleZones.length} suggested stops along your route
+          {visibleZones.length} {showVerifiedOnly ? "verified" : "suggested"} stops along your route
           {result.resupply_zones.length !== visibleZones.length && (
             <>
               {" "}
@@ -96,6 +108,23 @@ export default function ResupplyPage({ result }: ResupplyPageProps) {
             </>
           )}
         </p>
+      </div>
+
+      <div className="flex gap-2">
+        {(["all", "verified"] as const).map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => setShowVerifiedOnly(value === "verified")}
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition ${
+              (value === "verified") === showVerifiedOnly
+                ? "bg-accent text-white"
+                : "border border-line bg-card text-ink"
+            }`}
+          >
+            {value === "all" ? "All stops" : "Verified only"}
+          </button>
+        ))}
       </div>
 
       <details className="rounded-2xl border border-line bg-card shadow-card">

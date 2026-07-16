@@ -98,6 +98,100 @@ def _rank_zone_pois(
     return items
 
 
+def _suggested_stops_by_zone(roadbook: dict[str, Any]) -> dict[int, dict[str, Any]]:
+    mapping: dict[int, dict[str, Any]] = {}
+    for stop in roadbook.get("suggested_stops") or []:
+        if not isinstance(stop, dict):
+            continue
+        zone_id = int(stop.get("zone_id") or 0)
+        if zone_id:
+            mapping[zone_id] = stop
+    return mapping
+
+
+def _find_poi_in_zone(
+    zone: dict[str, Any],
+    osm_id: int,
+    osm_type: str,
+) -> tuple[dict[str, Any], str, str] | None:
+    for group in zone.get("categories") or []:
+        category_key = str(group.get("key") or "")
+        category_label = str(group.get("label") or category_key)
+        for option in [group.get("primary"), *(group.get("alternatives") or [])]:
+            if not isinstance(option, dict):
+                continue
+            if int(option.get("osm_id") or 0) == osm_id and str(option.get("osm_type") or "") == osm_type:
+                return option, category_key, category_label
+    return None
+
+
+def _find_poi_in_roadbook(
+    roadbook: dict[str, Any],
+    osm_id: int,
+    osm_type: str,
+) -> dict[str, Any] | None:
+    for poi in roadbook.get("pois") or []:
+        if not isinstance(poi, dict):
+            continue
+        if int(poi.get("osm_id") or 0) == osm_id and str(poi.get("osm_type") or "") == osm_type:
+            return poi
+    return None
+
+
+def _poi_from_suggested_stop(suggested: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "osm_id": int(suggested.get("osm_id") or 0),
+        "osm_type": str(suggested.get("osm_type") or "node"),
+        "name": suggested.get("name"),
+        "poi_category": suggested.get("poi_category"),
+        "distance_along_km": suggested.get("distance_along_km"),
+        "distance_off_route_m": suggested.get("distance_off_route_m"),
+        "lat": suggested.get("lat"),
+        "lon": suggested.get("lon"),
+        "score": suggested.get("score"),
+        "opening_hours": suggested.get("opening_hours"),
+        "brand": suggested.get("brand"),
+        "phone": suggested.get("phone"),
+        "website": suggested.get("website"),
+    }
+
+
+def _resolve_zone_primary(
+    zone: dict[str, Any],
+    roadbook: dict[str, Any],
+    suggested_stop: dict[str, Any] | None,
+    *,
+    climbs: list[dict[str, Any]] | None = None,
+    unsupported_sections: list[dict[str, Any]] | None = None,
+) -> tuple[dict[str, Any] | None, str, str]:
+    if suggested_stop:
+        osm_id = int(suggested_stop.get("osm_id") or 0)
+        osm_type = str(suggested_stop.get("osm_type") or "node")
+        if osm_id:
+            matched = _find_poi_in_zone(zone, osm_id, osm_type)
+            if matched:
+                return matched
+            roadbook_poi = _find_poi_in_roadbook(roadbook, osm_id, osm_type)
+            if roadbook_poi:
+                category_key = str(suggested_stop.get("category_key") or "food")
+                category_label = str(suggested_stop.get("category_label") or category_key)
+                return roadbook_poi, category_key, category_label
+            return (
+                _poi_from_suggested_stop(suggested_stop),
+                str(suggested_stop.get("category_key") or "food"),
+                str(suggested_stop.get("category_label") or "Resupply"),
+            )
+
+    ranked = _rank_zone_pois(
+        zone,
+        climbs=climbs,
+        unsupported_sections=unsupported_sections,
+    )
+    if ranked:
+        return ranked[0][0], ranked[0][1], ranked[0][2]
+    return None, "", "Resupply"
+
+
 def _alternative_payload(
     poi: dict[str, Any],
     category_key: str,
@@ -402,17 +496,23 @@ def build_companion_bundle(
     raw_sections = analyze_unsupported_sections(all_zones, total_km)
     climb_candidates = roadbook.get("climbs") or []
     significant = significant_climbs(climb_candidates)
+    suggested_by_zone = _suggested_stops_by_zone(roadbook)
 
     stops: list[dict[str, Any]] = []
     for zone in zones:
         zone_id = zone.get("zone_id")
+        poi, primary_key, poi_category_label = _resolve_zone_primary(
+            zone,
+            roadbook,
+            suggested_by_zone.get(int(zone_id or 0)),
+            climbs=significant,
+            unsupported_sections=raw_sections,
+        )
         ranked = _rank_zone_pois(
             zone,
             climbs=significant,
             unsupported_sections=raw_sections,
         )
-        poi = ranked[0][0] if ranked else None
-        poi_category_label = ranked[0][2] if ranked else "Resupply"
         category = str((poi or {}).get("poi_category") or poi_category_label or "Resupply")
         poi_lat = (poi or {}).get("lat")
         poi_lon = (poi or {}).get("lon")
@@ -425,13 +525,23 @@ def build_companion_bundle(
         )
         status = _verification_status(record if isinstance(record, dict) else None)
         notes = str((record or {}).get("reject_notes") or (record or {}).get("rejectNotes") or "").strip() or None
+        primary_osm_id = int((poi or {}).get("osm_id") or 0)
+        primary_osm_type = str((poi or {}).get("osm_type") or "")
+        alt_ranked = [
+            entry
+            for entry in ranked
+            if not (
+                primary_osm_id
+                and int(entry[0].get("osm_id") or 0) == primary_osm_id
+                and str(entry[0].get("osm_type") or "") == primary_osm_type
+            )
+        ]
         alternatives = [
             _alternative_payload(alt_poi, alt_key, alt_label, verified_stops, zone_id, race_id)
-            for alt_poi, alt_key, alt_label in ranked[1:6]
+            for alt_poi, alt_key, alt_label in alt_ranked[:6]
         ]
         nearby_alternatives = alternatives
         zone_km = float(zone.get("distance_along_km") or 0)
-        primary_key = ranked[0][1] if ranked else ""
         poi_id = compute_poi_id(race_id, poi, category=category, distance_along_km=zone_km) if poi else compute_poi_id(
             race_id,
             {"poi_category": category, "distance_along_km": zone_km},

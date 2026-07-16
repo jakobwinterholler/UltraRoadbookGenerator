@@ -128,6 +128,82 @@ class CompanionBundleTests(unittest.TestCase):
         self.assertEqual(discover[0]["osmId"], 100)
         self.assertEqual(discover[0]["category"], "Gas station")
 
+    def test_build_companion_bundle_uses_suggested_stop_primary(self):
+        roadbook = {
+            "summary": {"route_name": "Suggested Route", "distance_km": 40.0, "elevation_gain_m": 500.0},
+            "route": {"track_points": [{"lat": 46.0, "lon": 7.0}, {"lat": 46.2, "lon": 7.2}]},
+            "suggested_stops": [
+                {
+                    "zone_id": 1,
+                    "osm_id": 99,
+                    "osm_type": "node",
+                    "name": "Found Gas",
+                    "poi_category": "Gas station",
+                    "category_key": "fuel",
+                    "category_label": "Fuel",
+                    "distance_along_km": 12.0,
+                    "distance_off_route_m": 35.0,
+                    "lat": 46.08,
+                    "lon": 7.08,
+                    "score": 82.0,
+                    "reason": "Discovered on route",
+                }
+            ],
+            "pois": [
+                {
+                    "osm_id": 99,
+                    "osm_type": "node",
+                    "name": "Found Gas",
+                    "category": "Gas station",
+                    "lat": 46.08,
+                    "lon": 7.08,
+                    "distance_along_km": 12.0,
+                    "distance_off_route_m": 35.0,
+                    "score": 82.0,
+                    "zone_id": 1,
+                }
+            ],
+            "resupply_zones": [
+                {
+                    "zone_id": 1,
+                    "distance_along_km": 12.0,
+                    "lat": 46.08,
+                    "lon": 7.08,
+                    "name": "Stop 1",
+                    "categories": [
+                        {
+                            "key": "water",
+                            "label": "Water",
+                            "primary": {
+                                "osm_id": 1,
+                                "osm_type": "node",
+                                "name": "Fountain",
+                                "poi_category": "Drinking water",
+                                "lat": 46.081,
+                                "lon": 7.081,
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        preparation = {
+            "verified_stops": {
+                "1": {
+                    "status": "verified",
+                    "poi_key": "node-99",
+                    "updated_at": "2026-07-16T10:00:00+00:00",
+                }
+            }
+        }
+
+        bundle = build_companion_bundle("suggested-id", roadbook, preparation, revision=2)
+
+        self.assertEqual(len(bundle["stops"]), 1)
+        self.assertEqual(bundle["stops"][0]["osmId"], 99)
+        self.assertEqual(bundle["stops"][0]["name"], "Found Gas")
+        self.assertEqual(bundle["stops"][0]["verificationStatus"], "verified")
+
 
 if __name__ == "__main__":
     unittest.main()
