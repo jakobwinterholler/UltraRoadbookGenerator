@@ -1,5 +1,6 @@
 import type {
   CompanionBundle,
+  CompanionDiscoverPoi,
   CompanionStop,
   CompanionStopAlternative,
 } from "../types/sync";
@@ -122,6 +123,51 @@ function recountDashboardStats(bundle: CompanionBundle): CompanionBundle["dashbo
       : Math.round((verified / Math.max(total, 1)) * 100),
     readinessReasons: existing?.readinessReasons ?? [],
   };
+}
+
+/** Promote a discovered POI into the zone stop tree before applying verification. */
+export function applyDiscoverVerificationToBundle(
+  bundle: CompanionBundle,
+  submission: CompanionVerificationSubmission,
+  discoverPoi: CompanionDiscoverPoi,
+): CompanionBundle {
+  const zoneId = discoverPoi.zoneId ?? submission.zoneId;
+  const alternative: CompanionStopAlternative = {
+    poiId: `poi_${discoverPoi.osmId}`,
+    osmId: discoverPoi.osmId,
+    osmType: discoverPoi.osmType,
+    name: discoverPoi.name?.trim() || discoverPoi.brand?.trim() || "Resupply",
+    category: discoverPoi.category,
+    categoryLabel: discoverPoi.category,
+    icon: "📍",
+    distanceOffRouteM: discoverPoi.distanceOffRouteM,
+    distanceAlongKm: discoverPoi.distanceAlongKm,
+    score: discoverPoi.score,
+    confidenceScore: discoverPoi.score,
+    verificationStatus: "unverified",
+    openingHours: discoverPoi.openingHours ?? null,
+    lat: discoverPoi.lat,
+    lon: discoverPoi.lon,
+  };
+
+  const stops = bundle.stops.map((stop) => {
+    if (stop.zoneId !== zoneId) {
+      return stop;
+    }
+    const existing = stop.nearbyAlternatives ?? [];
+    const alreadyPresent = existing.some(
+      (item) => item.osmId === discoverPoi.osmId && item.osmType === discoverPoi.osmType,
+    );
+    if (alreadyPresent) {
+      return stop;
+    }
+    return {
+      ...stop,
+      nearbyAlternatives: [...existing, alternative],
+    };
+  });
+
+  return applyVerificationToBundle({ ...bundle, stops }, submission);
 }
 
 /** Optimistically patch companion bundle after a verification submission. */

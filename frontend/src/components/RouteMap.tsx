@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import L from "leaflet";
 import {
   CircleMarker,
@@ -9,7 +9,8 @@ import {
   useMap,
   useMapEvents,
 } from "react-leaflet";
-import type { ClimbCandidateRow, ClimbRow, ResupplyZone, RouteVisualization, TrackPoint } from "../api";
+import type { ClimbCandidateRow, ClimbRow, ResupplyZone, RouteVisualization } from "../api";
+import { discoverMarkerHtml } from "@shared/race/discoverMarker";
 import type { DiscoverCandidate } from "@shared/race/discoverStops";
 import { poiOsmKey } from "@shared/race/discoverStops";
 import { mapBoundsFromLeaflet } from "../planning/discoverStopsAdapter";
@@ -87,14 +88,11 @@ interface RouteMapProps {
   climbDebugMode?: boolean;
   onPoiDebugClick?: (lat: number, lon: number) => void;
   onClimbDebugClick?: (lat: number, lon: number) => void;
-  discoverActive?: boolean;
   discoverCandidates?: DiscoverCandidate[];
   selectedDiscoverKey?: string | null;
   onDiscoverBoundsChange?: (bounds: MapBounds) => void;
   onSelectDiscoverCandidate?: (candidate: DiscoverCandidate) => void;
 }
-
-const DISCOVER_DETOUR_COLOR = "#2563EB";
 
 function PanToFocus({
   points,
@@ -263,16 +261,21 @@ function zoneTooltip(zone: ResupplyZone): string {
   return `${zone.name} (${zone.distance_along_km.toFixed(0)} km)${services ? ` — ${services}` : ""}`;
 }
 
-function poiDivIcon(icon: string, discovery = false, selected = false): L.DivIcon {
-  const discoveryStyle = discovery
-    ? "animation:discover-marker-in .45s ease-out both;border:2px solid #2563EB;border-radius:9999px;padding:2px;background:rgba(255,255,255,.95);"
-    : "";
-  const selectedStyle = selected ? "transform:scale(1.15);box-shadow:0 0 0 3px rgba(37,99,235,.25);" : "";
+function poiDivIcon(icon: string): L.DivIcon {
   return L.divIcon({
-    html: `<div style="font-size:18px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));${discoveryStyle}${selectedStyle}">${icon}</div>`,
-    className: discovery ? "discover-marker" : "",
+    html: `<div style="font-size:18px;line-height:1;filter:drop-shadow(0 1px 2px rgba(0,0,0,.35));">${icon}</div>`,
+    className: "",
     iconSize: [22, 22],
     iconAnchor: [11, 11],
+  });
+}
+
+function discoverDivIcon(selected = false, animationDelayMs = 0): L.DivIcon {
+  return L.divIcon({
+    html: discoverMarkerHtml({ selected, animationDelayMs }),
+    className: "discover-marker",
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
   });
 }
 
@@ -294,24 +297,6 @@ function MapBoundsWatcher({ onBoundsChange }: { onBoundsChange?: (bounds: MapBou
   }, [map, onBoundsChange]);
 
   return null;
-}
-
-function discoverDetourLine(
-  trackPoints: TrackPoint[],
-  candidate: DiscoverCandidate,
-): [number, number][] | null {
-  const trackIndex = findNearestTrackIndexByLatLng(trackPoints, candidate.lat, candidate.lon);
-  const trackPoint = trackPoints[trackIndex];
-  if (!trackPoint) {
-    return null;
-  }
-  if (trackPoint.lat === candidate.lat && trackPoint.lon === candidate.lon) {
-    return null;
-  }
-  return [
-    [trackPoint.lat, trackPoint.lon],
-    [candidate.lat, candidate.lon],
-  ];
 }
 
 export default function RouteMap({
@@ -342,7 +327,6 @@ export default function RouteMap({
   climbDebugMode = false,
   onPoiDebugClick,
   onClimbDebugClick,
-  discoverActive = false,
   discoverCandidates = [],
   selectedDiscoverKey = null,
   onDiscoverBoundsChange,
@@ -539,47 +523,21 @@ export default function RouteMap({
           );
         })}
 
-        {discoverActive &&
-          discoverCandidates.map((candidate) => {
-            const detour = discoverDetourLine(route.track_points, candidate);
-            const key = poiOsmKey(candidate.osmType, candidate.osmId);
-            const selected = selectedDiscoverKey === key;
-            return (
-              <Fragment key={`discover-wrap-${key}`}>
-                {detour && (
-                  <>
-                    <Polyline
-                      positions={detour}
-                      pathOptions={{
-                        color: DISCOVER_DETOUR_COLOR,
-                        weight: 4,
-                        opacity: 0.18,
-                        dashArray: "2 4",
-                      }}
-                    />
-                    <Polyline
-                      positions={detour}
-                      pathOptions={{
-                        color: DISCOVER_DETOUR_COLOR,
-                        weight: 2,
-                        opacity: 0.9,
-                        dashArray: "6 8",
-                        lineCap: "round",
-                      }}
-                    />
-                  </>
-                )}
-                <Marker
-                  position={[candidate.lat, candidate.lon]}
-                  icon={poiDivIcon(candidate.icon, true, selected)}
-                  zIndexOffset={selected ? 700 : 400}
-                  eventHandlers={{
-                    click: () => onSelectDiscoverCandidate?.(candidate),
-                  }}
-                />
-              </Fragment>
-            );
-          })}
+        {discoverCandidates.map((candidate, index) => {
+          const key = poiOsmKey(candidate.osmType, candidate.osmId);
+          const selected = selectedDiscoverKey === key;
+          return (
+            <Marker
+              key={`discover-${key}`}
+              position={[candidate.lat, candidate.lon]}
+              icon={discoverDivIcon(selected, index * 60)}
+              zIndexOffset={selected ? 700 : 400}
+              eventHandlers={{
+                click: () => onSelectDiscoverCandidate?.(candidate),
+              }}
+            />
+          );
+        })}
 
         {poiMarkers.map((marker) => (
           <Marker

@@ -78,6 +78,15 @@
     border: none !important;
   }
 
+  .discover-marker-pin {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: discover-marker-in 0.45s ease-out both;
+    cursor: pointer;
+  }
+
   .dashboard-challenge-marker {
     display: flex;
     align-items: center;

@@ -1,10 +1,17 @@
 import { useCallback, useMemo, useState } from "react";
 import { collectAllBundlePois } from "@shared/race/bundlePois";
-import { discoverStopIcon, poiOsmKey, type DiscoverCandidate, type MapBounds } from "@shared/race/discoverStops";
+import {
+  DISCOVERY_MAX_RESULTS,
+  discoverStopIcon,
+  discoverStopsInBounds,
+  poiOsmKey,
+  type DiscoverCandidate,
+  type DiscoverClimbRange,
+  type MapBounds,
+} from "@shared/race/discoverStops";
 import type { CompanionBundle, CompanionStop } from "@shared/types/sync";
 import {
   discoverPoisFromBundle,
-  discoverStopsCache,
   primaryPoiKeysFromBundle,
   trackPointsFromBundle,
 } from "./discoverStopsAdapter";
@@ -14,7 +21,14 @@ interface UseDiscoverStopsOptions {
   onSelectStop: (stop: CompanionStop) => void;
 }
 
-function candidateToCompanionStop(
+function formatResultMessage(count: number): string {
+  if (count === 0) {
+    return "No promising stops in this area";
+  }
+  return `Found ${count} promising stop${count === 1 ? "" : "s"}`;
+}
+
+export function candidateToCompanionStop(
   bundle: CompanionBundle,
   candidate: DiscoverCandidate,
 ): CompanionStop | null {
@@ -55,59 +69,70 @@ function candidateToCompanionStop(
 }
 
 export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptions) {
-  const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(false);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [candidates, setCandidates] = useState<DiscoverCandidate[]>([]);
   const [selectedCandidateKey, setSelectedCandidateKey] = useState<string | null>(null);
   const [dismissedKeys, setDismissedKeys] = useState<Set<string>>(() => new Set());
-  const [promoting, setPromoting] = useState(false);
+  const [verifiedKeys, setVerifiedKeys] = useState<Set<string>>(() => new Set());
+  const [resultMessage, setResultMessage] = useState<string | null>(null);
 
   const discoverInputs = useMemo(() => discoverPoisFromBundle(bundle), [bundle]);
   const trackInputs = useMemo(() => trackPointsFromBundle(bundle), [bundle]);
   const existingStopKms = useMemo(() => bundle.stops.map((stop) => stop.km), [bundle.stops]);
   const primaryKeys = useMemo(() => primaryPoiKeysFromBundle(bundle), [bundle]);
-
-  const runDiscovery = useCallback(
-    (nextBounds: MapBounds) => {
-      setLoading(true);
-      const result = discoverStopsCache.resolve({
-        pois: discoverInputs,
-        bounds: nextBounds,
-        trackPoints: trackInputs,
-        existingStopKms,
-        primaryPoiKeys: primaryKeys,
-        dismissedPoiKeys: dismissedKeys,
-        limit: 8,
-      });
-      setCandidates(result.candidates);
-      setLoading(false);
-    },
-    [discoverInputs, dismissedKeys, existingStopKms, primaryKeys, trackInputs],
+  const climbRanges = useMemo<DiscoverClimbRange[]>(
+    () =>
+      (bundle.climbs ?? []).map((climb) => ({
+        startKm: climb.startKm,
+        endKm: climb.endKm,
+      })),
+    [bundle.climbs],
   );
 
-  const handleBoundsChange = useCallback(
-    (nextBounds: MapBounds) => {
-      setBounds(nextBounds);
-      if (active) {
-        runDiscovery(nextBounds);
-      }
-    },
-    [active, runDiscovery],
+  const excludedKeys = useMemo(
+    () => new Set([...dismissedKeys, ...verifiedKeys]),
+    [dismissedKeys, verifiedKeys],
   );
 
-  const toggleDiscovery = useCallback(() => {
-    setActive((current) => {
-      const next = !current;
-      if (!next) {
-        setCandidates([]);
-        setSelectedCandidateKey(null);
-      } else if (bounds) {
-        runDiscovery(bounds);
-      }
-      return next;
+  const findStops = useCallback(() => {
+    if (!bounds) {
+      return;
+    }
+    setLoading(true);
+    setCandidates([]);
+    setSelectedCandidateKey(null);
+    setResultMessage(null);
+
+    const result = discoverStopsInBounds({
+      pois: discoverInputs,
+      bounds,
+      trackPoints: trackInputs,
+      existingStopKms,
+      primaryPoiKeys: primaryKeys,
+      dismissedPoiKeys: excludedKeys,
+      verifiedPoiKeys: verifiedKeys,
+      climbRanges,
+      limit: DISCOVERY_MAX_RESULTS,
     });
-  }, [bounds, runDiscovery]);
+
+    setCandidates(result.candidates);
+    setResultMessage(formatResultMessage(result.candidates.length));
+    setLoading(false);
+  }, [
+    bounds,
+    climbRanges,
+    discoverInputs,
+    excludedKeys,
+    existingStopKms,
+    primaryKeys,
+    trackInputs,
+    verifiedKeys,
+  ]);
+
+  const handleBoundsChange = useCallback((nextBounds: MapBounds) => {
+    setBounds(nextBounds);
+  }, []);
 
   const selectedCandidate = useMemo(
     () =>
@@ -117,52 +142,83 @@ export function useDiscoverStops({ bundle, onSelectStop }: UseDiscoverStopsOptio
     [candidates, selectedCandidateKey],
   );
 
-  const dismissCandidate = useCallback(
+  const skipCandidate = useCallback((candidate: DiscoverCandidate) => {
+    const key = poiOsmKey(candidate.osmType, candidate.osmId);
+    setDismissedKeys((current) => new Set([...current, key]));
+    setCandidates((current) =>
+      current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
+    );
+    setSelectedCandidateKey((current) => (current === key ? null : current));
+  }, []);
+
+  const openCandidate = useCallback(
     (candidate: DiscoverCandidate) => {
-      const key = poiOsmKey(candidate.osmType, candidate.osmId);
+      const stop = candidateToCompanionStop(bundle, candidate);
+      if (stop) {
+        onSelectStop(stop);
+      }
+    },
+    [bundle, onSelectStop],
+  );
+
+  const handleStopVerified = useCallback(
+    (stop: CompanionStop) => {
+      if (stop.osmId == null || !stop.osmType) {
+        return;
+      }
+      const key = poiOsmKey(stop.osmType, stop.osmId);
+      setVerifiedKeys((current) => new Set([...current, key]));
+      setCandidates((current) =>
+        current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
+      );
+      setSelectedCandidateKey((current) => (current === key ? null : current));
+    },
+    [],
+  );
+
+  const handleStopSkipped = useCallback(
+    (stop: CompanionStop) => {
+      if (stop.osmId == null || !stop.osmType) {
+        return;
+      }
+      const key = poiOsmKey(stop.osmType, stop.osmId);
+      if (!candidates.some((item) => poiOsmKey(item.osmType, item.osmId) === key)) {
+        return;
+      }
       setDismissedKeys((current) => new Set([...current, key]));
       setCandidates((current) =>
         current.filter((item) => poiOsmKey(item.osmType, item.osmId) !== key),
       );
       setSelectedCandidateKey((current) => (current === key ? null : current));
-      if (bounds) {
-        discoverStopsCache.clear();
-        runDiscovery(bounds);
-      }
     },
-    [bounds, runDiscovery],
+    [candidates],
   );
 
-  const promoteCandidate = useCallback(
-    async (candidate: DiscoverCandidate) => {
-      setPromoting(true);
-      try {
-        const stop = candidateToCompanionStop(bundle, candidate);
-        if (stop) {
-          onSelectStop(stop);
-        }
-        dismissCandidate(candidate);
-        setActive(false);
-        setCandidates([]);
-        setSelectedCandidateKey(null);
-      } finally {
-        setPromoting(false);
+  const isDiscoveryCandidate = useCallback(
+    (osmId: number | undefined, osmType: string | undefined): boolean => {
+      if (osmId == null || !osmType) {
+        return false;
       }
+      const key = poiOsmKey(osmType, osmId);
+      return candidates.some((item) => poiOsmKey(item.osmType, item.osmId) === key);
     },
-    [bundle, dismissCandidate, onSelectStop],
+    [candidates],
   );
 
   return {
-    active,
     loading,
     candidates,
     selectedCandidate,
     selectedCandidateKey,
-    promoting,
-    toggleDiscovery,
+    resultMessage,
+    hasResults: candidates.length > 0,
+    findStops,
     handleBoundsChange,
     selectCandidate: setSelectedCandidateKey,
-    dismissCandidate,
-    promoteCandidate,
+    openCandidate,
+    skipCandidate,
+    handleStopVerified,
+    handleStopSkipped,
+    isDiscoveryCandidate,
   };
 }

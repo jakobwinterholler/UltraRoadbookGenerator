@@ -42,6 +42,11 @@ export interface DiscoverCandidate extends DiscoverPoiInput {
   elevationToNextStopM: number | null;
 }
 
+export interface DiscoverClimbRange {
+  startKm: number;
+  endKm: number;
+}
+
 export interface DiscoverStopsInput {
   pois: DiscoverPoiInput[];
   bounds: MapBounds;
@@ -51,6 +56,10 @@ export interface DiscoverStopsInput {
   /** osm keys `${type}-${id}` already shown as primary hub markers */
   primaryPoiKeys?: Set<string>;
   dismissedPoiKeys?: Set<string>;
+  /** Verified discovery keys — excluded from future searches */
+  verifiedPoiKeys?: Set<string>;
+  /** Significant climbs — boost gas/water/café near climbs */
+  climbRanges?: DiscoverClimbRange[];
   limit?: number;
 }
 
@@ -61,6 +70,8 @@ export interface DiscoverStopsResult {
   maxOffRouteM: number;
   cacheKey: string;
 }
+
+export const DISCOVERY_MAX_RESULTS = 10;
 
 const DISCOVERY_CATEGORY_ORDER: readonly string[] = [
   "Gas station",
@@ -255,7 +266,27 @@ function nextStopKm(candidateKm: number, stopKms: number[]): number | null {
   return ahead[0] ?? null;
 }
 
-function rankCandidate(poi: DiscoverPoiInput): number {
+const CLIMB_BOOST_CATEGORIES = new Set(["Gas station", "Drinking water", "Café", "Restaurant"]);
+const CLIMB_PROXIMITY_KM = 3;
+
+function climbProximityBoost(
+  poiKm: number,
+  category: string,
+  climbRanges?: DiscoverClimbRange[],
+): number {
+  if (!climbRanges?.length || !CLIMB_BOOST_CATEGORIES.has(category)) {
+    return 0;
+  }
+  for (const climb of climbRanges) {
+    const midpoint = (climb.startKm + climb.endKm) / 2;
+    if (Math.abs(poiKm - midpoint) <= CLIMB_PROXIMITY_KM) {
+      return 12;
+    }
+  }
+  return 0;
+}
+
+function rankCandidate(poi: DiscoverPoiInput, climbRanges?: DiscoverClimbRange[]): number {
   const score = planningScore({
     priority: poi.priority,
     category: poi.category,
@@ -266,11 +297,15 @@ function rankCandidate(poi: DiscoverPoiInput): number {
     openingHours: poi.openingHours,
     tags: poi.tags,
   });
-  return score + categoryRank(poi.category) * 8;
+  return (
+    score +
+    categoryRank(poi.category) * 8 +
+    climbProximityBoost(poi.distanceAlongKm, poi.category, climbRanges)
+  );
 }
 
 export function discoverStopsInBounds(input: DiscoverStopsInput): DiscoverStopsResult {
-  const limit = input.limit ?? 8;
+  const limit = input.limit ?? DISCOVERY_MAX_RESULTS;
   const { startKm, endKm } = visibleKmRange(input.trackPoints, input.bounds);
   const maxOffRouteM = computeDiscoveryRadius({
     visibleStartKm: startKm,
@@ -292,6 +327,9 @@ export function discoverStopsInBounds(input: DiscoverStopsInput): DiscoverStopsR
     if (input.dismissedPoiKeys?.has(key)) {
       continue;
     }
+    if (input.verifiedPoiKeys?.has(key)) {
+      continue;
+    }
     if (input.primaryPoiKeys?.has(key)) {
       continue;
     }
@@ -304,7 +342,7 @@ export function discoverStopsInBounds(input: DiscoverStopsInput): DiscoverStopsR
       continue;
     }
 
-    const rankScore = rankCandidate(poi);
+    const rankScore = rankCandidate(poi, input.climbRanges);
     const nextKm = nextStopKm(poi.distanceAlongKm, input.existingStopKms);
     const candidateEle = elevationAtKm(input.trackPoints, poi.distanceAlongKm);
     const nextEle = nextKm != null ? elevationAtKm(input.trackPoints, nextKm) : null;

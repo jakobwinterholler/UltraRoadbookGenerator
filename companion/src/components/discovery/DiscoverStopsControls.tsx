@@ -1,27 +1,29 @@
 interface DiscoverStopsControlsProps {
-  active: boolean;
   loading: boolean;
-  candidateCount: number;
-  onToggle: () => void;
+  resultMessage: string | null;
+  onFindStops: () => void;
 }
 
 export default function DiscoverStopsControls({
-  active,
   loading,
-  candidateCount,
-  onToggle,
+  resultMessage,
+  onFindStops,
 }: DiscoverStopsControlsProps) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`pointer-events-auto min-h-[44px] rounded-2xl px-4 py-2.5 text-sm font-semibold shadow-lg backdrop-blur-xl transition ${
-        active
-          ? "bg-sky-500 text-white ring-1 ring-sky-400/40"
-          : "border border-white/12 bg-black/55 text-white/90 hover:bg-white/8"
-      }`}
-    >
-      {loading ? "Searching…" : active ? `✓ ${candidateCount} found` : "🔍 Discover Better Stops"}
-    </button>
+    <div className="pointer-events-auto flex flex-col items-stretch gap-2">
+      {resultMessage ? (
+        <p className="animate-fade-in rounded-xl border border-white/12 bg-black/55 px-3 py-2 text-center text-xs font-medium text-white/85 shadow-lg backdrop-blur-xl">
+          {resultMessage}
+        </p>
+      ) : null}
+      <button
+        type="button"
+        onClick={onFindStops}
+        disabled={loading}
+        className="min-h-[44px] rounded-2xl border border-white/12 bg-black/55 px-4 py-2.5 text-sm font-semibold text-white/90 shadow-lg backdrop-blur-xl transition hover:bg-white/8 disabled:opacity-60"
+      >
+        {loading ? "Searching…" : "🔍 Find Stops"}
+      </button>
+    </div>
   );
 }

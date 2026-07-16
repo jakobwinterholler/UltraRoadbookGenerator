@@ -116,6 +116,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
     pois: result.pois,
     trackPoints: result.route.track_points,
     presentedZones,
+    climbs: result.climbs,
     onSelectPoi: selection.handleSelectPoi,
     onPromoteVerified: handlePromoteVerified,
   });
@@ -446,7 +447,6 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 onClimbDebugClick={(lat, lon) => {
                   setClimbDebugClick({ lat, lon });
                 }}
-                discoverActive={discovery.active}
                 discoverCandidates={discovery.candidates}
                 selectedDiscoverKey={discovery.selectedCandidateKey}
                 onDiscoverBoundsChange={discovery.handleBoundsChange}
@@ -455,17 +455,16 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 }
               />
               <DiscoverStopsControls
-                active={discovery.active}
                 loading={discovery.loading}
-                candidateCount={discovery.candidates.length}
-                onToggle={discovery.toggleDiscovery}
+                resultMessage={discovery.resultMessage}
+                onFindStops={discovery.findStops}
               />
               {discovery.selectedCandidate && (
                 <DiscoverCandidateDetail
                   candidate={discovery.selectedCandidate}
-                  promoting={discovery.promoting}
-                  onPromote={() => discovery.promoteCandidate(discovery.selectedCandidate!)}
-                  onDismiss={() => discovery.dismissCandidate(discovery.selectedCandidate!)}
+                  verifying={discovery.promoting}
+                  onVerify={() => discovery.verifyCandidate(discovery.selectedCandidate!)}
+                  onSkip={() => discovery.skipCandidate(discovery.selectedCandidate!)}
                 />
               )}
               {poiDebugMode && (

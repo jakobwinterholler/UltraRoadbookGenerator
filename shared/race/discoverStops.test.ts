@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import {
   boundsCacheKey,
   computeDiscoveryRadius,
+  DISCOVERY_MAX_RESULTS,
   discoverStopsInBounds,
   discoverStopIcon,
   isDiscoverableCategory,
@@ -154,6 +155,71 @@ function testBoundsCacheKeyStable() {
   );
 }
 
+function testRespectsMaxResults() {
+  const many = DISCOVERY_CATEGORY_ORDER_CATEGORIES.map((category, index) =>
+    poi({ category, osmId: 100 + index, score: 50 + index }),
+  );
+  const result = discoverStopsInBounds({
+    pois: many,
+    bounds: BOUNDS,
+    trackPoints: TRACK,
+    existingStopKms: [25],
+  });
+  assert.equal(result.candidates.length, DISCOVERY_MAX_RESULTS);
+}
+
+function testVerifiedKeysExcluded() {
+  const verified = poi({ category: "Gas station", osmId: 20, osmType: "node" });
+  const fresh = poi({ category: "Small supermarket", osmId: 21, osmType: "node" });
+  const result = discoverStopsInBounds({
+    pois: [verified, fresh],
+    bounds: BOUNDS,
+    trackPoints: TRACK,
+    existingStopKms: [25],
+    verifiedPoiKeys: new Set(["node-20"]),
+  });
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.osmId, 21);
+}
+
+const DISCOVERY_CATEGORY_ORDER_CATEGORIES = [
+  "Gas station",
+  "Small supermarket",
+  "Mini supermarket",
+  "Drinking water",
+  "Convenience store",
+  "Supermarket",
+  "Café",
+  "Restaurant",
+  "Gas station",
+  "Gas station",
+  "Gas station",
+  "Gas station",
+] as const;
+
+function testClimbProximityBoost() {
+  const gasNearClimb = poi({
+    category: "Gas station",
+    osmId: 30,
+    distanceAlongKm: 9,
+    score: 50,
+  });
+  const cafeFar = poi({
+    category: "Café",
+    osmId: 31,
+    distanceAlongKm: 9,
+    score: 80,
+  });
+  const result = discoverStopsInBounds({
+    pois: [cafeFar, gasNearClimb],
+    bounds: BOUNDS,
+    trackPoints: TRACK,
+    existingStopKms: [25],
+    climbRanges: [{ startKm: 8, endKm: 10 }],
+  });
+  assert.equal(result.candidates[0]?.category, "Gas station");
+}
+
 testCategoryRankingPrefersGasOverDining();
 testIgnoresIrrelevantCategories();
 testIgnoresMountainHutUnlessRestaurant();
@@ -162,5 +228,8 @@ testFiltersOutsideBounds();
 testDismissedAndPrimaryAreExcluded();
 testIconsAndNextStopMetrics();
 testBoundsCacheKeyStable();
+testRespectsMaxResults();
+testVerifiedKeysExcluded();
+testClimbProximityBoost();
 
 console.log("discoverStops.test.ts: all tests passed");

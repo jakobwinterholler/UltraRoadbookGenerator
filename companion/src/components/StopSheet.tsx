@@ -27,6 +27,8 @@ interface StopSheetProps {
   bundle: CompanionBundle;
   onClose: () => void;
   onSelectAlternative?: (stop: CompanionStop) => void;
+  onVerified?: (stop: CompanionStop) => void;
+  onSkipped?: (stop: CompanionStop) => void;
 }
 
 function statusBadgeClass(status: CompanionStop["verificationStatus"]): string {
@@ -126,6 +128,8 @@ export default function StopSheet({
   bundle,
   onClose,
   onSelectAlternative,
+  onVerified,
+  onSkipped,
 }: StopSheetProps) {
   const { user } = useAuth();
   const { gps } = useCompanion();
@@ -176,7 +180,11 @@ export default function StopSheet({
       setActionError(result.error ?? "Could not verify this stop.");
       return;
     }
-    onClose();
+    if (onVerified) {
+      onVerified(target);
+    } else {
+      onClose();
+    }
   }
 
   async function handleSkip() {
@@ -192,7 +200,11 @@ export default function StopSheet({
       setActionError(result.error ?? "Could not skip this stop.");
       return;
     }
-    onClose();
+    if (onSkipped) {
+      onSkipped(stop);
+    } else {
+      onClose();
+    }
   }
 
   return (

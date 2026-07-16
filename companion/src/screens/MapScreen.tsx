@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { poiOsmKey } from "@shared/race/discoverStops";
 import { useCompanion } from "../context/CompanionContext";
-import type { CompanionClimb } from "@shared/types/sync";
+import type { CompanionClimb, CompanionStop } from "@shared/types/sync";
 import ClimbSheet from "../components/ClimbSheet";
-import DiscoverCandidateDetail from "../components/discovery/DiscoverCandidateDetail";
 import DiscoverStopsControls from "../components/discovery/DiscoverStopsControls";
 import FloatingCard from "../components/FloatingCard";
 import MapControls from "../components/MapControls";
@@ -46,11 +44,23 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
     }
   }, [selectedStop, setFollowGps]);
 
-  useEffect(() => {
-    if (selectedStop && discovery.active) {
-      discovery.toggleDiscovery();
+  function handleStopSheetClose() {
+    selectStop(null);
+  }
+
+  function handleStopVerified(stop: CompanionStop) {
+    if (discovery.isDiscoveryCandidate(stop.osmId, stop.osmType)) {
+      discovery.handleStopVerified(stop);
     }
-  }, [selectedStop, discovery.active, discovery.toggleDiscovery]);
+    handleStopSheetClose();
+  }
+
+  function handleStopSkipped(stop: CompanionStop) {
+    if (discovery.isDiscoveryCandidate(stop.osmId, stop.osmType)) {
+      discovery.handleStopSkipped(stop);
+    }
+    handleStopSheetClose();
+  }
 
   if (embedded) {
     return (
@@ -70,13 +80,10 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
             const climb = bundle.climbs?.find((item) => item.id === climbId) ?? null;
             setSelectedClimb(climb);
           }}
-          discoverActive={discovery.active}
           discoverCandidates={discovery.candidates}
           selectedDiscoverKey={discovery.selectedCandidateKey}
           onDiscoverBoundsChange={discovery.handleBoundsChange}
-          onSelectDiscoverCandidate={(candidate) =>
-            discovery.selectCandidate(poiOsmKey(candidate.osmType, candidate.osmId))
-          }
+          onSelectDiscoverCandidate={(candidate) => discovery.openCandidate(candidate)}
         />
       </div>
 
@@ -121,22 +128,12 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
             onResetNorth={() => mapRef.current?.resetNorth()}
           />
 
-          <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20 mx-auto max-w-md">
-            {discovery.selectedCandidate ? (
-              <DiscoverCandidateDetail
-                candidate={discovery.selectedCandidate}
-                promoting={discovery.promoting}
-                onPromote={() => discovery.promoteCandidate(discovery.selectedCandidate!)}
-                onDismiss={() => discovery.dismissCandidate(discovery.selectedCandidate!)}
-              />
-            ) : (
-              <DiscoverStopsControls
-                active={discovery.active}
-                loading={discovery.loading}
-                candidateCount={discovery.candidates.length}
-                onToggle={discovery.toggleDiscovery}
-              />
-            )}
+          <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+            <DiscoverStopsControls
+              loading={discovery.loading}
+              resultMessage={discovery.resultMessage}
+              onFindStops={discovery.findStops}
+            />
           </div>
         </>
       ) : null}
@@ -144,8 +141,10 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
       <StopSheet
         stop={selectedStop}
         bundle={bundle}
-        onClose={() => selectStop(null)}
+        onClose={handleStopSheetClose}
         onSelectAlternative={selectStop}
+        onVerified={handleStopVerified}
+        onSkipped={handleStopSkipped}
       />
 
       <ClimbSheet
