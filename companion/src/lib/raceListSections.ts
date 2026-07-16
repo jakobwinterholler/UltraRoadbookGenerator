@@ -1,7 +1,7 @@
 import type { CompanionBundle } from "@shared/types/sync";
 import type { StoredRaceListItem } from "../db";
 
-export type RaceListSectionId = "recent" | "downloaded" | "cloud";
+export type RaceListSectionId = "my-races";
 
 export interface RaceListSection {
   id: RaceListSectionId;
@@ -34,27 +34,15 @@ export function formatLastUpdated(value: string | null | undefined): string {
 }
 
 export function buildRaceListSections(races: StoredRaceListItem[]): RaceListSection[] {
-  const downloaded = races.filter((race) => race.offlineReady);
-  const cloudOnly = races.filter((race) => !race.offlineReady && race.has_bundle);
-  const recent = [...races]
-    .sort((left, right) => {
-      const leftTime = left.lastOpenedAt ?? left.updated_at ?? "";
-      const rightTime = right.lastOpenedAt ?? right.updated_at ?? "";
-      return rightTime.localeCompare(leftTime);
-    })
-    .slice(0, 5);
-
-  const sections: RaceListSection[] = [];
-  if (recent.length > 0) {
-    sections.push({ id: "recent", title: "Recent", races: recent });
+  if (races.length === 0) {
+    return [];
   }
-  if (downloaded.length > 0) {
-    sections.push({ id: "downloaded", title: "Downloaded", races: downloaded });
-  }
-  if (cloudOnly.length > 0) {
-    sections.push({ id: "cloud", title: "Cloud", races: cloudOnly });
-  }
-  return sections;
+  const sorted = [...races].sort((left, right) => {
+    const leftTime = left.lastOpenedAt ?? left.updated_at ?? "";
+    const rightTime = right.lastOpenedAt ?? right.updated_at ?? "";
+    return rightTime.localeCompare(leftTime);
+  });
+  return [{ id: "my-races", title: "My races", races: sorted }];
 }
 
 export { verifiedPercentFromBundle };

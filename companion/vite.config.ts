@@ -78,11 +78,9 @@ export default defineConfig({
         ],
         share_target: {
           action: "/?import=gpx",
-          method: "GET",
+          method: "POST",
+          enctype: "multipart/form-data",
           params: {
-            title: "title",
-            text: "text",
-            url: "url",
             files: [
               {
                 name: "gpx",
@@ -113,6 +111,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ["/share-import-sw.js"],
         globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,webmanifest}"],
         navigateFallback: "index.html",
         navigateFallbackDenylist: [/^\/api\//],

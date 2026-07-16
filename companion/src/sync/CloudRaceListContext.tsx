@@ -10,7 +10,7 @@ import {
 import { normalizeSyncListError } from "@shared/api/supabaseErrors";
 import { fetchSyncRaces } from "@shared/api/sync";
 import type { SyncRaceSummary } from "@shared/types/sync";
-import { needsCompanionDownload } from "@shared/sync/raceVersion";
+import { needsCompanionDownload, localBundleIsCurrent } from "@shared/sync/raceVersion";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import {
@@ -55,7 +55,25 @@ async function resolveOfflineReady(
   }
 
   const localBundle = await loadCompanionBundle(race.id);
-  const downloadedClimbCount = localBundle?.climbs?.length ?? null;
+  const downloadedClimbCount = localBundle?.climbs?.length ?? existing?.downloadedClimbCount ?? null;
+  const localSchemaVersion = localBundle?.schemaVersion ?? null;
+
+  if (
+    localBundle &&
+    localBundleIsCurrent(
+      race,
+      downloadedRevision,
+      true,
+      downloadedClimbCount,
+      localSchemaVersion,
+    )
+  ) {
+    return {
+      downloadedRevision: downloadedRevision ?? race.companion_revision,
+      downloadedChecksum: downloadedChecksum ?? localBundle.bundleChecksum ?? null,
+      offlineReady: true,
+    };
+  }
 
   const needsUpdate = needsCompanionDownload(
     race,
@@ -63,6 +81,7 @@ async function resolveOfflineReady(
     true,
     downloadedChecksum,
     downloadedClimbCount,
+    localSchemaVersion,
   );
   if (needsUpdate) {
     logSyncDebug("stale-cache", `${race.name} — cloud revision/climbs newer than local`, {
@@ -129,6 +148,7 @@ interface CloudRaceListContextValue {
   loading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
+  removeRace: (raceId: string) => void;
   onlineConfigured: boolean;
 }
 
@@ -174,15 +194,20 @@ export function CloudRaceListProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [configured, refresh]);
 
+  const removeRace = useCallback((raceId: string) => {
+    setRaces((current) => current.filter((race) => race.id !== raceId));
+  }, []);
+
   const value = useMemo(
     () => ({
       races,
       loading,
       error,
       refresh,
+      removeRace,
       onlineConfigured: configured,
     }),
-    [configured, error, loading, races, refresh],
+    [configured, error, loading, races, refresh, removeRace],
   );
 
   return (

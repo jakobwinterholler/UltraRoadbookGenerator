@@ -574,7 +574,9 @@ Decisions distilled from product conversations and iteration — preserve these 
 
 | Date | Milestone |
 |------|-----------|
+| 2026-07 | **Companion v0.3 Race Library & Sync UX** — clean home screen, invisible background sync with toast, fix stuck updates loop, direct Supabase delete, mobile GPX share/import |
 | 2026-07 | **Companion nav & home** — race library always on launch, back-to-library header + tab, simplified cards, swipe/long-press delete |
+| 2026-07 | **Dev environment** — `./start`, `./stop`, `./restart`, `./doctor` one-command workflow |
 | 2026-07 | **Companion mobile polish** — stable stop-detail mini map, safe-area insets, 44px touch targets |
 | 2026-07 | **v0.5 UX** — Plan-first desktop, Race screen, next-stop resupply, simplified import |
 | 2026-07 | **Find Stops** — bounds discovery, 10 temp max, promote on verify |
@@ -587,6 +589,29 @@ Decisions distilled from product conversations and iteration — preserve these 
 | 2026-06 | **POI engine** — OSM extraction with priority tiers |
 | 2026-06 | **v0.6 app** — React desktop shell, FastAPI backend |
 | 2026 (early) | **CLI milestones** — GPX parse, climbs, surface, Excel export |
+
+---
+
+## Local Development
+
+**One command:** `./start` — starts everything, opens browsers, enables auto-recovery.
+
+| Command | Purpose |
+|---------|---------|
+| `./start` | Start backend (:8000), Desktop (:5173), Companion (:5175) if not already running; open both in browser; start crash watcher |
+| `./stop` | Stop all managed dev processes cleanly |
+| `./restart` | `./stop` then `./start` |
+| `./doctor` | Diagnose ports, API, Supabase env, dependencies |
+
+**URLs:** Desktop `http://127.0.0.1:5173` · Companion `http://127.0.0.1:5175` · API `http://127.0.0.1:8000/api/health`
+
+**Behaviour:**
+- Skips services already running (no duplicate instances)
+- Logs in `.run/` (gitignored): `backend.log`, `frontend.log`, `companion.log`, `watcher.log`
+- Background watcher restarts backend or Vite if a managed process exits unexpectedly
+- Legacy: `run_dev.sh` and `launcher/launch.sh` delegate to `./start`
+
+**Setup:** Copy `.env.example` → `.env`, `frontend/.env.local`, `companion/.env.local`. Run `./doctor` if cloud sync fails.
 
 ---
 
@@ -614,7 +639,7 @@ You are helping build **Ultra Roadbook** — not a generic fitness app.
 
 9. **Key files:** `src/pipeline.py`, `src/companion_bundle.py`, `src/suggested_stops.py`, `shared/race/discoverStops.ts`, `shared/race/gpsGpxExport.ts`, `frontend/.../SuggestedStopsReviewPanel.tsx`, `companion/.../RaceScreen.tsx`.
 
-10. **Deploy:** `vercel --prod --yes` from **repo root** (not `companion/`). Backend: `PYTHONPATH=src uvicorn server:app --reload`. Mobile import needs `VITE_API_BASE_URL` on Vercel.
+10. **Deploy:** `vercel --prod --yes` from **repo root** (not `companion/`). **Local dev:** `./start` only. Mobile import needs `VITE_API_BASE_URL` on Vercel.
 
 11. **Testing:** Python sync tests are authoritative; TS tests may skip on Vercel or npm lock issues locally. Collserola parity tests guard analysis consistency.
 
@@ -645,7 +670,8 @@ When you complete a significant change, **update this document**: add to Changel
 | Companion Race | `companion/src/screens/RaceScreen.tsx`, `NextVerifiedStopCard.tsx` |
 | Supabase schema | `supabase/migrations/001_phase1.sql` |
 | Local race data | `data/races/{id}/` |
+| Dev workflow | `./start`, `./stop`, `./restart`, `./doctor`, `launcher/` |
 
 ---
 
-*Last updated: July 16, 2026 — after v0.5 UX overhaul (`ab11ee3`); enriched from architecture exploration.*
+*Last updated: July 17, 2026 — dev environment overhaul (`./start` workflow).*

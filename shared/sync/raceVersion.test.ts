@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import type { SyncRaceSummary } from "../types/sync";
 import {
   isDesktopCloudCurrent,
+  localBundleIsCurrent,
   needsCompanionDownload,
   needsDesktopUpload,
   resolveCloudRaceForLocal,
@@ -51,6 +52,22 @@ function testMissingCloudMetadataTriggersDownload() {
     significant_climb_count: null,
   });
   assert.equal(needsCompanionDownload(cloud, 22, true, "abc123", 0), true);
+}
+
+function testMissingCloudMetadataDoesNotReDownloadWhenLocalBundleCurrent() {
+  const cloud = baseRace({
+    bundle_schema_version: null,
+    significant_climb_count: null,
+    companion_revision: 22,
+  });
+  assert.equal(
+    needsCompanionDownload(cloud, 22, true, "abc123", 2, 5),
+    false,
+  );
+  assert.equal(
+    localBundleIsCurrent(cloud, 22, true, 2, 5),
+    true,
+  );
 }
 
 function testMissingCloudMetadataTriggersDesktopUpload() {
@@ -111,6 +128,7 @@ testClimbCountMismatchTriggersDownload();
 testMatchingClimbCountDoesNotTriggerDownload();
 testHigherRevisionStillTriggersDownload();
 testMissingCloudMetadataTriggersDownload();
+testMissingCloudMetadataDoesNotReDownloadWhenLocalBundleCurrent();
 testMissingCloudMetadataTriggersDesktopUpload();
 testResolveCloudRaceUsesFingerprint();
 

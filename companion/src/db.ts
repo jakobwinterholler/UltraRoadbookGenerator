@@ -250,6 +250,7 @@ export async function invalidateStaleBundle(raceId: string): Promise<void> {
           offlineReady: false,
           downloadedRevision: null,
           downloadedChecksum: null,
+          downloadedClimbCount: null,
         });
       }
     };

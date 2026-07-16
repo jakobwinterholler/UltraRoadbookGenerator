@@ -20,7 +20,11 @@ import WelcomeScreen from "./screens/WelcomeScreen";
 import { saveCompanionBundle } from "./db";
 import { liveBundleRef } from "./lib/liveBundleRef";
 import { clearCompanionDeepLinkParams, parseCompanionDeepLink } from "./lib/deepLink";
-import { registerLaunchQueueConsumer } from "./lib/incomingGpx";
+import {
+  consumeSharedGpxImport,
+  queueIncomingGpxFile,
+  registerLaunchQueueConsumer,
+} from "./lib/incomingGpx";
 import { useRaceGps } from "./lib/useRaceGps";
 import { useVerificationSync } from "./sync/useVerificationSync";
 
@@ -113,6 +117,21 @@ export default function App() {
 
   useEffect(() => {
     registerLaunchQueueConsumer();
+    void consumeSharedGpxImport().then((file) => {
+      if (!file) {
+        return;
+      }
+      queueIncomingGpxFile(file);
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("import");
+        url.searchParams.delete("shared");
+        url.searchParams.delete("url");
+        url.searchParams.delete("text");
+        url.searchParams.delete("title");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+      }
+    });
   }, []);
 
   useEffect(() => {

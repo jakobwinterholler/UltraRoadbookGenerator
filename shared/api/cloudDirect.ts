@@ -158,6 +158,22 @@ function patchBundleFromPreparation(
   };
 }
 
+/** Soft-delete a cloud race directly via Supabase (production companion — no API server). */
+export async function deleteCloudRaceDirect(userId: string, raceId: string): Promise<void> {
+  const supabase = getSupabaseClient();
+  const deletedAt = new Date().toISOString();
+  const { error } = await supabase
+    .from("races")
+    .update({ deleted_at: deletedAt, updated_at: deletedAt })
+    .eq("id", raceId)
+    .eq("user_id", userId)
+    .is("deleted_at", null);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 /** Read cloud races directly from Supabase (Companion production — no API server needed). */
 export async function fetchSyncRacesDirect(): Promise<SyncRaceSummary[]> {
   const supabase = getSupabaseClient();

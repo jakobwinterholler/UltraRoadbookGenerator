@@ -53,24 +53,70 @@ function cloudBundleMetadataIsStale(cloud: SyncRaceSummary): boolean {
   return false;
 }
 
+/** True when a cached local bundle matches or exceeds the cloud revision. */
+export function localBundleIsCurrent(
+  cloud: SyncRaceSummary,
+  downloadedRevision: number | null,
+  offlineReady: boolean,
+  downloadedClimbCount?: number | null,
+  localSchemaVersion?: number | null,
+): boolean {
+  if (!cloud.has_bundle || !offlineReady || downloadedRevision === null) {
+    return false;
+  }
+  const { version } = raceVersionFields(cloud);
+  if (downloadedRevision < version) {
+    return false;
+  }
+  if (localSchemaVersion == null || localSchemaVersion < CURRENT_SCHEMA_VERSION) {
+    return false;
+  }
+  if (
+    cloud.significant_climb_count != null &&
+    downloadedClimbCount != null &&
+    cloud.significant_climb_count !== downloadedClimbCount
+  ) {
+    return false;
+  }
+  if (
+    cloud.bundle_schema_version != null &&
+    cloud.bundle_schema_version < CURRENT_SCHEMA_VERSION
+  ) {
+    return false;
+  }
+  return true;
+}
+
 export function needsCompanionDownload(
   cloud: SyncRaceSummary,
   downloadedRevision: number | null,
   offlineReady: boolean,
   _downloadedChecksum?: string | null,
   downloadedClimbCount?: number | null,
+  localSchemaVersion?: number | null,
 ): boolean {
   if (!cloud.has_bundle) {
     return false;
-  }
-  if (cloudBundleMetadataIsStale(cloud)) {
-    return true;
   }
   if (!offlineReady || downloadedRevision === null) {
     return true;
   }
   const { version } = raceVersionFields(cloud);
   if (version > downloadedRevision) {
+    return true;
+  }
+  if (
+    localBundleIsCurrent(
+      cloud,
+      downloadedRevision,
+      offlineReady,
+      downloadedClimbCount,
+      localSchemaVersion,
+    )
+  ) {
+    return false;
+  }
+  if (cloudBundleMetadataIsStale(cloud)) {
     return true;
   }
   if (

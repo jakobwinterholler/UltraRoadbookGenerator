@@ -5,35 +5,42 @@ import { formatUpdateSummary, needsCompanionDownload } from "@shared/sync/raceVe
 import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import { setLastCheckAt, setLastSyncAt } from "@shared/sync/syncMeta";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
-import { loadRaceList } from "../db";
+import { loadCompanionBundle, loadRaceList } from "../db";
 import { useCloudRaceList } from "./useCloudRaceList";
+import type { SyncToastVariant } from "../components/CompanionSyncToast";
 
 export interface AutoCloudSyncState {
   autoSyncing: boolean;
-  autoSyncMessage: string | null;
-  dismissAutoSyncMessage: () => void;
+  syncToast: { message: string; variant: SyncToastVariant } | null;
+  dismissSyncToast: () => void;
+  retrySync: () => void;
 }
 
 /**
- * On Companion startup, silently check cloud for newer race bundles and download them.
- * Shows a toast when updates were applied; manual "Refresh routes" remains available.
+ * Silently sync cloud race bundles in the background on startup and when back online.
+ * Shows a brief success toast or a retryable error — no persistent banners.
  */
 export function useAutoCloudSync(): AutoCloudSyncState {
   const { user, accessToken } = useAuth();
   const userId = user?.id ?? "";
   const { refresh, loading } = useCloudRaceList();
   const [autoSyncing, setAutoSyncing] = useState(false);
-  const [autoSyncMessage, setAutoSyncMessage] = useState<string | null>(null);
+  const [syncToast, setSyncToast] = useState<{ message: string; variant: SyncToastVariant } | null>(
+    null,
+  );
   const ranRef = useRef(false);
+  const syncingRef = useRef(false);
   const online = typeof navigator !== "undefined" ? navigator.onLine : true;
 
   const runAutoSync = useCallback(async () => {
-    if (!accessToken || !userId || !online) {
+    if (!accessToken || !userId || !online || syncingRef.current) {
       return;
     }
+    syncingRef.current = true;
     setAutoSyncing(true);
+    setSyncToast(null);
     try {
-      logSyncDebug("auto-sync", "Startup cloud check");
+      logSyncDebug("auto-sync", "Background cloud sync");
       await refresh();
       const [cloudRaces, localRaces] = await Promise.all([
         fetchSyncRaces(accessToken),
@@ -47,12 +54,14 @@ export function useAutoCloudSync(): AutoCloudSyncState {
           continue;
         }
         const local = localById.get(cloudRace.id);
+        const localBundle = local ? await loadCompanionBundle(cloudRace.id) : null;
         const needsDownload = needsCompanionDownload(
           cloudRace,
           local?.downloadedRevision ?? null,
           local?.offlineReady ?? false,
           local?.downloadedChecksum,
-          local?.downloadedClimbCount ?? null,
+          local?.downloadedClimbCount ?? localBundle?.climbs?.length ?? null,
+          localBundle?.schemaVersion ?? null,
         );
         if (needsDownload) {
           const kind = !local?.offlineReady ? "new" : "updated";
@@ -60,9 +69,10 @@ export function useAutoCloudSync(): AutoCloudSyncState {
         }
       }
 
+      const now = new Date().toISOString();
+      setLastCheckAt(userId, now);
+
       if (toDownload.length === 0) {
-        const now = new Date().toISOString();
-        setLastCheckAt(userId, now);
         return;
       }
 
@@ -70,6 +80,7 @@ export function useAutoCloudSync(): AutoCloudSyncState {
       let newCount = 0;
       let updatedCount = 0;
       let failedCount = 0;
+      const failedNames: string[] = [];
 
       for (const target of toDownload) {
         try {
@@ -81,6 +92,7 @@ export function useAutoCloudSync(): AutoCloudSyncState {
           }
         } catch (err) {
           failedCount += 1;
+          failedNames.push(target.name);
           logSyncDebug(
             "auto-sync",
             `${target.name} download failed: ${err instanceof Error ? err.message : "unknown"}`,
@@ -89,18 +101,31 @@ export function useAutoCloudSync(): AutoCloudSyncState {
       }
 
       await refresh();
-      const now = new Date().toISOString();
-      setLastCheckAt(userId, now);
       if (newCount + updatedCount > 0) {
         setLastSyncAt(userId, now);
-        setAutoSyncMessage(formatUpdateSummary({ newCount, updatedCount, failedCount }));
+        setSyncToast({
+          message: formatUpdateSummary({ newCount, updatedCount, failedCount }),
+          variant: "success",
+        });
+      } else if (failedCount > 0) {
+        setSyncToast({
+          message: `Could not sync ${failedNames.slice(0, 2).join(", ")}${
+            failedNames.length > 2 ? ` +${failedNames.length - 2} more` : ""
+          }`,
+          variant: "error",
+        });
       }
     } catch (err) {
       logSyncDebug(
         "auto-sync",
-        `Startup sync failed: ${err instanceof Error ? err.message : "unknown"}`,
+        `Background sync failed: ${err instanceof Error ? err.message : "unknown"}`,
       );
+      setSyncToast({
+        message: err instanceof Error ? err.message : "Sync failed. Check your connection.",
+        variant: "error",
+      });
     } finally {
+      syncingRef.current = false;
       setAutoSyncing(false);
     }
   }, [accessToken, online, refresh, user?.id, userId]);
@@ -115,18 +140,19 @@ export function useAutoCloudSync(): AutoCloudSyncState {
 
   useEffect(() => {
     const onOnline = () => {
-      if (!ranRef.current) {
-        ranRef.current = true;
-        void runAutoSync();
-      }
+      void runAutoSync();
     };
     window.addEventListener("online", onOnline);
     return () => window.removeEventListener("online", onOnline);
   }, [runAutoSync]);
 
-  const dismissAutoSyncMessage = useCallback(() => {
-    setAutoSyncMessage(null);
+  const dismissSyncToast = useCallback(() => {
+    setSyncToast(null);
   }, []);
 
-  return { autoSyncing, autoSyncMessage, dismissAutoSyncMessage };
+  const retrySync = useCallback(() => {
+    void runAutoSync();
+  }, [runAutoSync]);
+
+  return { autoSyncing, syncToast, dismissSyncToast, retrySync };
 }

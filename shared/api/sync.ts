@@ -1,5 +1,5 @@
 import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
-import { fetchOriginalGpxDirect, fetchSyncRacesDirect } from "./cloudDirect";
+import { deleteCloudRaceDirect, fetchOriginalGpxDirect, fetchSyncRacesDirect } from "./cloudDirect";
 import type { AuthProfile, CompanionBundle, SyncPushAllResult, SyncPushRaceResult, SyncRaceSummary } from "../types/sync";
 import { fetchCompanionBundleSelfHealing } from "../sync/selfHealingBundle";
 import { logSyncDebug } from "../sync/syncDebugLog";
@@ -111,8 +111,23 @@ export async function queueRacePush(accessToken: string, raceId: string): Promis
   }
 }
 
-export async function deleteCloudRace(accessToken: string, raceId: string): Promise<void> {
+export async function deleteCloudRace(
+  accessToken: string,
+  raceId: string,
+  userId?: string | null,
+): Promise<void> {
+  if (!getApiBaseUrl()) {
+    if (!userId) {
+      throw new Error("User id required to delete cloud race.");
+    }
+    await deleteCloudRaceDirect(userId, raceId);
+    return;
+  }
   const response = await fetchWithAuth(`/api/races/${raceId}`, accessToken, { method: "DELETE" });
+  if (response.status === 404 && userId) {
+    await deleteCloudRaceDirect(userId, raceId);
+    return;
+  }
   if (!response.ok) {
     throw new Error(await parseApiError(response, "Failed to delete race."));
   }

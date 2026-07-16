@@ -2,7 +2,7 @@ import type { CompanionBundle } from "@shared/types/sync";
 import { deleteCloudRace } from "@shared/api/sync";
 import { importApiAvailable } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
-import { getGreeting, getDisplayName, getAvatarUrl } from "@shared/auth/profile";
+import { getDisplayName, getAvatarUrl } from "@shared/auth/profile";
 import { Avatar } from "@shared/ui/AuthScreens";
 import { Button } from "@shared/ui/Button";
 import { EmptyState } from "@shared/ui/EmptyState";
@@ -11,6 +11,7 @@ import { ImportGpxIllustration, NoInternetIllustration, NoRacesIllustration } fr
 import { useEffect, useRef, useState } from "react";
 import CompanionDeleteRaceDialog from "../components/CompanionDeleteRaceDialog";
 import CompanionRaceCard from "../components/CompanionRaceCard";
+import CompanionSyncToast from "../components/CompanionSyncToast";
 import GpxImportFlow from "../components/GpxImportFlow";
 import {
   deleteCompanionRace,
@@ -23,7 +24,6 @@ import { buildRaceListSections } from "../lib/raceListSections";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
 import { useAutoCloudSync } from "../sync/useAutoCloudSync";
-import { useCompanionSync } from "../sync/useCompanionSync";
 import type { CompanionTab } from "../components/BottomNav";
 
 interface HomeScreenProps {
@@ -38,17 +38,8 @@ interface HomeScreenProps {
 
 export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: HomeScreenProps) {
   const { accessToken, user } = useAuth();
-  const { races, loading, error, refresh } = useCloudRaceList();
-  const { autoSyncing, autoSyncMessage, dismissAutoSyncMessage } = useAutoCloudSync();
-  const {
-    checking,
-    updatesAvailable,
-    checkMessage,
-    checkForUpdates,
-    lastCheckLabel,
-    syncError,
-    syncDebugLog,
-  } = useCompanionSync();
+  const { races, loading, error, refresh, removeRace } = useCloudRaceList();
+  const { autoSyncing, syncToast, dismissSyncToast, retrySync } = useAutoCloudSync();
   const [busyRaceId, setBusyRaceId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -59,7 +50,6 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
   const fileInputRef = useRef<HTMLInputElement>(null);
   const deepLinkHandledRef = useRef(false);
 
-  const greeting = getGreeting(getDisplayName(user));
   const sections = buildRaceListSections(races);
   const canImport = importApiAvailable();
 
@@ -169,60 +159,59 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
     if (!deleteTarget) {
       return;
     }
+    const raceId = deleteTarget.id;
+    const raceSnapshot = deleteTarget;
     setDeleteBusy(true);
     setActionError(null);
+    setDeleteTarget(null);
+    removeRace(raceId);
+
     try {
-      if (accessToken && deleteTarget.source !== "local-import" && deleteTarget.has_bundle) {
-        await deleteCloudRace(accessToken, deleteTarget.id);
+      if (accessToken && raceSnapshot.source !== "local-import" && raceSnapshot.has_bundle) {
+        await deleteCloudRace(accessToken, raceId, user?.id);
       }
-      await deleteCompanionRace(deleteTarget.id);
-      setDeleteTarget(null);
+      await deleteCompanionRace(raceId);
       await refresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Failed to delete race.");
+      await refresh();
     } finally {
       setDeleteBusy(false);
     }
   }
 
+  function openImportPicker() {
+    if (!online) {
+      setActionError("Connect to the internet to import and analyze a GPX route.");
+      return;
+    }
+    if (!canImport) {
+      setActionError("Route analysis server is not configured for this build.");
+      return;
+    }
+    fileInputRef.current?.click();
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-[#0a0a0a]">
-      <header className="urp-animate-fade-up flex shrink-0 items-start justify-between gap-4 px-5 pb-4 pt-safe-top">
-        <div className="min-w-0 flex-1">
-          <p className="text-[1.75rem] font-semibold tracking-tight text-white">{greeting}</p>
-          <p className="mt-1.5 text-sm text-white/50">Your races</p>
+      <header className="urp-animate-fade-up flex shrink-0 items-center justify-between gap-4 px-6 pb-2 pt-safe-top">
+        <div className="min-w-0">
+          <h1 className="text-[2rem] font-semibold tracking-tight text-white">Races</h1>
           {autoSyncing ? (
-            <p className="mt-2 text-xs font-medium text-sky-300">Checking cloud for updates…</p>
-          ) : updatesAvailable > 0 ? (
-            <p className="mt-2 text-xs font-medium text-orange-300">
-              {updatesAvailable} update{updatesAvailable === 1 ? "" : "s"} available
-            </p>
-          ) : (
-            <p className="mt-2 text-xs text-white/30">Checked {lastCheckLabel}</p>
-          )}
+            <p className="mt-1 text-sm text-white/35">Syncing…</p>
+          ) : null}
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <Button
-            variant="secondary"
-            size="sm"
-            dark
-            disabled={checking}
-            onClick={() => void checkForUpdates().catch(() => undefined)}
-          >
-            {checking ? "Refreshing…" : "Refresh"}
-          </Button>
-          <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
-            <Avatar
-              name={getDisplayName(user)}
-              imageUrl={getAvatarUrl(user)}
-              size="md"
-              variant="dark"
-            />
-          </button>
-        </div>
+        <button type="button" onClick={onOpenAccount} className="shrink-0 rounded-full">
+          <Avatar
+            name={getDisplayName(user)}
+            imageUrl={getAvatarUrl(user)}
+            size="md"
+            variant="dark"
+          />
+        </button>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+      <div className="min-h-0 flex-1 overflow-y-auto px-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <input
           ref={fileInputRef}
           type="file"
@@ -238,23 +227,11 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           variant="primary"
           size="lg"
           dark
-          className="mb-6 w-full"
-          onClick={() => {
-            if (!online) {
-              setActionError("Connect to the internet to import and analyze a GPX route.");
-              return;
-            }
-            if (!canImport) {
-              setActionError("Route analysis server is not configured for this build.");
-              return;
-            }
-            fileInputRef.current?.click();
-          }}
+          className="mb-8 mt-4 w-full"
+          onClick={openImportPicker}
         >
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-black/20 text-lg font-bold">
-            +
-          </span>
-          New Race
+          <ImportGpxIllustration className="h-5 w-5" />
+          Import GPX
         </Button>
 
         {!online ? (
@@ -267,42 +244,11 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
           />
         ) : null}
 
-        {error ? <p className="mb-3 text-sm text-red-300">{error}</p> : null}
-        {syncError ? <p className="mb-3 text-sm text-red-300">{syncError}</p> : null}
-        {actionError ? <p className="mb-3 text-sm text-red-300">{actionError}</p> : null}
-        {autoSyncMessage ? (
-          <div className="mb-3 flex items-start justify-between gap-2 rounded-xl bg-emerald-500/10 px-3 py-2">
-            <p className="text-sm text-emerald-200">{autoSyncMessage}</p>
-            <button
-              type="button"
-              onClick={dismissAutoSyncMessage}
-              className="shrink-0 text-xs font-medium text-emerald-200/70 hover:text-emerald-100"
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-        {checkMessage && !autoSyncMessage ? (
-          <p className="mb-3 rounded-xl bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
-            {checkMessage}
-          </p>
-        ) : null}
-
-        {import.meta.env.DEV && syncDebugLog.length > 0 ? (
-          <details className="mb-4 rounded-xl bg-white/[0.02] px-3 py-2 text-xs text-white/55 ring-1 ring-white/10">
-            <summary className="cursor-pointer font-medium text-white/70">Sync debug log</summary>
-            <ul className="mt-2 space-y-1">
-              {syncDebugLog.map((entry) => (
-                <li key={`${entry.at}-${entry.stage}-${entry.detail}`}>
-                  <span className="text-white/35">{entry.stage}</span> {entry.detail}
-                </li>
-              ))}
-            </ul>
-          </details>
-        ) : null}
+        {error ? <p className="mb-4 text-sm text-red-300">{error}</p> : null}
+        {actionError ? <p className="mb-4 text-sm text-red-300">{actionError}</p> : null}
 
         {loading ? (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <RaceCardSkeleton dark />
             <RaceCardSkeleton dark />
           </div>
@@ -311,14 +257,10 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
             dark
             illustration={<NoRacesIllustration />}
             title="No races yet"
-            description="Import a GPX from Files, AirDrop, Komoot, or RideWithGPS — full analysis runs in the cloud."
+            description="Import a GPX from Files, AirDrop, Komoot, or Safari — full analysis runs in the cloud."
             action={
               online && canImport ? (
-                <Button
-                  variant="primary"
-                  dark
-                  onClick={() => fileInputRef.current?.click()}
-                >
+                <Button variant="primary" dark onClick={openImportPicker}>
                   <ImportGpxIllustration className="h-5 w-5" />
                   Import GPX
                 </Button>
@@ -326,13 +268,10 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
             }
           />
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-5">
             {sections.map((section) => (
               <section key={section.id}>
-                <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-white/35">
-                  {section.title}
-                </h2>
-                <ul className="space-y-4">
+                <ul className="space-y-5">
                   {section.races.map((race, index) => (
                     <li key={race.id}>
                       <CompanionRaceCard
@@ -368,6 +307,15 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDeleteRace()}
       />
+
+      {syncToast ? (
+        <CompanionSyncToast
+          message={syncToast.message}
+          variant={syncToast.variant}
+          onDismiss={dismissSyncToast}
+          onRetry={syncToast.variant === "error" ? retrySync : undefined}
+        />
+      ) : null}
     </div>
   );
 }
