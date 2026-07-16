@@ -6,12 +6,11 @@ interface TabBarProps {
 }
 
 const tabs: { id: AppTab; label: string }[] = [
+  { id: "route", label: "Plan" },
   { id: "dashboard", label: "Dashboard" },
-  { id: "route", label: "Route" },
-  { id: "verify", label: "Verify" },
-  { id: "unsupported", label: "Unsupported" },
   { id: "climbs", label: "Climbs" },
   { id: "surface", label: "Surface" },
+  { id: "unsupported", label: "Unsupported" },
   { id: "resupply", label: "Resupply" },
 ];
 

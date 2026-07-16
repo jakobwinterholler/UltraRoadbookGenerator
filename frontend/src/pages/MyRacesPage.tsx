@@ -39,7 +39,6 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
   const { cloudRaces } = useDesktopCloudRaces();
   const [showCreate, setShowCreate] = useState(false);
   const [file, setFile] = useState<File | null>(null);
-  const [raceName, setRaceName] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -85,7 +84,6 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
 
   function resetCreateForm() {
     setFile(null);
-    setRaceName("");
     setCreateError(null);
     setIsDragging(false);
   }
@@ -100,21 +98,20 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
     resetCreateForm();
   }
 
-  async function handleCreateRace() {
-    if (!file) {
-      setCreateError("Choose a GPX file first.");
-      return;
-    }
-
+  async function importGpxFile(selected: File) {
     setCreating(true);
     setCreateError(null);
+    setPageError(null);
     try {
-      const race = await createRace(file, raceName || undefined);
+      const name = selected.name.replace(/\.gpx$/i, "").replace(/[_-]+/g, " ");
+      const race = await createRace(selected, name);
       closeCreateDialog();
       await refreshRaces();
       onRaceCreated(race.id);
     } catch (err) {
-      setCreateError(err instanceof Error ? err.message : "Failed to create race.");
+      const message = err instanceof Error ? err.message : "Failed to import route.";
+      setCreateError(message);
+      setPageError(message);
     } finally {
       setCreating(false);
     }
@@ -345,18 +342,13 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         className="w-full max-w-lg rounded-2xl bg-card p-0 shadow-xl ring-1 ring-black/[0.06] backdrop:bg-ink/20"
         onClose={closeCreateDialog}
       >
-        <form
-          method="dialog"
-          className="p-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleCreateRace();
-          }}
-        >
+        <div className="p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-xl font-semibold text-ink">New race</h2>
-              <p className="mt-1 text-sm text-muted">Upload a GPX to start a new race workspace.</p>
+              <h2 className="text-xl font-semibold text-ink">Import route</h2>
+              <p className="mt-1 text-sm text-muted">
+                Drop a GPX file to analyze automatically — no settings required.
+              </p>
             </div>
             <Button variant="ghost" size="sm" onClick={closeCreateDialog}>
               Close
@@ -372,43 +364,23 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
               onDrop={(selected) => {
                 setFile(selected);
                 setIsDragging(false);
-                if (!raceName) {
-                  setRaceName(selected.name.replace(/\.gpx$/i, "").replace(/[_-]+/g, " "));
-                }
+                void importGpxFile(selected);
               }}
               onSelectFile={(selected) => {
                 setFile(selected);
-                if (!raceName) {
-                  setRaceName(selected.name.replace(/\.gpx$/i, "").replace(/[_-]+/g, " "));
-                }
+                void importGpxFile(selected);
               }}
             />
           </div>
 
-          <label className="mt-4 block text-sm text-muted">
-            Race name
-            <input
-              type="text"
-              value={raceName}
-              onChange={(event) => setRaceName(event.target.value)}
-              placeholder="The Capitals 2026"
-              className="mt-1 w-full rounded-xl bg-white px-4 py-2.5 text-sm text-ink ring-1 ring-line/80"
-            />
-          </label>
+          {creating && (
+            <p className="mt-4 text-center text-sm text-muted">Importing and starting analysis…</p>
+          )}
 
           {createError && (
             <p className="mt-4 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{createError}</p>
           )}
-
-          <div className="mt-6 flex justify-end gap-3">
-            <Button variant="secondary" onClick={closeCreateDialog}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={!file || creating}>
-              {creating ? "Creating…" : "Create race"}
-            </Button>
-          </div>
-        </form>
+        </div>
       </dialog>
     </div>
   );

@@ -13,31 +13,6 @@ import { saveCompanionBundle, saveOriginalGpx, saveRaceList, loadRaceList, delet
 import { fingerprintGpxFile } from "../lib/gpxFingerprint";
 import DuplicateRaceDialog from "./DuplicateRaceDialog";
 
-const STAGE_ORDER = [
-  "loading",
-  "analyzing",
-  "climbs",
-  "resupply",
-  "bundle",
-  "ready",
-] as const;
-
-interface ImportStageState {
-  id: string;
-  label: string;
-  status: "pending" | "active" | "complete";
-  percent?: number;
-}
-
-const DEFAULT_STAGES: ImportStageState[] = [
-  { id: "loading", label: "Loading…", status: "pending" },
-  { id: "analyzing", label: "Analyzing route…", status: "pending" },
-  { id: "climbs", label: "Detecting climbs…", status: "pending" },
-  { id: "resupply", label: "Finding resupply…", status: "pending" },
-  { id: "bundle", label: "Creating companion bundle…", status: "pending" },
-  { id: "ready", label: "Ready to ride.", status: "pending" },
-];
-
 interface GpxImportFlowProps {
   file: File | null;
   onClose: () => void;
@@ -47,7 +22,8 @@ interface GpxImportFlowProps {
 
 export default function GpxImportFlow({ file, onClose, onComplete, online }: GpxImportFlowProps) {
   const { accessToken } = useAuth();
-  const [stages, setStages] = useState<ImportStageState[]>(DEFAULT_STAGES);
+  const [phase, setPhase] = useState<"importing" | "ready" | "error">("importing");
+  const [percent, setPercent] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [syncWarning, setSyncWarning] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
@@ -56,37 +32,19 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
   const startedRef = useRef(false);
 
   const applyEvent = useCallback((event: ImportGpxEvent) => {
-    if (event.type === "import_stage") {
-      setStages((current) => {
-        const next = current.map((stage) => ({ ...stage }));
-        const index = next.findIndex((stage) => stage.id === event.stage_id);
-        if (index >= 0) {
-          next[index] = {
-            ...next[index],
-            label: event.label,
-            status: event.status === "complete" ? "complete" : "active",
-            percent: event.percent,
-          };
-          if (event.status === "active") {
-            for (let i = 0; i < index; i += 1) {
-              if (next[i].status !== "complete") {
-                next[i].status = "complete";
-              }
-            }
-          }
-        }
-        return next;
+    if (event.type === "import_stage" || event.type === "progress") {
+      setPercent((current) => {
+        const nextPercent =
+          event.type === "progress"
+            ? event.percent ?? current
+            : event.status === "complete"
+              ? 100
+              : event.percent ?? current;
+        return Math.min(100, Math.round(nextPercent));
       });
-      return;
-    }
-    if (event.type === "progress" && event.stage_id) {
-      setStages((current) =>
-        current.map((stage) =>
-          stage.id === event.stage_id
-            ? { ...stage, status: "active", percent: event.percent, label: event.label ?? stage.label }
-            : stage,
-        ),
-      );
+      if (event.type === "import_stage" && event.stage_id === "ready" && event.status === "complete") {
+        setPhase("ready");
+      }
     }
   }, []);
 
@@ -158,26 +116,27 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
     async (sourceFile: File, conflictAction: ConflictAction, replaceRaceId?: string) => {
       if (!accessToken) {
         setError("Sign in to import and analyze a GPX route.");
+        setPhase("error");
         return;
       }
       if (!online) {
         setError("An internet connection is required for full route analysis.");
+        setPhase("error");
         return;
       }
       if (!importApiAvailable()) {
         setError(
           "Route analysis server is not configured for this build. Contact support or use desktop Ultra Roadbook.",
         );
+        setPhase("error");
         return;
       }
 
       setRunning(true);
       setError(null);
       setSyncWarning(null);
-      setStages(DEFAULT_STAGES.map((stage, index) => ({
-        ...stage,
-        status: index === 0 ? "active" : "pending",
-      })));
+      setPhase("importing");
+      setPercent(0);
 
       try {
         const result = await importGpxStream(
@@ -194,10 +153,13 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         if (result.syncWarning) {
           setSyncWarning(result.syncWarning);
         }
+        setPhase("ready");
+        setPercent(100);
         setRunning(false);
         onComplete(result.bundle);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Import failed.");
+        setPhase("error");
         setRunning(false);
       }
     },
@@ -219,6 +181,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         } else {
           setError("Sign in to import and analyze a GPX route.");
         }
+        setPhase("error");
         return;
       }
       try {
@@ -231,26 +194,17 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         await runImport(pendingFile, "create");
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not start import.");
+        setPhase("error");
       }
     })();
   }, [accessToken, online, pendingFile, runImport]);
 
-  const overallPercent = (() => {
-    const weights = STAGE_ORDER.map(() => 100 / STAGE_ORDER.length);
-    let total = 0;
-    stages.forEach((stage, index) => {
-      if (stage.status === "complete") {
-        total += weights[index];
-      } else if (stage.status === "active") {
-        total += (weights[index] * (stage.percent ?? 50)) / 100;
-      }
-    });
-    return Math.min(100, Math.round(total));
-  })();
-
   if (!pendingFile) {
     return null;
   }
+
+  const statusLabel =
+    phase === "ready" ? "Ready" : phase === "error" ? "Stopped" : "Analyzing…";
 
   return (
     <>
@@ -274,11 +228,11 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
       ) : null}
 
       <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-4 sm:items-center">
-        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141414] p-5 shadow-2xl">
+        <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141414] p-5 shadow-2xl urp-animate-fade-up">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-wide text-emerald-300/80">
-                Importing route
+                {phase === "ready" ? "Route ready" : "Import route"}
               </p>
               <h2 className="mt-1 truncate text-lg font-semibold text-white">{pendingFile.name}</h2>
             </div>
@@ -293,47 +247,26 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
             ) : null}
           </div>
 
-          <div className="mt-4">
+          <div className="mt-5">
             <div className="mb-2 flex items-center justify-between text-xs text-white/45">
-              <span>{running ? "Working…" : error ? "Stopped" : "Ready"}</span>
-              <span>{overallPercent}%</span>
+              <span>{statusLabel}</span>
+              <span>{percent}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/10">
               <div
-                className="h-full rounded-full bg-emerald-400 transition-all duration-300"
-                style={{ width: `${overallPercent}%` }}
+                className="h-full rounded-full bg-emerald-400 transition-all duration-500 ease-out"
+                style={{ width: `${percent}%` }}
               />
             </div>
           </div>
 
-          <ul className="mt-5 space-y-2">
-            {stages.map((stage) => (
-              <li key={stage.id} className="flex items-center gap-3 text-sm">
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                    stage.status === "complete"
-                      ? "bg-emerald-500 text-black"
-                      : stage.status === "active"
-                        ? "bg-sky-400/20 text-sky-200"
-                        : "bg-white/8 text-white/30"
-                  }`}
-                >
-                  {stage.status === "complete" ? "✓" : stage.status === "active" ? "…" : ""}
-                </span>
-                <span
-                  className={
-                    stage.status === "active"
-                      ? "font-medium text-white"
-                      : stage.status === "complete"
-                        ? "text-white/55"
-                        : "text-white/35"
-                  }
-                >
-                  {stage.label}
-                </span>
-              </li>
-            ))}
-          </ul>
+          {phase === "ready" ? (
+            <p className="mt-4 text-sm text-emerald-200">Your route is analyzed and ready to review.</p>
+          ) : running ? (
+            <p className="mt-4 text-sm text-white/50">
+              Finding climbs, resupply stops, and building your companion bundle…
+            </p>
+          ) : null}
 
           {error ? <p className="mt-4 text-sm text-red-300">{error}</p> : null}
           {syncWarning ? (

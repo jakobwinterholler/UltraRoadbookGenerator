@@ -44,7 +44,7 @@ function AppContent() {
   const { settings } = useSettings();
 
   const [view, setView] = useState<AppView>("races");
-  const [activeTab, setActiveTab] = useState<AppTab>("dashboard");
+  const [activeTab, setActiveTab] = useState<AppTab>("route");
   const [returnView, setReturnView] = useState<AppView>("races");
   const [error, setError] = useState<string | null>(null);
   const [analysisStartedAt, setAnalysisStartedAt] = useState(0);
@@ -111,7 +111,7 @@ function AppContent() {
   const finishAnalysis = useCallback(
     async (data: RoadbookResult) => {
       setRoadbook(data);
-      setActiveTab("dashboard");
+      setActiveTab("route");
       setView("workspace");
       await refreshRaces();
     },
@@ -150,7 +150,7 @@ function AppContent() {
         const summary = await openRace(raceId);
         if (summary.has_analysis) {
           setView("workspace");
-          setActiveTab("dashboard");
+          setActiveTab("route");
         } else {
           await startAnalysis(raceId, summary.name);
         }
@@ -246,12 +246,7 @@ function AppContent() {
           />
         );
       case "route":
-        return (
-          <RoutePage
-            result={roadbook}
-            onViewFullBriefing={() => setActiveTab("dashboard")}
-          />
-        );
+        return <RoutePage result={roadbook} />;
       case "verify":
         return (
           <StopVerificationPage

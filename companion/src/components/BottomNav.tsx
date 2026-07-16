@@ -49,7 +49,7 @@ function NavIcon({ tab, active }: { tab: CompanionTab; active: boolean }) {
 
 export default function BottomNav({ active, onChange }: BottomNavProps) {
   const items: { id: CompanionTab; label: string; accent?: boolean }[] = [
-    { id: "map", label: "Map" },
+    { id: "map", label: "Race" },
     { id: "resupply", label: "Resupply" },
     { id: "verify", label: "Verify", accent: true },
     { id: "share", label: "Share" },

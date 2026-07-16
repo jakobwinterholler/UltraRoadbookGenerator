@@ -11,7 +11,7 @@ import ExecutionHeader from "./components/ExecutionHeader";
 import RaceDataBanner from "./components/RaceDataBanner";
 import AccountScreen from "./screens/AccountScreen";
 import HomeScreen from "./screens/HomeScreen";
-import MapScreen from "./screens/MapScreen";
+import RaceScreen from "./screens/RaceScreen";
 import ResupplyScreen from "./screens/ResupplyScreen";
 import ShareScreen from "./screens/ShareScreen";
 import VerificationScreen from "./screens/VerificationScreen";
@@ -264,7 +264,7 @@ export default function App() {
     );
   }
 
-  const showExecutionHeader = tab !== "account" && tab !== "verify" && tab !== "share";
+  const showExecutionHeader = tab === "resupply";
   const showRaceDataBanner = tab === "map" || tab === "resupply" || tab === "share";
 
   return (
@@ -280,7 +280,7 @@ export default function App() {
 
         <main className="min-h-0 flex-1 urp-animate-fade-in" key={tab}>
           {tab === "map" ? (
-            <MapScreen />
+            <RaceScreen />
           ) : tab === "resupply" ? (
             <ResupplyScreen />
           ) : tab === "verify" ? (

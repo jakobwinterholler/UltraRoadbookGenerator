@@ -875,10 +875,11 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
   useEffect(() => {
     const map = mapRef.current;
     const target = focusStop ?? selectedStop;
-    if (!map || !readyRef.current || !target) {
-      if (!target) {
-        lastFocusKeyRef.current = null;
-      }
+    if (!map || !readyRef.current) {
+      return;
+    }
+    if (!target) {
+      lastFocusKeyRef.current = null;
       return;
     }
     if (!embedded && followGps && !selectedStop) {
@@ -894,6 +895,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     lastFocusKeyRef.current = focusKey;
 
     const focusingSelectedStop = !embedded && selectedStop != null;
+    map.stop();
     map.easeTo({
       center: [target.lon, target.lat],
       zoom: embedded || focusingSelectedStop ? EMBEDDED_FOCUS_ZOOM : map.getZoom(),

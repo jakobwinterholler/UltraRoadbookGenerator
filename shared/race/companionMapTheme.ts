@@ -13,9 +13,9 @@ export const DIMMED_STOP_COLOR = "#475569";
 export const SUGGESTED_STOP_COLOR = "#E85D04";
 export const SKIPPED_STOP_COLOR = "#9ca3af";
 
-/** Street-level focus — matches the pre-overhaul detail map feel. */
-export const POI_FOCUS_ZOOM = 17.8;
+/** Street-level focus — ~150m context at typical phone width. */
+export const POI_FOCUS_ZOOM = 18.2;
 export const POI_FOCUS_ANIMATION_MS = 1000;
-export const POI_FOCUS_OFFSET: [number, number] = [0, -90];
-export const DETAIL_MAP_ZOOM = 17.8;
+export const POI_FOCUS_OFFSET: [number, number] = [0, -72];
+export const DETAIL_MAP_ZOOM = 18.2;
 export const DETAIL_ROUTE_WINDOW_KM = 0.12;
