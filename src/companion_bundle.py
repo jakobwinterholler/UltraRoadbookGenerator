@@ -281,6 +281,90 @@ def _unsupported_risk_band(distance_km: float, elevation_gain_m: float, assumpti
     return "Low"
 
 
+DISCOVERY_CATEGORIES = frozenset(
+    {
+        "Gas station",
+        "Small supermarket",
+        "Mini supermarket",
+        "Drinking water",
+        "Convenience store",
+        "Supermarket",
+        "Café",
+        "Restaurant",
+    }
+)
+
+
+def _is_excluded_mountain_hut(tags: dict[str, Any]) -> bool:
+    tourism = str(tags.get("tourism") or "").lower()
+    if tourism not in {"alpine_hut", "wilderness_hut", "hostel"}:
+        return False
+    amenity = str(tags.get("amenity") or "").lower()
+    return amenity not in {"restaurant", "cafe", "fast_food"}
+
+
+def _is_public_dining(tags: dict[str, Any]) -> bool:
+    access = str(tags.get("access") or "").lower()
+    if access in {"private", "no"}:
+        return False
+    return not _is_excluded_mountain_hut(tags)
+
+
+def _is_discoverable_category(category: str, tags: dict[str, Any] | None) -> bool:
+    if category not in DISCOVERY_CATEGORIES:
+        return False
+    tag_map = tags if isinstance(tags, dict) else {}
+    if _is_excluded_mountain_hut(tag_map):
+        return False
+    if category in {"Restaurant", "Café"}:
+        return _is_public_dining(tag_map)
+    return True
+
+
+def _discover_poi_payload(poi: dict[str, Any]) -> dict[str, Any] | None:
+    category = str(poi.get("category") or poi.get("poi_category") or "")
+    tags = poi.get("tags") if isinstance(poi.get("tags"), dict) else {}
+    if not _is_discoverable_category(category, tags):
+        return None
+    osm_id = poi.get("osm_id")
+    osm_type = poi.get("osm_type")
+    if osm_id is None or not osm_type:
+        return None
+    return {
+        "osmId": int(osm_id),
+        "osmType": str(osm_type),
+        "name": poi.get("name"),
+        "category": category,
+        "priority": int(poi.get("priority") or 2),
+        "lat": float(poi.get("lat") or 0),
+        "lon": float(poi.get("lon") or 0),
+        "distanceAlongKm": float(poi.get("distance_along_km") or 0),
+        "distanceOffRouteM": float(poi.get("distance_off_route_m") or 0),
+        "score": float(poi.get("score") or 0),
+        "zoneId": poi.get("zone_id"),
+        "openingHours": poi.get("opening_hours"),
+        "brand": poi.get("brand"),
+        "tags": tags or None,
+    }
+
+
+def _build_discover_pois(roadbook: dict[str, Any]) -> list[dict[str, Any]]:
+    seen: set[str] = set()
+    discover: list[dict[str, Any]] = []
+    for poi in roadbook.get("pois") or []:
+        if not isinstance(poi, dict):
+            continue
+        payload = _discover_poi_payload(poi)
+        if not payload:
+            continue
+        key = f"{payload['osmType']}-{payload['osmId']}"
+        if key in seen:
+            continue
+        seen.add(key)
+        discover.append(payload)
+    return discover
+
+
 def _build_bounds(track_points: list[dict[str, Any]]) -> dict[str, float]:
     if not track_points:
         return {"south": 0, "west": 0, "north": 0, "east": 0}
@@ -467,6 +551,7 @@ def build_companion_bundle(
         },
         "route": route_payload,
         "stops": stops,
+        "discoverPois": _build_discover_pois(roadbook),
         "climbs": _build_climbs(roadbook),
         "unsupportedSections": unsupported,
         "dashboardStats": dashboard_stats,

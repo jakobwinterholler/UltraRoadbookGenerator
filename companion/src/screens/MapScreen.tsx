@@ -1,11 +1,15 @@
 import { useEffect, useRef, useState } from "react";
+import { poiOsmKey } from "@shared/race/discoverStops";
 import { useCompanion } from "../context/CompanionContext";
 import type { CompanionClimb } from "@shared/types/sync";
 import ClimbSheet from "../components/ClimbSheet";
+import DiscoverCandidateDetail from "../components/discovery/DiscoverCandidateDetail";
+import DiscoverStopsControls from "../components/discovery/DiscoverStopsControls";
 import FloatingCard from "../components/FloatingCard";
 import MapControls from "../components/MapControls";
 import RouteMapView, { type RouteMapHandle } from "../components/RouteMapView";
 import StopSheet from "../components/StopSheet";
+import { useDiscoverStops } from "../planning/useDiscoverStops";
 
 export default function MapScreen({ embedded = false }: { embedded?: boolean }) {
   const {
@@ -22,6 +26,10 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
   const mapRef = useRef<RouteMapHandle | null>(null);
   const [showClimbs, setShowClimbs] = useState(Boolean(bundle.climbs?.length));
   const [selectedClimb, setSelectedClimb] = useState<CompanionClimb | null>(null);
+  const discovery = useDiscoverStops({
+    bundle,
+    onSelectStop: selectStop,
+  });
 
   useEffect(() => {
     if ((bundle.climbs?.length ?? 0) > 0) {
@@ -37,6 +45,12 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
       setFollowGps(false);
     }
   }, [selectedStop, setFollowGps]);
+
+  useEffect(() => {
+    if (selectedStop && discovery.active) {
+      discovery.toggleDiscovery();
+    }
+  }, [selectedStop, discovery.active, discovery.toggleDiscovery]);
 
   if (embedded) {
     return (
@@ -56,6 +70,13 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
             const climb = bundle.climbs?.find((item) => item.id === climbId) ?? null;
             setSelectedClimb(climb);
           }}
+          discoverActive={discovery.active}
+          discoverCandidates={discovery.candidates}
+          selectedDiscoverKey={discovery.selectedCandidateKey}
+          onDiscoverBoundsChange={discovery.handleBoundsChange}
+          onSelectDiscoverCandidate={(candidate) =>
+            discovery.selectCandidate(poiOsmKey(candidate.osmType, candidate.osmId))
+          }
         />
       </div>
 
@@ -99,6 +120,24 @@ export default function MapScreen({ embedded = false }: { embedded?: boolean }) 
             onZoomOut={() => mapRef.current?.zoomOut()}
             onResetNorth={() => mapRef.current?.resetNorth()}
           />
+
+          <div className="pointer-events-none absolute bottom-4 left-4 right-4 z-20 mx-auto max-w-md">
+            {discovery.selectedCandidate ? (
+              <DiscoverCandidateDetail
+                candidate={discovery.selectedCandidate}
+                promoting={discovery.promoting}
+                onPromote={() => discovery.promoteCandidate(discovery.selectedCandidate!)}
+                onDismiss={() => discovery.dismissCandidate(discovery.selectedCandidate!)}
+              />
+            ) : (
+              <DiscoverStopsControls
+                active={discovery.active}
+                loading={discovery.loading}
+                candidateCount={discovery.candidates.length}
+                onToggle={discovery.toggleDiscovery}
+              />
+            )}
+          </div>
         </>
       ) : null}
 

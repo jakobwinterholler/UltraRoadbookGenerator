@@ -132,6 +132,24 @@ export interface CompanionUnsupportedSection {
   riskBand?: "Low" | "Medium" | "High";
 }
 
+/** Compact POI row for bounds-based resupply discovery on Companion. */
+export interface CompanionDiscoverPoi {
+  osmId: number;
+  osmType: string;
+  name: string | null;
+  category: string;
+  priority: number;
+  lat: number;
+  lon: number;
+  distanceAlongKm: number;
+  distanceOffRouteM: number;
+  score: number;
+  zoneId: number | null;
+  openingHours?: string | null;
+  brand?: string | null;
+  tags?: Record<string, string> | null;
+}
+
 export interface CompanionDashboardStats {
   verifiedStops: number;
   unverifiedStops: number;
@@ -177,6 +195,8 @@ export interface CompanionBundle {
     };
   };
   stops: CompanionStop[];
+  /** Full discoverable POI set from desktop analysis (optional; falls back to stop alternatives). */
+  discoverPois?: CompanionDiscoverPoi[];
   climbs?: CompanionClimb[];
   unsupportedSections: CompanionUnsupportedSection[];
   dashboardStats?: CompanionDashboardStats;

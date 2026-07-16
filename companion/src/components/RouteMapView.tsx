@@ -29,10 +29,18 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
 import { buildRouteArrowPoints } from "../lib/routeDirectionArrows";
+import {
+  discoverDetourCoordinates,
+  mapBoundsFromMaplibre,
+  trackPointsFromBundle,
+} from "../planning/discoverStopsAdapter";
+import type { DiscoverCandidate, MapBounds } from "@shared/race/discoverStops";
+import { poiOsmKey } from "@shared/race/discoverStops";
 import type { CompanionClimb } from "@shared/types/sync";
 import type { CompanionStop, CompanionUnsupportedSection } from "../types";
 
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const DISCOVER_DETOUR_COLOR = "#2563EB";
 const FOLLOW_ZOOM = 14;
 const EMBEDDED_FOCUS_ZOOM = POI_FOCUS_ZOOM;
 const EMBEDDED_FOCUS_OFFSET = POI_FOCUS_OFFSET;
@@ -58,6 +66,11 @@ interface RouteMapViewProps {
   showClimbs?: boolean;
   onClimbSelect?: (climbId: string) => void;
   focusStop?: Pick<CompanionStop, "lat" | "lon" | "zoneId"> | null;
+  discoverActive?: boolean;
+  discoverCandidates?: DiscoverCandidate[];
+  selectedDiscoverKey?: string | null;
+  onDiscoverBoundsChange?: (bounds: MapBounds) => void;
+  onSelectDiscoverCandidate?: (candidate: DiscoverCandidate) => void;
 }
 
 function stopsGeoJson(
@@ -195,7 +208,17 @@ function climbMarkersGeoJson(
 }
 
 const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function RouteMapView(
-  { embedded = false, showClimbs = false, onClimbSelect, focusStop = null },
+  {
+    embedded = false,
+    showClimbs = false,
+    onClimbSelect,
+    focusStop = null,
+    discoverActive = false,
+    discoverCandidates = [],
+    selectedDiscoverKey = null,
+    onDiscoverBoundsChange,
+    onSelectDiscoverCandidate,
+  },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement | null>(null);
@@ -206,6 +229,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
   const stopsRef = useRef<CompanionStop[]>([]);
   const onClimbSelectRef = useRef(onClimbSelect);
   const selectStopRef = useRef<(stop: CompanionStop | null) => void>(() => undefined);
+  const onDiscoverBoundsChangeRef = useRef(onDiscoverBoundsChange);
+  const onSelectDiscoverCandidateRef = useRef(onSelectDiscoverCandidate);
+  const discoverMarkersRef = useRef<maplibregl.Marker[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const {
@@ -233,6 +259,8 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
   stopsRef.current = visibleStops;
   onClimbSelectRef.current = onClimbSelect;
   selectStopRef.current = selectStop;
+  onDiscoverBoundsChangeRef.current = onDiscoverBoundsChange;
+  onSelectDiscoverCandidateRef.current = onSelectDiscoverCandidate;
 
   const recenter = useCallback(() => {
     const map = mapRef.current;
@@ -546,6 +574,37 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
         },
       });
 
+      map.addSource("discover-detours", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: [] },
+      });
+
+      map.addLayer({
+        id: "discover-detours-halo",
+        type: "line",
+        source: "discover-detours",
+        layout: { visibility: "none" },
+        paint: {
+          "line-color": DISCOVER_DETOUR_COLOR,
+          "line-width": 4,
+          "line-opacity": 0.18,
+          "line-dasharray": [2, 4],
+        },
+      });
+
+      map.addLayer({
+        id: "discover-detours-core",
+        type: "line",
+        source: "discover-detours",
+        layout: { visibility: "none", "line-cap": "round" },
+        paint: {
+          "line-color": DISCOVER_DETOUR_COLOR,
+          "line-width": 2,
+          "line-opacity": 0.9,
+          "line-dasharray": [6, 8],
+        },
+      });
+
       map.addSource("rider", {
         type: "geojson",
         data: {
@@ -658,9 +717,20 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     map.on("rotatestart", pauseFollow);
     map.on("pitchstart", pauseFollow);
 
+    const emitBounds = () => {
+      onDiscoverBoundsChangeRef.current?.(mapBoundsFromMaplibre(map.getBounds()));
+    };
+    map.on("moveend", emitBounds);
+    map.on("zoomend", emitBounds);
+    emitBounds();
+
     return () => {
       cancelled = true;
       readyRef.current = false;
+      for (const marker of discoverMarkersRef.current) {
+        marker.remove();
+      }
+      discoverMarkersRef.current = [];
       map.remove();
       mapRef.current = null;
     };
@@ -675,6 +745,67 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       stopsGeoJson(poiEntries, selectedMarkerPoiId, selectedZoneId, focusPoiId),
     );
   }, [focusPoiId, poiEntries, selectedMarkerPoiId, selectedZoneId]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) {
+      return;
+    }
+
+    for (const marker of discoverMarkersRef.current) {
+      marker.remove();
+    }
+    discoverMarkersRef.current = [];
+
+    const detourSource = map.getSource("discover-detours") as maplibregl.GeoJSONSource | undefined;
+    const visibility =
+      discoverActive && discoverCandidates.length > 0 ? "visible" : "none";
+    for (const layerId of ["discover-detours-halo", "discover-detours-core"]) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, "visibility", visibility);
+      }
+    }
+
+    if (!discoverActive || discoverCandidates.length === 0) {
+      detourSource?.setData({ type: "FeatureCollection", features: [] });
+      return;
+    }
+
+    const trackPoints = trackPointsFromBundle(bundle);
+    const detourFeatures = discoverCandidates.flatMap((candidate) => {
+      const coordinates = discoverDetourCoordinates(trackPoints, candidate);
+      if (!coordinates) {
+        return [];
+      }
+      return [
+        {
+          type: "Feature" as const,
+          properties: { key: poiOsmKey(candidate.osmType, candidate.osmId) },
+          geometry: { type: "LineString" as const, coordinates },
+        },
+      ];
+    });
+    detourSource?.setData({ type: "FeatureCollection", features: detourFeatures });
+
+    for (const [index, candidate] of discoverCandidates.entries()) {
+      const key = poiOsmKey(candidate.osmType, candidate.osmId);
+      const selected = selectedDiscoverKey === key;
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = `discover-marker${selected ? " discover-marker-selected" : ""}`;
+      element.style.animationDelay = `${index * 60}ms`;
+      element.setAttribute("aria-label", candidate.name ?? candidate.category);
+      element.textContent = candidate.icon;
+      element.addEventListener("click", (event) => {
+        event.stopPropagation();
+        onSelectDiscoverCandidateRef.current?.(candidate);
+      });
+      const marker = new maplibregl.Marker({ element, anchor: "center" })
+        .setLngLat([candidate.lon, candidate.lat])
+        .addTo(map);
+      discoverMarkersRef.current.push(marker);
+    }
+  }, [bundle, discoverActive, discoverCandidates, selectedDiscoverKey]);
 
   useEffect(() => {
     const map = mapRef.current;
