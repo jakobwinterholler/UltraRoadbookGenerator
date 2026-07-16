@@ -37,6 +37,9 @@ import ResupplySegmentSummary from "./ResupplySegmentSummary";
 import DiscoverStopsControls from "../discovery/DiscoverStopsControls";
 import DiscoverCandidateDetail from "../discovery/DiscoverCandidateDetail";
 import { buildPromoteRecord, useDiscoverStops } from "../../planning/useDiscoverStops";
+import { poiRowToDiscoverInput } from "../../planning/discoverStopsAdapter";
+import { buildPromotedSuggestedStop } from "@shared/race/promoteDiscoverStop";
+import { promoteDiscoveredStop } from "../../races/api";
 
 interface RouteWorkspaceProps {
   result: RoadbookResult;
@@ -58,7 +61,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
   const { settings } = useSettings();
   const developerMode = settings?.planning.developer_mode_enabled ?? false;
   const { stageSettings, arrivalTimeWindow } = usePlanningAssumptions();
-  const { verifiedStops, saveVerifiedStop } = useRace();
+  const { verifiedStops, saveVerifiedStop, setRoadbook, activeRaceId } = useRace();
   const [stopsBrowseOpen, setStopsBrowseOpen] = useState(false);
   const [poiDebugMode, setPoiDebugMode] = useState(false);
   const [climbDebugMode, setClimbDebugMode] = useState(false);
@@ -107,9 +110,37 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
 
   const handlePromoteVerified = useCallback(
     async (zoneId: number, poi: import("../../api").PoiRow) => {
-      await saveVerifiedStop(zoneId, buildPromoteRecord(poi));
+      const promoted = buildPromotedSuggestedStop(poiRowToDiscoverInput(poi));
+      const record = buildPromoteRecord(poi);
+
+      if (activeRaceId) {
+        const roadbook = await promoteDiscoveredStop(activeRaceId, {
+          suggestedStop: promoted,
+          verifiedStop: { zoneId, record },
+        });
+        setRoadbook(roadbook);
+        await saveVerifiedStop(zoneId, record);
+      } else {
+        setRoadbook((current) =>
+          current
+            ? {
+                ...current,
+                suggested_stops: [
+                  ...(current.suggested_stops ?? []).filter(
+                    (stop) =>
+                      !(
+                        stop.osm_id === promoted.osm_id && stop.osm_type === promoted.osm_type
+                      ) && stop.zone_id !== promoted.zone_id,
+                  ),
+                  promoted,
+                ].sort((left, right) => left.distance_along_km - right.distance_along_km),
+              }
+            : current,
+        );
+        await saveVerifiedStop(zoneId, record);
+      }
     },
-    [saveVerifiedStop],
+    [activeRaceId, saveVerifiedStop, setRoadbook],
   );
 
   const discovery = useDiscoverStops({
@@ -453,6 +484,7 @@ export default function RouteWorkspace({ result, onViewFullBriefing }: RouteWork
                 onSelectDiscoverCandidate={(candidate) =>
                   discovery.selectCandidate(poiOsmKey(candidate.osmType, candidate.osmId))
                 }
+                roadbookResult={result}
               />
               <div className="pointer-events-none absolute bottom-4 right-4 z-[1000]">
                 <DiscoverStopsControls

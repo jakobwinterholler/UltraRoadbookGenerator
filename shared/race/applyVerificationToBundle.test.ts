@@ -134,10 +134,10 @@ function testDiscoverVerificationPromotesUnknownPoi() {
   const submission = makeSubmission("poi_999001", 4);
   const next = applyDiscoverVerificationToBundle(bundle, submission, discoverPoi);
 
-  const zoneStop = next.stops.find((stop) => stop.zoneId === 4)!;
-  const promoted = zoneStop.nearbyAlternatives?.find((item) => item.osmId === 999001);
-  assert.ok(promoted);
-  assert.equal(promoted?.verificationStatus, "pending");
+  const zoneStop = next.stops.find((stop) => stop.osmId === 999001);
+  assert.ok(zoneStop);
+  assert.equal(zoneStop?.verificationStatus, "pending");
+  assert.equal(zoneStop?.name, "Found Stop");
 }
 
 function testMapVisibilityFilterHidesSkippedWhenVerifiedOnly() {

@@ -780,6 +780,49 @@ class RaceProjectStore:
         self._save_race(race)
         return race
 
+    def promote_discovered_stop(
+        self,
+        race_id: str,
+        suggested_stop: dict[str, Any],
+        *,
+        verified_stop: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        roadbook = self.load_analysis(race_id)
+        if roadbook is None:
+            raise ValueError("Generate a roadbook before promoting discovered stops.")
+
+        suggested = list(roadbook.get("suggested_stops") or [])
+        osm_id = suggested_stop.get("osm_id")
+        osm_type = suggested_stop.get("osm_type")
+        zone_id = suggested_stop.get("zone_id")
+
+        suggested = [
+            item
+            for item in suggested
+            if not (
+                item.get("osm_id") == osm_id
+                and item.get("osm_type") == osm_type
+            )
+        ]
+        if zone_id is not None:
+            suggested = [item for item in suggested if item.get("zone_id") != zone_id]
+        suggested.append(suggested_stop)
+        suggested.sort(key=lambda item: float(item.get("distance_along_km") or 0))
+        roadbook["suggested_stops"] = suggested
+        self.save_analysis(race_id, roadbook)
+
+        if verified_stop:
+            race = self.get_race(race_id)
+            zone_key = str(verified_stop.get("zone_id"))
+            record = verified_stop.get("record")
+            if zone_key and isinstance(record, dict):
+                race.preparation.verified_stops[zone_key] = VerifiedStopRecord.from_dict(record)
+                race.meta.updated_at = _utc_now()
+                self._refresh_dashboard_stats_cache(race, roadbook)
+                self._save_race(race)
+
+        return roadbook
+
     def add_companion_verifications(
         self,
         race_id: str,

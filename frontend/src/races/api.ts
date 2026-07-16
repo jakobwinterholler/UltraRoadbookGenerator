@@ -230,6 +230,58 @@ export async function updateRacePreparation(
   };
 }
 
+export async function promoteDiscoveredStop(
+  raceId: string,
+  payload: {
+    suggestedStop: import("../api").SuggestedStop;
+    verifiedStop?: { zoneId: number; record: VerifiedStopRecord };
+  },
+): Promise<import("../api").RoadbookResult> {
+  const body: {
+    suggested_stop: Record<string, unknown>;
+    verified_stop?: Record<string, unknown>;
+  } = {
+    suggested_stop: {
+      zone_id: payload.suggestedStop.zone_id,
+      osm_id: payload.suggestedStop.osm_id,
+      osm_type: payload.suggestedStop.osm_type,
+      name: payload.suggestedStop.name,
+      poi_category: payload.suggestedStop.poi_category,
+      category_key: payload.suggestedStop.category_key,
+      category_label: payload.suggestedStop.category_label,
+      distance_along_km: payload.suggestedStop.distance_along_km,
+      distance_off_route_m: payload.suggestedStop.distance_off_route_m,
+      lat: payload.suggestedStop.lat,
+      lon: payload.suggestedStop.lon,
+      score: payload.suggestedStop.score,
+      reason: payload.suggestedStop.reason,
+    },
+  };
+
+  if (payload.verifiedStop) {
+    const { zoneId, record } = payload.verifiedStop;
+    body.verified_stop = {
+      zone_id: zoneId,
+      record: {
+        status: record.status,
+        poi_key: record.poiKey,
+        updated_at: record.updatedAt,
+      },
+    };
+  }
+
+  const response = await apiFetch(`/api/races/${raceId}/promote-discovery`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response, "Failed to promote discovered stop."));
+  }
+  const result = await response.json();
+  return result.roadbook as import("../api").RoadbookResult;
+}
+
 function parseVerifiedStops(
   raw: Record<string, unknown> | undefined,
 ): Record<string, VerifiedStopRecord> {

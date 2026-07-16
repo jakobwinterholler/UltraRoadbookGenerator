@@ -5,6 +5,7 @@ import type {
   CompanionStopAlternative,
 } from "../types/sync";
 import type { CompanionVerificationSubmission } from "../types/verification";
+import { findDiscoverPoiInBundle, insertPromotedDiscoverStop } from "./promoteDiscoverStop";
 import { sameStop, stopIdentity, stopMatchesSubmission } from "./stopMatching";
 
 function stopStatusFromSubmission(
@@ -125,48 +126,17 @@ function recountDashboardStats(bundle: CompanionBundle): CompanionBundle["dashbo
   };
 }
 
-/** Promote a discovered POI into the zone stop tree before applying verification. */
+/** Promote a discovered POI into the primary stop list before applying verification. */
 export function applyDiscoverVerificationToBundle(
   bundle: CompanionBundle,
   submission: CompanionVerificationSubmission,
   discoverPoi: CompanionDiscoverPoi,
 ): CompanionBundle {
-  const zoneId = discoverPoi.zoneId ?? submission.zoneId;
-  const alternative: CompanionStopAlternative = {
-    poiId: `poi_${discoverPoi.osmId}`,
-    osmId: discoverPoi.osmId,
-    osmType: discoverPoi.osmType,
-    name: discoverPoi.name?.trim() || discoverPoi.brand?.trim() || "Resupply",
-    category: discoverPoi.category,
-    categoryLabel: discoverPoi.category,
-    icon: "📍",
-    distanceOffRouteM: discoverPoi.distanceOffRouteM,
-    distanceAlongKm: discoverPoi.distanceAlongKm,
-    score: discoverPoi.score,
-    confidenceScore: discoverPoi.score,
-    verificationStatus: "unverified",
-    openingHours: discoverPoi.openingHours ?? null,
-    lat: discoverPoi.lat,
-    lon: discoverPoi.lon,
-  };
+  if (findDiscoverPoiInBundle(bundle, discoverPoi.osmId, discoverPoi.osmType)) {
+    return applyVerificationToBundle(bundle, submission);
+  }
 
-  const stops = bundle.stops.map((stop) => {
-    if (stop.zoneId !== zoneId) {
-      return stop;
-    }
-    const existing = stop.nearbyAlternatives ?? [];
-    const alreadyPresent = existing.some(
-      (item) => item.osmId === discoverPoi.osmId && item.osmType === discoverPoi.osmType,
-    );
-    if (alreadyPresent) {
-      return stop;
-    }
-    return {
-      ...stop,
-      nearbyAlternatives: [...existing, alternative],
-    };
-  });
-
+  const stops = insertPromotedDiscoverStop(bundle, discoverPoi);
   return applyVerificationToBundle({ ...bundle, stops }, submission);
 }
 

@@ -150,11 +150,19 @@ export function useDiscoverStops({
         }
         const key = poiOsmKey(candidate.osmType, candidate.osmId);
         const zone = resolveZoneForDiscovery(candidate, poiRow, presentedZones);
+        const zoneId = poiRow.zone_id ?? candidate.zoneId ?? zone?.zone_id;
+        if (zoneId == null) {
+          return;
+        }
 
-        onSelectPoi({ kind: "poi", poi: poiRow, zone });
+        const zoneForSelection =
+          zone ??
+          presentedZones.find((entry) => entry.zone_id === zoneId) ??
+          null;
+        onSelectPoi({ kind: "poi", poi: poiRow, zone: zoneForSelection });
 
-        if (zone && onPromoteVerified) {
-          await onPromoteVerified(zone.zone_id, poiRow);
+        if (onPromoteVerified) {
+          await onPromoteVerified(zoneId, poiRow);
         }
 
         setVerifiedKeys((current) => new Set([...current, key]));

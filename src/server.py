@@ -378,6 +378,11 @@ class PreparationProgressBody(BaseModel):
     verified_stops: dict[str, dict[str, Any]] | None = None
 
 
+class PromoteDiscoveryBody(BaseModel):
+    suggested_stop: dict[str, Any]
+    verified_stop: dict[str, Any] | None = None
+
+
 @app.get("/api/races")
 def list_races(include_archived: bool = False) -> dict:
     return {
@@ -450,6 +455,27 @@ def patch_race_preparation(
         "preparation": race.preparation.to_dict(),
         "race": race_store.get_summary(race_id).to_dict(),
     }
+
+
+@app.post("/api/races/{race_id}/promote-discovery")
+def promote_discovered_stop(
+    race_id: str,
+    body: PromoteDiscoveryBody,
+    background_tasks: BackgroundTasks,
+    user: AuthUser | None = Depends(get_optional_user),
+    access_token: str | None = Depends(get_bearer_token),
+) -> dict:
+    _require_race(race_id)
+    try:
+        roadbook = race_store.promote_discovered_stop(
+            race_id,
+            body.suggested_stop,
+            verified_stop=body.verified_stop,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _schedule_cloud_sync(background_tasks, user, race_id, access_token)
+    return {"roadbook": roadbook}
 
 
 @app.delete("/api/races/{race_id}")
