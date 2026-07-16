@@ -104,7 +104,7 @@ function CompanionRaceCard({
           onDelete();
         }}
         aria-label={`Delete ${race.name}`}
-        className="absolute right-3 top-3 z-10 flex min-h-[36px] min-w-[36px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+        className="absolute right-3 top-3 z-10 flex min-h-[44px] min-w-[44px] items-center justify-center rounded-full text-white/35 transition hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
       >
         <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" strokeLinecap="round" strokeLinejoin="round" />
@@ -300,7 +300,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-6">
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
         <input
           ref={fileInputRef}
           type="file"

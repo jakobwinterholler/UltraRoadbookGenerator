@@ -34,6 +34,15 @@ body {
     padding-top: max(12px, env(safe-area-inset-top, 0px));
   }
 
+  .pb-safe-bottom {
+    padding-bottom: max(0px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .px-safe-x {
+    padding-left: max(0px, env(safe-area-inset-left, 0px));
+    padding-right: max(0px, env(safe-area-inset-right, 0px));
+  }
+
   @media (display-mode: standalone) {
     .pt-safe-top {
       padding-top: max(54px, env(safe-area-inset-top, 0px));

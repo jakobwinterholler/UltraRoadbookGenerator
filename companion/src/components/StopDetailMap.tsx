@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildRouteTrack } from "@shared/race/mapMatching";
 import {
   ALTERNATIVE_STOP_COLOR,
-  DETAIL_MAP_ZOOM,
   DETAIL_ROUTE_WINDOW_KM,
   POI_FOCUS_ANIMATION_MS,
+  POI_FOCUS_OFFSET,
+  POI_FOCUS_ZOOM,
   ROUTE_CORE_COLOR,
   ROUTE_CORE_OPACITY,
   ROUTE_CORE_WIDTH,
@@ -26,6 +27,10 @@ interface StopDetailMapProps {
   alternatives?: CompanionStop[];
   riderLat?: number | null;
   riderLon?: number | null;
+}
+
+function stopFocusKey(stop: Pick<CompanionStop, "poiId" | "zoneId">): string {
+  return stop.poiId ?? `zone-${stop.zoneId}`;
 }
 
 function routeSegmentGeoJson(
@@ -105,12 +110,19 @@ export default function StopDetailMap({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const readyRef = useRef(false);
+  const lastFocusKeyRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const routeData = useMemo(
     () => routeSegmentGeoJson(bundle.route.coordinates, bundle.race.distanceKm, stop.km),
     [bundle.race.distanceKm, bundle.route.coordinates, stop.km],
   );
   const poiData = useMemo(() => poiGeoJson(stop, alternatives), [alternatives, stop]);
+  const focusKey = stopFocusKey(stop);
+
+  const routeDataRef = useRef(routeData);
+  const poiDataRef = useRef(poiData);
+  routeDataRef.current = routeData;
+  poiDataRef.current = poiData;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -121,12 +133,13 @@ export default function StopDetailMap({
     let cancelled = false;
     setLoadError(null);
     readyRef.current = false;
+    lastFocusKeyRef.current = null;
 
     const map = new maplibregl.Map({
       container: host,
       style: MAP_STYLE,
       center: [stop.lon, stop.lat],
-      zoom: DETAIL_MAP_ZOOM - 0.3,
+      zoom: POI_FOCUS_ZOOM,
       bearing: 0,
       pitch: 0,
       interactive: false,
@@ -163,7 +176,7 @@ export default function StopDetailMap({
       try {
         map.addSource("detail-route", {
           type: "geojson",
-          data: routeData,
+          data: routeDataRef.current,
         });
 
         map.addLayer({
@@ -190,7 +203,7 @@ export default function StopDetailMap({
 
         map.addSource("detail-poi", {
           type: "geojson",
-          data: poiData,
+          data: poiDataRef.current,
         });
 
         map.addLayer({
@@ -253,16 +266,16 @@ export default function StopDetailMap({
           },
         });
 
-        map.flyTo({
+        map.easeTo({
           center: [stop.lon, stop.lat],
-          zoom: DETAIL_MAP_ZOOM,
-          offset: [0, -36],
-          duration: POI_FOCUS_ANIMATION_MS,
+          zoom: POI_FOCUS_ZOOM,
+          offset: POI_FOCUS_OFFSET,
+          duration: 0,
           essential: true,
-          curve: 1.35,
         });
-
+        lastFocusKeyRef.current = stopFocusKey(stop);
         readyRef.current = true;
+        map.resize();
       } catch (error) {
         fail(error instanceof Error ? error.message : "Street map failed to set up.");
       }
@@ -274,13 +287,22 @@ export default function StopDetailMap({
       map.once("load", setup);
     }
 
+    const resizeObserver = new ResizeObserver(() => {
+      if (!cancelled) {
+        map.resize();
+      }
+    });
+    resizeObserver.observe(host);
+
     return () => {
       cancelled = true;
       readyRef.current = false;
+      lastFocusKeyRef.current = null;
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
     };
-  }, [alternatives, poiData, routeData, stop.lat, stop.lon, stop.poiId, stop.zoneId]);
+  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -290,6 +312,29 @@ export default function StopDetailMap({
     (map.getSource("detail-route") as maplibregl.GeoJSONSource).setData(routeData);
     (map.getSource("detail-poi") as maplibregl.GeoJSONSource).setData(poiData);
   }, [poiData, routeData]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) {
+      return;
+    }
+    if (!Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) {
+      return;
+    }
+    if (focusKey === lastFocusKeyRef.current) {
+      return;
+    }
+    lastFocusKeyRef.current = focusKey;
+
+    map.stop();
+    map.easeTo({
+      center: [stop.lon, stop.lat],
+      zoom: POI_FOCUS_ZOOM,
+      offset: POI_FOCUS_OFFSET,
+      duration: POI_FOCUS_ANIMATION_MS,
+      essential: true,
+    });
+  }, [focusKey, stop.lat, stop.lon]);
 
   useEffect(() => {
     const map = mapRef.current;

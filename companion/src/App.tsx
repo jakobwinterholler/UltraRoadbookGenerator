@@ -236,7 +236,7 @@ export default function App() {
               <Avatar name={displayName} imageUrl={avatarUrl} size="md" variant="dark" />
             </div>
           </header>
-          <AccountScreen embedded />
+          <AccountScreen />
         </div>
       );
     }

@@ -227,7 +227,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         />
       ) : null}
 
-      <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 p-4 sm:items-center">
+      <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/75 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[env(safe-area-inset-top,0px)] sm:items-center">
         <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#141414] p-5 shadow-2xl urp-animate-fade-up">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -240,7 +240,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
               <button
                 type="button"
                 onClick={onClose}
-                className="shrink-0 rounded-lg px-2 py-1 text-sm text-white/45 hover:bg-white/5 hover:text-white"
+                className="flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg px-2 text-sm text-white/45 hover:bg-white/5 hover:text-white"
               >
                 Close
               </button>

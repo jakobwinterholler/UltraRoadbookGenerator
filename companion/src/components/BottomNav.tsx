@@ -77,7 +77,7 @@ export default function BottomNav({ active, onChange }: BottomNavProps) {
               onClick={() => onChange(item.id)}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
-              className={`relative flex min-h-[52px] flex-col items-center justify-center gap-1 py-1.5 transition-colors duration-200 ${activeClass}`}
+              className={`relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-1 px-1 py-1.5 transition-colors duration-200 ${activeClass}`}
             >
               {isActive ? (
                 <span

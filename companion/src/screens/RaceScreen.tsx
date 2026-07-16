@@ -64,7 +64,7 @@ export default function RaceScreen() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 space-y-2 border-b border-white/8 px-4 pb-3 pt-1">
+      <div className="shrink-0 space-y-2 border-b border-white/8 px-4 pb-3 pt-safe-top">
         <NextVerifiedStopCard bundle={bundle} currentKm={currentKm} compact />
         <ResupplyElevationProfile
           bundle={bundle}
@@ -93,7 +93,7 @@ export default function RaceScreen() {
         {!selectedStop ? (
           <>
             <div className="pointer-events-none absolute left-3 top-3 z-10">
-              <label className="pointer-events-auto flex min-h-[40px] cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 text-xs text-white/80 backdrop-blur-xl">
+              <label className="pointer-events-auto flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 text-xs text-white/80 backdrop-blur-xl">
                 <input
                   type="checkbox"
                   checked={showUnverified}
@@ -113,7 +113,7 @@ export default function RaceScreen() {
               onResetNorth={() => mapRef.current?.resetNorth()}
             />
 
-            <div className="pointer-events-none absolute bottom-4 right-4 z-20">
+            <div className="pointer-events-none absolute bottom-[max(1rem,env(safe-area-inset-bottom,0px))] right-4 z-20">
               <DiscoverStopsControls
                 loading={discovery.loading}
                 resultMessage={discovery.resultMessage}

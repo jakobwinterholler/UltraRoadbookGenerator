@@ -59,8 +59,8 @@ export default function ShareScreen({
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
-      <section className="border-b border-white/10 px-4 py-4">
+    <div className="h-full min-h-0 overflow-y-auto pb-safe-bottom">
+      <section className="border-b border-white/10 px-4 pb-4 pt-safe-top">
         <p className="text-xs font-semibold uppercase tracking-[0.14em] text-sky-300/80">Share</p>
         <h1 className="mt-1 text-xl font-semibold text-white">{bundle.race.name}</h1>
         <p className="mt-1 text-sm tabular-nums text-white/50">

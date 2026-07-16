@@ -132,7 +132,7 @@ function DeleteAccountDialog({
   );
 }
 
-export default function AccountScreen({ embedded = false }: { embedded?: boolean }) {
+export default function AccountScreen() {
   const { user, signOut } = useAuth();
   const {
     checking,
@@ -230,9 +230,7 @@ export default function AccountScreen({ embedded = false }: { embedded?: boolean
 
   return (
     <div
-      className={`flex h-full min-h-0 flex-col overflow-y-auto px-4 pb-4 ${
-        embedded ? "pt-4" : "pt-safe-top"
-      }`}
+      className={`flex h-full min-h-0 flex-col overflow-y-auto px-4 pb-4 pt-safe-top`}
     >
       <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
         <div className="flex items-center gap-4">

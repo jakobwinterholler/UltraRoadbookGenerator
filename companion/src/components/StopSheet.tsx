@@ -156,7 +156,14 @@ export default function StopSheet({
       : null,
     streetViewOptions,
   );
-  const alternatives = stop ? buildStopAlternatives(stop, bundle.stops) : [];
+  const alternatives = useMemo(
+    () => (stop ? buildStopAlternatives(stop, bundle.stops) : []),
+    [bundle.stops, stop],
+  );
+  const alternativeStops = useMemo(
+    () => alternatives.map((item) => alternativeToStop(stop!, item)),
+    [alternatives, stop],
+  );
   const showVerifyActions = stop ? canVerifyStop(stop.verificationStatus) : false;
   const showConfirmOnRoute = stop ? canConfirmOnRoute(stop.verificationStatus) : false;
   const confidence = stop
@@ -277,7 +284,7 @@ export default function StopSheet({
             <StopDetailMap
               stop={stop}
               bundle={bundle}
-              alternatives={alternatives.map((item) => alternativeToStop(stop, item))}
+              alternatives={alternativeStops}
               riderLat={gps.lat}
               riderLon={gps.lon}
             />
