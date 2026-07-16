@@ -9,6 +9,7 @@ import {
   type MapBounds,
 } from "@shared/race/discoverStops";
 import { findZoneForPoi, poiKey, type StopSelection } from "./stopSelection";
+import { nearestZoneAtKm } from "../components/routeInsights";
 import {
   poiRowToDiscoverInput,
   primaryPoiKeysFromZones,
@@ -30,6 +31,23 @@ function formatResultMessage(count: number): string {
     return "No promising stops in this area";
   }
   return `Found ${count} promising stop${count === 1 ? "" : "s"}`;
+}
+
+function resolveZoneForDiscovery(
+  candidate: DiscoverCandidate,
+  poiRow: PoiRow,
+  presentedZones: ResupplyZone[],
+): ResupplyZone | null {
+  return (
+    findZoneForPoi(presentedZones, poiRow) ??
+    (poiRow.zone_id != null
+      ? presentedZones.find((entry) => entry.zone_id === poiRow.zone_id) ?? null
+      : null) ??
+    (candidate.zoneId != null
+      ? presentedZones.find((entry) => entry.zone_id === candidate.zoneId) ?? null
+      : null) ??
+    nearestZoneAtKm(presentedZones, candidate.distanceAlongKm)
+  );
 }
 
 export function useDiscoverStops({
@@ -131,11 +149,7 @@ export function useDiscoverStops({
           return;
         }
         const key = poiOsmKey(candidate.osmType, candidate.osmId);
-        const zone =
-          findZoneForPoi(presentedZones, poiRow) ??
-          (poiRow.zone_id != null
-            ? presentedZones.find((entry) => entry.zone_id === poiRow.zone_id) ?? null
-            : null);
+        const zone = resolveZoneForDiscovery(candidate, poiRow, presentedZones);
 
         onSelectPoi({ kind: "poi", poi: poiRow, zone });
 

@@ -4,8 +4,12 @@ import {
   applyDiscoverVerificationToBundle,
   applyVerificationToBundle,
 } from "@shared/race/applyVerificationToBundle";
-import { collectAllBundlePois, resolveRenderedStop } from "@shared/race/bundlePois";
-import { sameStop, stopIdentity } from "@shared/race/stopMatching";
+import { resolveRenderedStop } from "@shared/race/bundlePois";
+import {
+  findKnownBundlePoi,
+  resolveDiscoverPoiForStop,
+} from "@shared/race/discoverVerification";
+import { stopIdentity } from "@shared/race/stopMatching";
 import type { CompanionStop } from "@shared/types/sync";
 import type {
   CompanionVerificationSubmission,
@@ -32,12 +36,11 @@ export function useVerificationActions(userId: string | null) {
       updates: CompanionVerificationUpdates,
     ): Promise<VerificationSubmitResult> => {
       const rendered = resolveRenderedStop(bundle, stop);
-      const knownPoi = collectAllBundlePois(bundle).find((entry) => sameStop(entry.stop, rendered));
+      const knownPoi = findKnownBundlePoi(bundle, rendered);
+      const zoneId = rendered.zoneId ?? bundle.stops[0]?.zoneId;
       const discoverPoi =
-        rendered.osmId != null && rendered.osmType
-          ? bundle.discoverPois?.find(
-              (poi) => poi.osmId === rendered.osmId && poi.osmType === rendered.osmType,
-            ) ?? null
+        rendered.osmId != null && rendered.osmType && zoneId != null
+          ? resolveDiscoverPoiForStop(bundle, rendered, zoneId)
           : null;
 
       if (!knownPoi && !discoverPoi) {
@@ -48,15 +51,15 @@ export function useVerificationActions(userId: string | null) {
         rendered.poiId ??
         knownPoi?.poiId ??
         (discoverPoi ? `poi_${discoverPoi.osmId}` : stopIdentity(rendered));
-      const zoneId = rendered.zoneId ?? discoverPoi?.zoneId;
-      if (zoneId == null) {
+      const submissionZoneId = rendered.zoneId ?? discoverPoi?.zoneId ?? zoneId;
+      if (submissionZoneId == null) {
         return { ok: false, error: "Stop not found in this route bundle." };
       }
 
       const submission: CompanionVerificationSubmission = {
         id: crypto.randomUUID(),
         raceId: bundle.race.id,
-        zoneId,
+        zoneId: submissionZoneId,
         poiId,
         stopName: rendered.name,
         submittedAt: new Date().toISOString(),

@@ -6,7 +6,11 @@
 import assert from "node:assert/strict";
 import type { CompanionBundle } from "../types/sync";
 import type { CompanionVerificationSubmission } from "../types/verification";
-import { applyVerificationToBundle } from "./applyVerificationToBundle";
+import {
+  applyDiscoverVerificationToBundle,
+  applyVerificationToBundle,
+} from "./applyVerificationToBundle";
+import { findKnownBundlePoi, isMapVisibleStopStatus, resolveDiscoverPoiForStop } from "./discoverVerification";
 
 function makeBundle(): CompanionBundle {
   return {
@@ -108,5 +112,66 @@ function testPrimaryVerificationDoesNotPatchAlternative() {
 
 testAlternativeVerificationPatchesNestedPoi();
 testPrimaryVerificationDoesNotPatchAlternative();
+testDiscoverVerificationPromotesUnknownPoi();
+testMapVisibilityFilterHidesSkippedWhenVerifiedOnly();
+
+function testDiscoverVerificationPromotesUnknownPoi() {
+  const bundle = makeBundle();
+  const discoverPoi = {
+    osmId: 999001,
+    osmType: "node",
+    name: "Found Stop",
+    category: "Gas station",
+    priority: 2,
+    lat: 41.431,
+    lon: 2.129,
+    distanceAlongKm: 7.2,
+    distanceOffRouteM: 45,
+    score: 72,
+    zoneId: 4,
+    openingHours: "24/7",
+  };
+  const submission = makeSubmission("poi_999001", 4);
+  const next = applyDiscoverVerificationToBundle(bundle, submission, discoverPoi);
+
+  const zoneStop = next.stops.find((stop) => stop.zoneId === 4)!;
+  const promoted = zoneStop.nearbyAlternatives?.find((item) => item.osmId === 999001);
+  assert.ok(promoted);
+  assert.equal(promoted?.verificationStatus, "pending");
+}
+
+function testMapVisibilityFilterHidesSkippedWhenVerifiedOnly() {
+  assert.equal(isMapVisibleStopStatus("verified", false), true);
+  assert.equal(isMapVisibleStopStatus("pending", false), true);
+  assert.equal(isMapVisibleStopStatus("needs_review", false), false);
+  assert.equal(isMapVisibleStopStatus("unverified", false), false);
+  assert.equal(isMapVisibleStopStatus("needs_review", true), true);
+
+  const bundle = makeBundle();
+  const syntheticStop = {
+    zoneId: 4,
+    osmId: 5840105162,
+    osmType: "node",
+    km: 6.65,
+    lat: 41.428907,
+    lon: 2.128991,
+    name: "Font del Roure",
+    category: "Drinking water",
+    categoryLabel: "Water",
+    icon: "💧",
+    verificationStatus: "unverified" as const,
+    openingHours: null,
+    notes: null,
+    hasWater: true,
+    hasFood: false,
+    hasFuel: false,
+    hasCoffee: false,
+  };
+  const known = findKnownBundlePoi(bundle, syntheticStop);
+  assert.ok(known);
+  const discoverPoi = resolveDiscoverPoiForStop(bundle, syntheticStop, 4);
+  assert.ok(discoverPoi);
+  assert.equal(discoverPoi?.osmId, 5840105162);
+}
 
 console.log("applyVerificationToBundle.test.ts: all tests passed");

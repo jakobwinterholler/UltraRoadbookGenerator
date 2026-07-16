@@ -10,6 +10,7 @@ import {
 import { analyzeClimbDifficulty } from "@shared/race/climbDifficulty";
 import { buildRouteTrack, interpolateTrackAtKm } from "@shared/race/mapMatching";
 import { collectAllBundlePois, resolveRenderedStop, type BundlePoiEntry } from "@shared/race/bundlePois";
+import { isMapVisibleStopStatus } from "@shared/race/discoverVerification";
 import {
   ALTERNATIVE_STOP_COLOR,
   DIMMED_STOP_COLOR,
@@ -83,6 +84,7 @@ function stopsGeoJson(
   selectedPoiId: string | null,
   selectedZoneId: number | null,
   focusPoiId: string | null,
+  showUnverified: boolean,
 ): GeoJSON.FeatureCollection {
   const focusActive = selectedPoiId != null || focusPoiId != null;
   const activePoiId = focusPoiId ?? selectedPoiId;
@@ -91,6 +93,9 @@ function stopsGeoJson(
     features: entries.flatMap((entry) => {
       const stop = entry.stop;
       if (!Number.isFinite(stop.lat) || !Number.isFinite(stop.lon)) {
+        return [];
+      }
+      if (!isMapVisibleStopStatus(stop.verificationStatus, showUnverified)) {
         return [];
       }
       const poiId = entry.poiId;
@@ -239,6 +244,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
   const onDiscoverBoundsChangeRef = useRef(onDiscoverBoundsChange);
   const onSelectDiscoverCandidateRef = useRef(onSelectDiscoverCandidate);
   const discoverMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const lastFocusKeyRef = useRef<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const {
@@ -248,6 +254,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     selectStop,
     followGps,
     setFollowGps,
+    showUnverified,
   } = useCompanion();
 
   const climbs = bundle.climbs ?? [];
@@ -483,7 +490,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
 
       map.addSource("stops", {
         type: "geojson",
-        data: stopsGeoJson(poiEntries, selectedMarkerPoiId, selectedZoneId, focusPoiId),
+        data: stopsGeoJson(poiEntries, selectedMarkerPoiId, selectedZoneId, focusPoiId, showUnverified),
       });
 
       map.addLayer({
@@ -763,9 +770,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       return;
     }
     (map.getSource("stops") as maplibregl.GeoJSONSource).setData(
-      stopsGeoJson(poiEntries, selectedMarkerPoiId, selectedZoneId, focusPoiId),
+      stopsGeoJson(poiEntries, selectedMarkerPoiId, selectedZoneId, focusPoiId, showUnverified),
     );
-  }, [focusPoiId, poiEntries, selectedMarkerPoiId, selectedZoneId]);
+  }, [focusPoiId, poiEntries, selectedMarkerPoiId, selectedZoneId, showUnverified]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -869,6 +876,9 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     const map = mapRef.current;
     const target = focusStop ?? selectedStop;
     if (!map || !readyRef.current || !target) {
+      if (!target) {
+        lastFocusKeyRef.current = null;
+      }
       return;
     }
     if (!embedded && followGps && !selectedStop) {
@@ -877,15 +887,20 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     if (!Number.isFinite(target.lat) || !Number.isFinite(target.lon)) {
       return;
     }
+    const focusKey = stopPoiId(target);
+    if (focusKey === lastFocusKeyRef.current) {
+      return;
+    }
+    lastFocusKeyRef.current = focusKey;
+
     const focusingSelectedStop = !embedded && selectedStop != null;
-    map.flyTo({
+    map.easeTo({
       center: [target.lon, target.lat],
       zoom: embedded || focusingSelectedStop ? EMBEDDED_FOCUS_ZOOM : map.getZoom(),
       bearing: map.getBearing(),
       offset: embedded || focusingSelectedStop ? EMBEDDED_FOCUS_OFFSET : undefined,
       duration: FOCUS_ANIMATION_MS,
       essential: true,
-      curve: 1.35,
     });
   }, [embedded, focusStop, followGps, selectedStop]);
 

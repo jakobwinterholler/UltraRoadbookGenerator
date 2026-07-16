@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import {
   CircleMarker,
@@ -115,9 +115,16 @@ function PanToFocus({
   focusKmRange?: KmRangeSelection | null;
 }) {
   const map = useMap();
+  const lastFocusKeyRef = useRef<string | null>(null);
+  const FOCUS_DURATION_S = 1;
 
   useEffect(() => {
     if (focusKmRange) {
+      const focusKey = `range:${focusKmRange.startKm}-${focusKmRange.endKm}`;
+      if (focusKey === lastFocusKeyRef.current) {
+        return;
+      }
+      lastFocusKeyRef.current = focusKey;
       const bounds = boundsForKmRange(points, focusKmRange.startKm, focusKmRange.endKm);
       if (bounds) {
         fitPlanningBounds(map, bounds, "local", {
@@ -130,6 +137,11 @@ function PanToFocus({
     }
 
     if (selectedCandidateId && selectedCandidate) {
+      const focusKey = `candidate:${selectedCandidateId}`;
+      if (focusKey === lastFocusKeyRef.current) {
+        return;
+      }
+      lastFocusKeyRef.current = focusKey;
       const bounds = boundsForKmRange(points, selectedCandidate.start_km, selectedCandidate.end_km);
       if (bounds) {
         fitPlanningBounds(map, bounds, "local", {
@@ -142,6 +154,11 @@ function PanToFocus({
     }
 
     if (selectedClimbId && selectedClimb) {
+      const focusKey = `climb:${selectedClimbId}`;
+      if (focusKey === lastFocusKeyRef.current) {
+        return;
+      }
+      lastFocusKeyRef.current = focusKey;
       const bounds = boundsForKmRange(points, selectedClimb.start_km, selectedClimb.end_km);
       if (bounds) {
         fitPlanningBounds(map, bounds, "local", {
@@ -154,8 +171,19 @@ function PanToFocus({
     }
 
     if (selectedZoneId && selectedZone) {
-      map.setView([selectedZone.lat, selectedZone.lon], Math.max(map.getZoom(), 14), { animate: true });
+      const focusKey = `zone:${selectedZoneId}`;
+      if (focusKey === lastFocusKeyRef.current) {
+        return;
+      }
+      lastFocusKeyRef.current = focusKey;
+      map.flyTo([selectedZone.lat, selectedZone.lon], Math.max(map.getZoom(), 14), {
+        animate: true,
+        duration: FOCUS_DURATION_S,
+      });
+      return;
     }
+
+    lastFocusKeyRef.current = null;
   }, [
     map,
     points,
@@ -272,11 +300,12 @@ function poiDivIcon(icon: string): L.DivIcon {
 }
 
 function discoverDivIcon(selected = false, animationDelayMs = 0): L.DivIcon {
+  const markerSpan = selected ? 17 : 16;
   return L.divIcon({
     html: discoverMarkerHtml({ selected, animationDelayMs }),
     className: "discover-marker",
-    iconSize: [18, 18],
-    iconAnchor: [9, 9],
+    iconSize: [markerSpan, markerSpan],
+    iconAnchor: [markerSpan / 2, markerSpan / 2],
   });
 }
 

@@ -46,6 +46,7 @@ export function candidateToCompanionStop(
   }
 
   return {
+    poiId: `poi_${candidate.osmId}`,
     zoneId,
     osmId: candidate.osmId,
     osmType: candidate.osmType,
