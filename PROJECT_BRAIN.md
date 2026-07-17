@@ -370,6 +370,10 @@ belongs, never deleted:
   removed (the hardest climb still appears as a briefing highlight for context).
 - **Planning** → "Where should I stop?" · **Climbs** → "Which climbs matter?" ·
   **Surface** → "What terrain will I ride?" · **Resupply** → "What happens next?"
+  - Planning tightened in v0.7: selecting a climb no longer takes over the plan
+    map with the full `ClimbDetailView`. Climbs remain visible/highlightable on the
+    map + elevation profile as *context* for stop placement; the full climb detail
+    lives on the **Climbs** tab (moved, not removed).
 - **Export** → "Is my device ready?" — now its **own tab/screen** (`ExportPage`),
   no longer buried in the Dashboard footer. Tab bar: Plan · Dashboard · Climbs ·
   Surface · Unsupported · Resupply · Export.

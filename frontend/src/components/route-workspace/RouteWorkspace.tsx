@@ -30,7 +30,6 @@ import { nearbyPoiDebugEntries } from "../../planning/poiDebug";
 import { buildClimbDebugContext } from "../../planning/climbDebug";
 import { significantClimbs } from "@shared/race/significantClimbs";
 import { activePoint, computeRouteInsights } from "../routeInsights";
-import ClimbDetailView from "../climb/ClimbDetailView";
 import { usePlanningAssumptions } from "../../planning/usePlanningAssumptions";
 import ResupplySegmentSummary from "./ResupplySegmentSummary";
 import SuggestedStopsReviewPanel from "./SuggestedStopsReviewPanel";
@@ -300,11 +299,6 @@ export default function RouteWorkspace({ result }: RouteWorkspaceProps) {
     result.route.track_points,
   ]);
 
-  const selectedClimb =
-    selection.selectedClimbId !== null
-      ? sortedClimbs.find((climb) => climb.id === selection.selectedClimbId) ?? null
-      : null;
-
   const selectedCandidate =
     selection.selectedCandidateId !== null
       ? (result.climb_candidates ?? []).find(
@@ -401,17 +395,7 @@ export default function RouteWorkspace({ result }: RouteWorkspaceProps) {
           )}
         </header>
 
-        {selectedClimb ? (
-          <ClimbDetailView
-            climb={selectedClimb}
-            route={result.route}
-            pois={result.pois}
-            zones={presentedZones}
-            totalKm={result.summary.distance_km}
-            onClose={selection.handleClearEntitySelection}
-          />
-        ) : (
-          <>
+        <>
             <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
               <div className="relative min-h-[280px] flex-1">
               <RouteMap
@@ -605,9 +589,7 @@ export default function RouteWorkspace({ result }: RouteWorkspaceProps) {
               />
             )}
           </PlanningDetailSheet>
-
-          </>
-        )}
+        </>
       </div>
     </div>
   );
