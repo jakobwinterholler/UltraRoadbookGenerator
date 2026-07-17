@@ -21,6 +21,7 @@ env/
 .env.*
 
 # Generated app data & caches
+.run/
 data/races/
 cache/osm/*
 !cache/osm/.gitkeep
