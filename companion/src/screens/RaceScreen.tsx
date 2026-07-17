@@ -11,7 +11,18 @@ import StopSheet from "../components/StopSheet";
 import { nextResupplyStop } from "../lib/raceExecution";
 import { useDiscoverStops } from "../planning/useDiscoverStops";
 
-export default function RaceScreen() {
+interface RaceScreenProps {
+  /**
+   * Whether the Map tab is the one currently shown. The map itself stays mounted
+   * across tab switches (kept alive), but the stop/climb sheets are driven by the
+   * shared selected-stop context — which Resupply also renders a sheet for — so we
+   * only render them here while Map is active to avoid a duplicate (hidden) sheet
+   * and its mini-map/Street View work.
+   */
+  active?: boolean;
+}
+
+export default function RaceScreen({ active = true }: RaceScreenProps) {
   const {
     bundle,
     currentKm,
@@ -133,21 +144,25 @@ export default function RaceScreen() {
         ) : null}
       </div>
 
-      <StopSheet
-        stop={selectedStop}
-        bundle={bundle}
-        onClose={handleStopSheetClose}
-        onSelectAlternative={selectStop}
-        onVerified={handleStopVerified}
-        onSkipped={handleStopSkipped}
-      />
+      {active ? (
+        <>
+          <StopSheet
+            stop={selectedStop}
+            bundle={bundle}
+            onClose={handleStopSheetClose}
+            onSelectAlternative={selectStop}
+            onVerified={handleStopVerified}
+            onSkipped={handleStopSkipped}
+          />
 
-      <ClimbSheet
-        climb={selectedClimb}
-        totalKm={bundle.race.distanceKm}
-        currentKm={currentKm}
-        onClose={() => setSelectedClimb(null)}
-      />
+          <ClimbSheet
+            climb={selectedClimb}
+            totalKm={bundle.race.distanceKm}
+            currentKm={currentKm}
+            onClose={() => setSelectedClimb(null)}
+          />
+        </>
+      ) : null}
     </div>
   );
 }

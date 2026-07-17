@@ -75,6 +75,28 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
 
 ---
 
+## Fixed in v0.7 RC hardening
+
+### RH-08 — Persistent map created a duplicate hidden stop sheet on Resupply
+- **Description:** After keeping the map alive across tabs (KI-08), `RaceScreen`
+  stayed mounted while hidden. Both `RaceScreen` and `ResupplyScreen` render a
+  `StopSheet` bound to the shared `selectedStop`, so selecting a stop on Resupply
+  spun up a second, hidden `StopSheet` — including a duplicate `StopDetailMap`
+  MapLibre mini-map and a duplicate Street View metadata fetch.
+- **Priority:** P2 · **Status:** fixed · **Fixed in:** v0.7 RC
+- **Fix:** `RaceScreen` takes an `active` prop (`tab === "map"`) and only renders
+  its stop/climb sheets when the Map tab is actually visible.
+
+### RH-09 — Debug logging shipped to production consoles
+- **Description:** `logStreetViewDebug` (every stop view), `logSyncDebug` (every
+  sync stage), `raceOpenTrace` and a RoutePreview mount log wrote to the console
+  unconditionally.
+- **Priority:** P3 · **Status:** fixed · **Fixed in:** v0.7 RC
+- **Fix:** All are gated to `import.meta.env.DEV`; the sync ring buffer (in-app
+  log) is retained. Removed the RoutePreview mount log.
+
+---
+
 ## Open / Deferred
 
 ### KI-07 — Haptics are a no-op on iOS Safari / installed PWA
@@ -157,9 +179,12 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
 - **Description:** Companion GPX import proxies `/api/*` to the Render FastAPI
   service via `companion/vercel.json`. The service must be deployed and healthy
   (`/api/health`) for import to work.
-- **Priority:** P0 (release gate) · **Status:** open
-- **Notes:** Use `scripts/verify_production_api.sh`. Manual one-time Render
-  Blueprint deploy required.
+- **Priority:** P0 (release gate) · **Status:** open — **verified NOT live**
+- **Notes:** `curl https://ultra-roadbook-api.onrender.com/api/health` returned
+  **404** during RC hardening (route exists in `src/server.py`, so the service is
+  not deployed / not routed). Companion GPX import will fail until this is fixed.
+  Deploy via Render Blueprint (`render.yaml`), set Supabase env vars, then verify
+  with `scripts/verify_production_api.sh`. Desktop import is unaffected (local).
 
 ---
 

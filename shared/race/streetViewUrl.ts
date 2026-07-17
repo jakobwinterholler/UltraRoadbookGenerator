@@ -137,6 +137,9 @@ export interface StreetViewDebugInfo {
 }
 
 export function logStreetViewDebug(debug: StreetViewDebugInfo): void {
+  if ((import.meta as { env?: { DEV?: boolean } }).env?.DEV !== true) {
+    return;
+  }
   console.info("[StreetView]", {
     poi: `${debug.poiLat.toFixed(6)},${debug.poiLon.toFixed(6)}${debug.poiName ? ` (${debug.poiName})` : ""}`,
     gpx:

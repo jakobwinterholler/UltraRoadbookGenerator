@@ -306,7 +306,7 @@ export default function App() {
             style={{ visibility: tab === "map" ? "visible" : "hidden" }}
             aria-hidden={tab !== "map"}
           >
-            <RaceScreen />
+            <RaceScreen active={tab === "map"} />
           </div>
           {tab !== "map" ? (
             <div key={tab} className="urp-animate-fade-in absolute inset-0 bg-[#0a0a0a]">
