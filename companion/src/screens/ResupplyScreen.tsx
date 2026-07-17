@@ -4,6 +4,7 @@ import { formatRidingTime } from "@shared/race/riderAssumptions";
 import { useCompanion } from "../context/CompanionContext";
 import { buildResupplyCards, formatKm } from "../lib/utils";
 import { isVerifiedEverywhere, isVerifiedLocally } from "../lib/raceExecution";
+import { haptic } from "../lib/haptics";
 import NextVerifiedStopCard from "../components/NextVerifiedStopCard";
 import StopSheet from "../components/StopSheet";
 import UnsupportedSectionSheet from "../components/UnsupportedSectionSheet";
@@ -141,6 +142,7 @@ export default function ResupplyScreen() {
 
   const handleStopTap = useCallback(
     (stop: CompanionStop, index: number) => {
+      haptic("selection");
       selectStop(stop);
       scrollToStopIndex(index);
     },

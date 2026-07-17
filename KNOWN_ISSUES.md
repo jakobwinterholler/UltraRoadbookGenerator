@@ -77,6 +77,32 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
 
 ## Open / Deferred
 
+### KI-07 — Haptics are a no-op on iOS Safari / installed PWA
+- **Description:** The companion haptics utility (`companion/src/lib/haptics.ts`)
+  uses the Web Vibration API, which iOS Safari and installed PWAs do not
+  implement. Haptic feedback therefore fires on Android but is a graceful no-op
+  on iPhone — the actual target device.
+- **Priority:** P3 · **Status:** open
+- **Notes:** No reliable web API for iOS haptics today. Utility is centralized so
+  it "just works" if/when support arrives, or if wrapped natively later.
+
+### KI-08 — Companion Map tab remounts (map re-init) on every tab switch
+- **Description:** The companion workspace renders tab content with `key={tab}`,
+  so returning to the Map tab tears down and recreates the MapLibre instance,
+  costing time and a visible flash mid-race.
+- **Priority:** P2 · **Status:** open
+- **Notes:** Fix needs a keep-alive layout (mount tabs once, toggle visibility).
+  Deferred — non-trivial state/layout change; verify GPS + map lifecycle.
+
+### KI-09 — StopDetailSheet lacks visible-state enter/exit + drag-to-dismiss
+- **Description:** The verification `StopDetailSheet` is mounted conditionally
+  (no exit animation, no drag-to-dismiss) unlike the shared `BottomSheet`.
+- **Priority:** P3 · **Status:** open
+- **Notes:** Bring it onto the shared `BottomSheet` (or add visible-state) for a
+  consistent native feel. Deferred to avoid churn on a secondary surface.
+
+
+
 ### KI-01 — Public API multi-tenant isolation for local planning endpoints
 - **Description:** The `/api/races/*` local planning endpoints use a filesystem
   race store with an optional user and no per-user ownership checks. Safe for the

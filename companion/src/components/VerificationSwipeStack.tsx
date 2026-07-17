@@ -7,6 +7,7 @@ import { formatKm, googleMapsUrl } from "../lib/utils";
 import { serviceLabels, stopStatusLabel } from "../lib/raceExecution";
 import { normalizeWebsite } from "@shared/race/streetViewUrl";
 import { useStreetViewLink } from "@shared/race/useStreetViewLink";
+import { haptic } from "../lib/haptics";
 
 export type VerificationAction = "verified" | "skip";
 
@@ -116,6 +117,7 @@ function SwipeCard({
           setExiting(null);
           return;
         }
+        haptic(action === "verified" ? "success" : "light");
         setExiting(direction);
       })();
     },
@@ -132,6 +134,7 @@ function SwipeCard({
           setExiting(null);
           return;
         }
+        haptic(action === "verified" ? "success" : "light");
         setExiting(direction);
         const exitX = direction === "right" ? window.innerWidth * 1.2 : -window.innerWidth * 1.2;
         applyOffset(exitX);

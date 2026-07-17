@@ -18,6 +18,7 @@ import { normalizeWebsite } from "@shared/race/streetViewUrl";
 import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 import { buildStopAlternatives, type StopAlternativeView } from "../lib/nearbyStopAlternatives";
 import { useVerificationActions } from "../lib/useVerificationActions";
+import { haptic } from "../lib/haptics";
 import { useCompanion } from "../context/CompanionContext";
 import StopDetailMap from "./StopDetailMap";
 import BottomSheet from "./BottomSheet";
@@ -187,6 +188,7 @@ export default function StopSheet({
       setActionError(result.error ?? "Could not verify this stop.");
       return;
     }
+    haptic("success");
     if (onVerified) {
       onVerified(target);
     } else {
@@ -207,6 +209,7 @@ export default function StopSheet({
       setActionError(result.error ?? "Could not skip this stop.");
       return;
     }
+    haptic("light");
     if (onSkipped) {
       onSkipped(stop);
     } else {

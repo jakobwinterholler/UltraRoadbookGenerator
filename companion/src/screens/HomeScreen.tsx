@@ -25,6 +25,7 @@ import {
   type StoredRaceListItem,
 } from "../db";
 import { acceptGpxFile, onIncomingGpxFile } from "../lib/incomingGpx";
+import { haptic } from "../lib/haptics";
 import { buildRaceListSections } from "../lib/raceListSections";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
 import { useCloudRaceList } from "../sync/useCloudRaceList";
@@ -170,6 +171,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
     setDeleteBusy(true);
     setActionError(null);
     setDeleteTarget(null);
+    haptic("warning");
     setDismissingRaceId(raceId);
     await new Promise((resolve) => window.setTimeout(resolve, 280));
 

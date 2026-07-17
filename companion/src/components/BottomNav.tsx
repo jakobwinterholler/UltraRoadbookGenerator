@@ -1,3 +1,5 @@
+import { haptic } from "../lib/haptics";
+
 interface BottomNavProps {
   active: CompanionTab;
   onChange: (tab: CompanionTab) => void;
@@ -63,9 +65,12 @@ export default function BottomNav({ active, onChange, onBackToLibrary }: BottomN
       <div className="relative grid grid-cols-5">
         <button
           type="button"
-          onClick={onBackToLibrary}
+          onClick={() => {
+            haptic("selection");
+            onBackToLibrary();
+          }}
           aria-label="Race library"
-          className="relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-1 px-1 py-1.5 text-white/40 transition-colors duration-200 hover:text-white/70"
+          className="relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-1 px-1 py-1.5 text-white/40 transition-colors duration-200 hover:text-white/70 active:scale-95"
         >
           <NavIcon tab="library" active={false} />
           <span className="text-[11px] font-medium leading-none">Library</span>
@@ -82,10 +87,15 @@ export default function BottomNav({ active, onChange, onBackToLibrary }: BottomN
             <button
               key={item.id}
               type="button"
-              onClick={() => onChange(item.id)}
+              onClick={() => {
+                if (!isActive) {
+                  haptic("selection");
+                }
+                onChange(item.id);
+              }}
               aria-label={item.label}
               aria-current={isActive ? "page" : undefined}
-              className={`relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-1 px-1 py-1.5 transition-colors duration-200 ${activeClass}`}
+              className={`relative flex min-h-[52px] min-w-[44px] flex-col items-center justify-center gap-1 px-1 py-1.5 transition-[color,transform] duration-200 active:scale-95 ${activeClass}`}
             >
               {isActive ? (
                 <span

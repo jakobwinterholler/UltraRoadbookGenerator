@@ -7,6 +7,7 @@ import type { CompanionStop } from "../types";
 import { formatKm, googleMapsUrl } from "../lib/utils";
 import { useStreetViewLink } from "@shared/race/useStreetViewLink";
 import { serviceLabels, isVerifiedEverywhere, isVerifiedLocally, stopStatusLabel } from "../lib/raceExecution";
+import { haptic } from "../lib/haptics";
 
 interface StopDetailSheetProps {
   stop: CompanionStop;
@@ -100,6 +101,7 @@ export default function StopDetailSheet({
   }
 
   function submitVerified() {
+    haptic("success");
     onVerify?.({
       status: "verified",
       services,
@@ -296,15 +298,18 @@ export default function StopDetailSheet({
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={onReject}
-                className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-4 text-sm font-semibold text-red-200"
+                onClick={() => {
+                  haptic("light");
+                  onReject?.();
+                }}
+                className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-4 text-sm font-semibold text-red-200 transition active:scale-[0.98]"
               >
                 Needs review
               </button>
               <button
                 type="button"
                 onClick={submitVerified}
-                className="rounded-2xl bg-orange-500 px-4 py-4 text-sm font-semibold text-white shadow-lg shadow-orange-500/25"
+                className="rounded-2xl bg-orange-500 px-4 py-4 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition active:scale-[0.98]"
               >
                 Submit verified
               </button>
