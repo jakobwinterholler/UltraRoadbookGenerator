@@ -295,16 +295,33 @@ export default function App() {
           <RaceDataBanner bundle={bundle} onBundleUpdate={updateBundle} />
         ) : null}
 
-        <main className="min-h-0 flex-1 urp-animate-fade-in" key={tab}>
-          {tab === "map" ? (
+        <main className="relative min-h-0 flex-1">
+          {/* The map stays mounted for the entire race session so returning to it is
+              instant — no remount, no tile reload, no white frame. We hide it with
+              `visibility` (not display:none) so its layout box, and therefore the
+              MapLibre canvas size, is preserved while another tab is on top. GPS,
+              zoom/bearing/pitch, route rendering and the selected stop all persist. */}
+          <div
+            className="absolute inset-0"
+            style={{ visibility: tab === "map" ? "visible" : "hidden" }}
+            aria-hidden={tab !== "map"}
+          >
             <RaceScreen />
-          ) : tab === "resupply" ? (
-            <ResupplyScreen />
-          ) : tab === "verify" ? (
-            <VerificationScreen />
-          ) : (
-            <ShareScreen autoExportDevice={autoExportDevice} onAutoExportHandled={() => setAutoExportDevice(null)} />
-          )}
+          </div>
+          {tab !== "map" ? (
+            <div key={tab} className="urp-animate-fade-in absolute inset-0 bg-[#0a0a0a]">
+              {tab === "resupply" ? (
+                <ResupplyScreen />
+              ) : tab === "verify" ? (
+                <VerificationScreen />
+              ) : (
+                <ShareScreen
+                  autoExportDevice={autoExportDevice}
+                  onAutoExportHandled={() => setAutoExportDevice(null)}
+                />
+              )}
+            </div>
+          ) : null}
         </main>
 
         <BottomNav

@@ -87,12 +87,20 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
   it "just works" if/when support arrives, or if wrapped natively later.
 
 ### KI-08 — Companion Map tab remounts (map re-init) on every tab switch
-- **Description:** The companion workspace renders tab content with `key={tab}`,
-  so returning to the Map tab tears down and recreates the MapLibre instance,
+- **Description:** The companion workspace rendered tab content with `key={tab}`,
+  so returning to the Map tab tore down and recreated the MapLibre instance,
   costing time and a visible flash mid-race.
-- **Priority:** P2 · **Status:** open
-- **Notes:** Fix needs a keep-alive layout (mount tabs once, toggle visibility).
-  Deferred — non-trivial state/layout change; verify GPS + map lifecycle.
+- **Priority:** P2 · **Status:** fixed (v0.7)
+- **Fix:** `RaceScreen` (map) now stays mounted for the entire race session and is
+  hidden with `visibility` (not `display:none`) when another tab is active, so its
+  layout box — and the MapLibre canvas size — is preserved. Zoom/bearing/pitch,
+  loaded tiles, route rendering, GPS position and the selected stop all persist,
+  and return to the map is instant with no white frame. `RouteMapView` also gained
+  a `ResizeObserver` so the canvas re-fits when the header height changes between
+  tabs (Execution header is only on Map/Resupply) — the resize happens while
+  hidden, so there is no reflow flash on show.
+- **QA:** Final confirmation is on-device — switch Map ↔ Verify ↔ Resupply mid-ride
+  and confirm the map keeps position/tiles and returns instantly.
 
 ### KI-09 — StopDetailSheet lacks visible-state enter/exit + drag-to-dismiss
 - **Description:** The verification `StopDetailSheet` is mounted conditionally

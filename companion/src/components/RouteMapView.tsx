@@ -752,9 +752,24 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     map.on("zoomend", emitBounds);
     emitBounds();
 
+    // Keep the canvas matched to its container. The map is kept alive (only
+    // hidden) across tab switches, and the surrounding header/banners change
+    // height between tabs — resizing here means the map is already correct the
+    // instant it becomes visible again, with no reflow flash.
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            if (mapRef.current && host.clientWidth > 0 && host.clientHeight > 0) {
+              mapRef.current.resize();
+            }
+          })
+        : null;
+    resizeObserver?.observe(host);
+
     return () => {
       cancelled = true;
       readyRef.current = false;
+      resizeObserver?.disconnect();
       for (const marker of discoverMarkersRef.current) {
         marker.remove();
       }
