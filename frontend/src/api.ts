@@ -328,6 +328,7 @@ export type AppTab =
   | "climbs"
   | "surface"
   | "resupply"
+  | "export"
   | "preview";
 
 export interface ClimbDetectionConfig {

@@ -12,6 +12,7 @@ const tabs: { id: AppTab; label: string }[] = [
   { id: "surface", label: "Surface" },
   { id: "unsupported", label: "Unsupported" },
   { id: "resupply", label: "Resupply" },
+  { id: "export", label: "Export" },
 ];
 
 export default function TabBar({ activeTab, onTabChange }: TabBarProps) {

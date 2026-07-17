@@ -292,7 +292,7 @@ Conceptual map — no code.
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        DESKTOP (frontend/)                       │
-│  React + Vite · Plan / Dashboard / Climbs / Surface / Resupply  │
+│  Plan / Dashboard / Climbs / Surface / Unsupported / Resupply / Export │
 │  Planning context · Verification UI · Coros export dialog        │
 └────────────────────────────┬────────────────────────────────────┘
                              │ REST + SSE
@@ -358,6 +358,21 @@ Conceptual map — no code.
 ---
 
 ## UX Philosophy
+
+### One question per screen (v0.7)
+
+Desktop workflow: **Import → Dashboard → Planning → Export → Sync → Ride**. Each
+screen answers exactly one question; information is *moved* to the screen where it
+belongs, never deleted:
+
+- **Dashboard** → "What should I know before I start planning?" (high-level summary
+  only). Slimmed in v0.7: the full Key Climbs section and the Export block were
+  removed (the hardest climb still appears as a briefing highlight for context).
+- **Planning** → "Where should I stop?" · **Climbs** → "Which climbs matter?" ·
+  **Surface** → "What terrain will I ride?" · **Resupply** → "What happens next?"
+- **Export** → "Is my device ready?" — now its **own tab/screen** (`ExportPage`),
+  no longer buried in the Dashboard footer. Tab bar: Plan · Dashboard · Climbs ·
+  Surface · Unsupported · Resupply · Export.
 
 ### Workflow simplification (v0.5)
 

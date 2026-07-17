@@ -2,14 +2,12 @@ import { useMemo } from "react";
 import type { AppTab, RoadbookResult } from "../api";
 import { useRenderTrace } from "../debug/raceOpenTrace";
 import DashboardBriefingCards from "../components/dashboard/DashboardBriefingCards";
-import DashboardKeyClimbsSection from "../components/dashboard/DashboardKeyClimbsSection";
 import DashboardRouteOverviewMap from "../components/dashboard/DashboardRouteOverviewMap";
 import { useHighlightHoverSync } from "../components/dashboard/useHighlightHoverSync";
-import ExportSection from "../components/ExportSection";
 import { formatKm } from "../components/routeInsights";
 import { usePlanning } from "../planning/PlanningContext";
 import { analyzeClimbs, selectKeyClimbs } from "../planning/climbAnalysis";
-import { briefingHighlightIntent, selectClimbIntent } from "../planning/planningIntent";
+import { briefingHighlightIntent } from "../planning/planningIntent";
 import {
   buildRouteHighlights,
   dashboardOverviewHighlights,
@@ -154,15 +152,6 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
     onNavigate("route");
   }
 
-  function handleSelectClimb(climbId: string) {
-    setPlanningIntent(selectClimbIntent(climbId, "route"));
-    onNavigate("route");
-  }
-
-  function handleViewAllClimbs() {
-    onNavigate("climbs");
-  }
-
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
       <header className="mb-10">
@@ -250,15 +239,6 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
         />
       </section>
 
-      <section className="mb-16 rounded-2xl bg-canvas/50 px-5 py-6 md:px-6">
-        <DashboardKeyClimbsSection
-          climbs={keyClimbs}
-          totalClimbCount={result.climbs.length}
-          onSelectClimb={handleSelectClimb}
-          onViewAllClimbs={handleViewAllClimbs}
-        />
-      </section>
-
       <section className="mb-16">
         <div className="rounded-2xl border border-accent/20 bg-accent/[0.04] p-5 shadow-card">
           <h2 className="text-sm font-medium text-ink">Build your trusted race plan</h2>
@@ -305,16 +285,6 @@ export default function DashboardPage({ result, raceId, onNavigate }: DashboardP
           </button>
         </div>
       </section>
-
-      <footer className="border-t border-line/60 pt-8">
-        <ExportSection
-          raceId={raceId}
-          raceName={activeRace?.name ?? "race"}
-          result={result}
-          verifiedStops={verifiedStops}
-          onExported={() => void refreshRaces()}
-        />
-      </footer>
     </div>
   );
 }

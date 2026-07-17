@@ -13,6 +13,7 @@ import type { PlanningIntent } from "./planning/planningIntent";
 import type { ZoneDensityMode } from "./planning/types";
 import ClimbsPage from "./pages/ClimbsPage";
 import DashboardPage from "./pages/OverviewPage";
+import ExportPage from "./pages/ExportPage";
 import MyRacesPage from "./pages/MyRacesPage";
 import ResupplyPage from "./pages/ResupplyPage";
 import SettingsPage from "./pages/SettingsPage";
@@ -273,6 +274,8 @@ function AppContent() {
         return <SurfacePage result={roadbook} onNavigate={setActiveTab} />;
       case "resupply":
         return <ResupplyPage result={roadbook} />;
+      case "export":
+        return <ExportPage result={roadbook} raceId={activeRaceId} />;
       case "preview":
         return (
           <RoutePreviewPage
