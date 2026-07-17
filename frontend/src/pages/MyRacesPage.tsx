@@ -226,7 +226,7 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         <div>
           <h1 className="text-[2rem] font-semibold tracking-tight text-ink">My Races</h1>
           <p className="mt-3 max-w-lg text-base leading-relaxed text-muted">
-            Each race is your workspace — route, analysis, preparation, and exports together.
+            Plan resupply, verify your stops, and export to your GPS.
           </p>
         </div>
         <Button onClick={openCreateDialog}>New race</Button>
@@ -248,8 +248,8 @@ export default function MyRacesPage({ onRaceCreated, onOpenRace }: MyRacesPagePr
         <EmptyState
           illustration={<NoRacesIllustration />}
           title="No races yet"
-          description="Upload a GPX to create your first race workspace. Analysis and preparation will live here."
-          action={<Button onClick={openCreateDialog}>Create your first race</Button>}
+          description="Import a GPX to start planning. Analysis runs automatically — your route, stops, and exports live here."
+          action={<Button onClick={openCreateDialog}>Import your first race</Button>}
         />
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">

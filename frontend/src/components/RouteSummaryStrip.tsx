@@ -42,7 +42,7 @@ export default function RouteSummaryStrip({
         <Metric
           label="Verified"
           value={`${verifiedPercent}%`}
-          hint={verifiedPercent < 100 ? "Review in Verify tab" : "All stops reviewed"}
+          hint={verifiedPercent < 100 ? "Not all reviewed yet" : "All stops reviewed"}
         />
         <Metric
           label="Longest unsupported"

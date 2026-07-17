@@ -93,15 +93,24 @@ export default function RaceScreen() {
         {!selectedStop ? (
           <>
             <div className="pointer-events-none absolute left-3 top-3 z-10">
-              <label className="pointer-events-auto flex min-h-[44px] cursor-pointer items-center gap-2 rounded-xl border border-white/10 bg-black/55 px-3 py-2 text-xs text-white/80 backdrop-blur-xl">
-                <input
-                  type="checkbox"
-                  checked={showUnverified}
-                  onChange={(event) => setShowUnverified(event.target.checked)}
-                  className="h-3.5 w-3.5 rounded accent-violet-500"
+              <button
+                type="button"
+                onClick={() => setShowUnverified(!showUnverified)}
+                aria-pressed={showUnverified}
+                className={`pointer-events-auto flex min-h-[44px] items-center gap-2 rounded-full border px-3.5 text-xs font-medium backdrop-blur-xl transition-colors duration-200 ${
+                  showUnverified
+                    ? "border-violet-400/40 bg-violet-500/20 text-white"
+                    : "border-white/10 bg-black/55 text-white/60"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 shrink-0 rounded-full transition-colors duration-200 ${
+                    showUnverified ? "bg-violet-300" : "bg-white/30"
+                  }`}
+                  aria-hidden
                 />
                 Suggested stops
-              </label>
+              </button>
             </div>
 
             <MapControls

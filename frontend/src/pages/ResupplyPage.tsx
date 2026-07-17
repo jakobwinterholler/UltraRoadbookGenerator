@@ -101,12 +101,6 @@ export default function ResupplyPage({ result }: ResupplyPageProps) {
         <h2 className="text-display font-semibold tracking-tight text-ink">Resupply</h2>
         <p className="mt-2 text-sm text-muted">
           {visibleZones.length} {showVerifiedOnly ? "verified" : "suggested"} stops along your route
-          {result.resupply_zones.length !== visibleZones.length && (
-            <>
-              {" "}
-              · {result.resupply_zones.length} total in dataset
-            </>
-          )}
         </p>
       </div>
 
