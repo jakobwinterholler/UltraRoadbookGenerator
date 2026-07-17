@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   bearingBetween,
   buildStreetViewUrlFromPanorama,
-  computeStreetViewApproach,
+  googleMapsUrl,
   googleStreetViewUrl,
   gpxPointAtStopKm,
   parseStreetViewMetadataStatus,
@@ -29,27 +29,84 @@ const OILPRIX = {
   placeId: "node/287007125",
 };
 
-function testViewpointUsesRouteApproachNotPoi() {
+/** Extract the `viewpoint=lat,lon` from a Street View pano URL. */
+function viewpointOf(url: string): { lat: number; lon: number } | null {
+  const match = url.match(/viewpoint=(-?[\d.]+)(?:%2C|,)(-?[\d.]+)/);
+  return match ? { lat: Number(match[1]), lon: Number(match[2]) } : null;
+}
+
+/** Extract the coordinate `query=lat,lon` from a Google Maps search URL. */
+function mapsQueryCoordsOf(url: string): { lat: number; lon: number } | null {
+  const match = url.match(/query=(-?[\d.]+)(?:%2C|,)(-?[\d.]+)/);
+  return match ? { lat: Number(match[1]), lon: Number(match[2]) } : null;
+}
+
+function testViewpointIsAlwaysThePoi() {
   const url = googleStreetViewUrl(OILPRIX, {
     routeCoordinates: COLLserola_ROUTE,
     totalDistanceKm: 39,
   });
 
-  const approach = computeStreetViewApproach(OILPRIX, {
-    routeCoordinates: COLLserola_ROUTE,
-    totalDistanceKm: 39,
-  });
-
-  assert.match(
-    url,
-    new RegExp(`viewpoint=${approach.viewpoint.lat.toFixed(6)}%2C${approach.viewpoint.lon.toFixed(6)}`),
-  );
-  assert.doesNotMatch(url, /viewpoint=41\.430306%2C2\.128889/);
-  assert.match(url, /heading=/);
+  // The Street View location MUST be the POI — never the snapped GPX route point.
+  assert.match(url, /viewpoint=41\.430306%2C2\.128889/);
+  // No forced heading on the fallback URL — Google auto-faces the POI.
+  assert.doesNotMatch(url, /heading=/);
   assert.doesNotMatch(url, /query=/);
+
+  const viewpoint = viewpointOf(url);
+  assert.ok(viewpoint);
+  assert.equal(viewpoint!.lat.toFixed(6), OILPRIX.lat.toFixed(6));
+  assert.equal(viewpoint!.lon.toFixed(6), OILPRIX.lon.toFixed(6));
 }
 
-function testPanoramaHeadingFacesPoi() {
+/**
+ * The core regression guard: for every kind of stop, the coordinates Google Maps
+ * opens and the coordinates Street View opens must be byte-identical.
+ */
+function testMapsAndStreetViewUseIdenticalCoordinates() {
+  const stops = [
+    { lat: 41.430306, lon: 2.128889, routeKm: 6.96, name: "Off-route supermarket" },
+    { lat: 41.4, lon: 2.1, routeKm: 0, name: "On-route start POI" },
+    { lat: 41.5, lon: 2.2, routeKm: 39, name: "On-route finish POI" },
+    { lat: -33.8688, lon: 151.2093, routeKm: 12, name: "Southern hemisphere POI" },
+  ];
+
+  for (const stop of stops) {
+    const sv = googleStreetViewUrl(stop, {
+      routeCoordinates: COLLserola_ROUTE,
+      totalDistanceKm: 39,
+    });
+    const maps = googleMapsUrl(stop.lat, stop.lon);
+
+    const svPoint = viewpointOf(sv);
+    const mapsPoint = mapsQueryCoordsOf(maps);
+    assert.ok(svPoint, `Street View URL missing viewpoint for ${stop.name}`);
+    assert.ok(mapsPoint, `Maps URL missing query coords for ${stop.name}`);
+
+    // Street View viewpoint === POI === Google Maps query coordinates.
+    assert.equal(svPoint!.lat.toFixed(6), stop.lat.toFixed(6), stop.name);
+    assert.equal(svPoint!.lon.toFixed(6), stop.lon.toFixed(6), stop.name);
+    assert.equal(svPoint!.lat.toFixed(6), mapsPoint!.lat.toFixed(6), stop.name);
+    assert.equal(svPoint!.lon.toFixed(6), mapsPoint!.lon.toFixed(6), stop.name);
+  }
+}
+
+/** With a valid Google place id Maps uses place_id, but Street View still anchors on the POI coords. */
+function testPlaceIdMapsStillSharesStreetViewCoordinates() {
+  const stop = { lat: 41.430306, lon: 2.128889, routeKm: 6.96, name: "Oilprix" };
+  const placeId = "ChIJN1t_tDeuEmsRUsoyG83frY4";
+
+  const maps = googleMapsUrl(stop.lat, stop.lon, placeId);
+  assert.match(maps, /place_id/);
+
+  const sv = googleStreetViewUrl({ ...stop, placeId });
+  const svPoint = viewpointOf(sv);
+  assert.ok(svPoint);
+  assert.equal(svPoint!.lat.toFixed(6), stop.lat.toFixed(6));
+  assert.equal(svPoint!.lon.toFixed(6), stop.lon.toFixed(6));
+}
+
+function testPanoramaHeadingFacesPoiFromPoiViewpoint() {
   const panorama = { lat: 41.4301, lon: 2.1285 };
   const poi = { lat: OILPRIX.lat, lon: OILPRIX.lon };
   const expectedHeading = Math.round(bearingBetween(panorama, poi));
@@ -57,7 +114,8 @@ function testPanoramaHeadingFacesPoi() {
   const url = buildStreetViewUrlFromPanorama(panorama, poi, {
     panoId: "tu510ie_z4ptBZYo2BGEJg",
   });
-  assert.match(url, /viewpoint=41\.430100%2C2\.128500/);
+  // Viewpoint is the POI (identical to Maps); the resolved pano only sets heading.
+  assert.match(url, /viewpoint=41\.430306%2C2\.128889/);
   assert.match(url, new RegExp(`heading=${expectedHeading}`));
   assert.match(url, /pano=tu510ie_z4ptBZYo2BGEJg/);
   assert.doesNotMatch(url, /query=/);
@@ -114,7 +172,8 @@ async function testResolveStreetViewLogsAndUsesPoiSearch() {
     });
     assert.equal(resolved.available, true);
     assert.ok(resolved.streetViewUrl);
-    assert.match(resolved.streetViewUrl!, /viewpoint=41\.430100%2C2\.128500/);
+    // Viewpoint is the POI (identical to Maps), pano pinned to the official nearest one.
+    assert.match(resolved.streetViewUrl!, /viewpoint=41\.430306%2C2\.128889/);
     assert.match(resolved.streetViewUrl!, /pano=tu510ie_z4ptBZYo2BGEJg/);
     assert.doesNotMatch(resolved.streetViewUrl!, /query=/);
     assert.equal(resolved.debug.poiLat, OILPRIX.lat);
@@ -186,8 +245,10 @@ async function testResolveStreetViewFallbackWhenNoCoverage() {
   }
 }
 
-testViewpointUsesRouteApproachNotPoi();
-testPanoramaHeadingFacesPoi();
+testViewpointIsAlwaysThePoi();
+testMapsAndStreetViewUseIdenticalCoordinates();
+testPlaceIdMapsStillSharesStreetViewCoordinates();
+testPanoramaHeadingFacesPoiFromPoiViewpoint();
 testStreetViewNeverUsesPlaceQuery();
 testParseStreetViewMetadata();
 testCollserolaOilprixGpxDiffersFromPoi();

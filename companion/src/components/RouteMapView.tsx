@@ -31,7 +31,6 @@ import {
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { useCompanion } from "../context/CompanionContext";
-import { buildRouteArrowPoints } from "../lib/routeDirectionArrows";
 import {
   mapBoundsFromMaplibre,
 } from "../planning/discoverStopsAdapter";
@@ -60,6 +59,13 @@ export interface RouteMapHandle {
 
 interface RouteMapViewProps {
   embedded?: boolean;
+  /**
+   * Whether the map is the currently-visible tab. The map is kept mounted (hidden)
+   * across tab switches; when not visible we skip GPS-follow and focus camera
+   * animations so a hidden map doesn't churn the GPU/battery or fire bounds
+   * callbacks that re-render the tree. Defaults to true.
+   */
+  visible?: boolean;
   showClimbs?: boolean;
   onClimbSelect?: (climbId: string) => void;
   focusStop?: Pick<CompanionStop, "lat" | "lon" | "zoneId"> | null;
@@ -223,6 +229,7 @@ function climbMarkersGeoJson(
 const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function RouteMapView(
   {
     embedded = false,
+    visible = true,
     showClimbs = false,
     onClimbSelect,
     focusStop = null,
@@ -426,11 +433,6 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
           "text-halo-width": 1.2,
           "text-opacity": 0.9,
         },
-      });
-
-      map.addSource("route-arrows", {
-        type: "geojson",
-        data: buildRouteArrowPoints(bundle.route.coordinates, bundle.race.distanceKm),
       });
 
       map.addSource("climb-segments", {
@@ -871,6 +873,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
     if (
       !map ||
       embedded ||
+      !visible ||
       !readyRef.current ||
       !followGps ||
       userExploringRef.current ||
@@ -885,12 +888,18 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       duration: 450,
       essential: true,
     });
-  }, [embedded, followGps, gps.bearing, gps.lat, gps.lon]);
+  }, [embedded, visible, followGps, gps.bearing, gps.lat, gps.lon]);
 
   useEffect(() => {
     const map = mapRef.current;
     const target = focusStop ?? selectedStop;
     if (!map || !readyRef.current) {
+      return;
+    }
+    // Don't animate the camera of a hidden map (e.g. a stop selected from the
+    // Resupply tab): it would move under the covers, fire moveend/bounds and
+    // waste GPU. The focus applies when the map becomes visible again.
+    if (!visible && !embedded) {
       return;
     }
     if (!target) {
@@ -919,7 +928,7 @@ const RouteMapView = forwardRef<RouteMapHandle, RouteMapViewProps>(function Rout
       duration: FOCUS_ANIMATION_MS,
       essential: true,
     });
-  }, [embedded, focusStop, followGps, selectedStop]);
+  }, [embedded, visible, focusStop, followGps, selectedStop]);
 
   useEffect(() => {
     if (followGps) {

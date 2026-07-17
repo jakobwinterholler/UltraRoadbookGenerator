@@ -97,7 +97,144 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
 
 ---
 
+## Fixed in v0.7 final release audit
+
+### FA-01 — Offline open blocked when a newer cloud revision existed
+- **Description:** `HomeScreen.handleOpenRace` treated any `companion_revision >
+  downloadedRevision` as a mandatory re-download and never fell back to the
+  already-downloaded bundle. A rider who downloaded a race, then had Desktop push
+  an update, then went offline (airplane mode / no signal at the start line) could
+  not open a race they had fully downloaded — a race-day lockout.
+- **Priority:** P0 · **Status:** fixed · **Fixed in:** v0.7 audit
+- **Fix:** Opening now prefers the working offline copy when the update can't be
+  fetched (offline or no session), and falls back to the local bundle if the
+  update download fails. Updates are still downloaded when online with a session.
+
+### FA-02 — Multi-race verification batch applied to the wrong race
+- **Description:** In the production companion (direct-to-Supabase path, no API
+  server), `submitCompanionVerifications` sent *all* pending verifications to
+  `submissions[0].raceId`. If a rider verified stops in race A and race B before a
+  sync, race B's verifications were written onto race A's cloud row — silent data
+  corruption of the exported/prepared stops.
+- **Priority:** P1 · **Status:** fixed · **Fixed in:** v0.7 audit
+- **Fix:** The direct path now groups pending submissions by `raceId` and calls
+  `submitCompanionVerificationsDirect` once per race, aggregating accepted ids.
+
+### FA-03 — Hidden persistent map kept animating the GPS camera
+- **Description:** After KI-08 the map stays mounted (hidden) across tabs. Its
+  GPS-follow and focus `easeTo` animations still ran on every fix while the rider
+  was on Resupply/Verify, moving the hidden camera, firing `moveend`→bounds
+  callbacks and re-rendering the tree — wasting GPU/battery mid-ride.
+- **Priority:** P2 · **Status:** fixed · **Fixed in:** v0.7 audit
+- **Fix:** `RouteMapView` takes a `visible` prop (`tab === "map"`); both camera
+  animations are skipped when hidden and re-apply on return to the map, so no
+  moveend/bounds cascade fires in the background.
+
+### FA-11 — Street View opened the wrong place / faced the wrong way
+- **Description:** Two independent defects, both in `shared/race/streetViewUrl.ts`,
+  made Street View diverge from the (correct) Google Maps link:
+  1. **Wrong location.** `computeStreetViewApproach` set the pano `viewpoint` to
+     `interpolateTrackAtKm(track, stop.km)` — a point snapped onto the GPX route,
+     not the POI. Google's `map_action=pano&viewpoint=` shows the panorama *closest
+     to the viewpoint*, so for off-route resupply stops it opened a panorama near
+     the road, i.e. the wrong place. (Google Maps hid this because it uses the POI
+     coords / `place_id`.)
+  2. **Wrong direction / unrelated imagery.** The URL always forced a `heading`
+     computed from that route point. Per the Google Maps URLs API, if `heading` is
+     omitted Google auto-orients the camera toward the viewpoint from the panorama
+     it actually snaps to. Forcing a route-derived heading overrode that and could
+     point the camera away from the POI (walls, opposite side, etc.).
+  There is no `VITE_GOOGLE_MAPS_API_KEY` in any environment and the Street View
+  Static *metadata* endpoint is CORS-blocked from browsers, so the metadata/pano
+  path never runs client-side — production always used this single, doubly-wrong
+  fallback URL.
+- **Priority:** P0 (trust / release blocker) · **Status:** fixed · **Fixed in:** v0.7 audit
+- **Fix:** The fallback Street View URL is now `map_action=pano&viewpoint=<POI>`
+  with **no forced heading** — byte-identical coordinates to the Google Maps link,
+  and Google auto-faces the POI from whatever panorama it snaps to. A heading is
+  only set on the metadata path (`buildStreetViewUrlFromPanorama`) where the real
+  panorama location is known, and that path also pins the official `pano=` id.
+  Metadata is searched from the POI itself (never a route point). Added a
+  regression test (`shared/race/streetViewUrl.test.ts::testMapsAndStreetViewUseIdenticalCoordinates`)
+  asserting Maps and Street View use identical coordinates for on-route, off-route,
+  southern-hemisphere and place-id stops. Removed the stale, broken
+  `scripts/test_street_view_url.mjs`.
+- **Remaining limitation (documented, not a regression):** where a POI has no
+  nearby official Street View coverage, `viewpoint` can still snap to a distant
+  panorama or a user photo-sphere. Eliminating that requires the Street View
+  metadata API with `source=outdoor` to confirm coverage and pin the official
+  pano — which needs an API key **and** a server-side proxy (browser CORS blocks
+  the metadata call). Recommended as the v1.0 robust follow-up. For race day the
+  Google Maps link remains the guaranteed-correct fallback.
+
+### FA-04 — Dead `route-arrows` GeoJSON source built on every map init
+- **Description:** `RouteMapView` added a `route-arrows` source (a full O(n)
+  `buildRouteArrowPoints` pass) that no layer ever referenced — direction chevrons
+  use the `route` source with `symbol-placement: line`.
+- **Priority:** P3 · **Status:** fixed · **Fixed in:** v0.7 audit
+- **Fix:** Removed the unused source and its builder (`routeDirectionArrows.ts`),
+  saving one full-track pass and a GeoJSON source on every map load.
+
+---
+
 ## Open / Deferred
+
+### FA-05 — No offline access to downloaded races without a cached session
+- **Description:** Any `session === null` (sign-out, refresh-token expiry after a
+  long offline stint, first install offline) forces the Welcome screen and clears
+  the active bundle, even though downloaded races live in IndexedDB and can be read
+  without a token.
+- **Priority:** P1 · **Status:** open
+- **Notes:** Fix would add a read-only "open downloaded races offline" path when
+  `offlineReady` races exist and there is no session. Deferred from the audit as it
+  touches the auth/gate flow (`App.tsx`) and needs on-device testing — higher
+  regression risk than the race is worth. Mitigation: keep the app installed and
+  signed in before race day (see RELEASE_CHECKLIST).
+
+### FA-06 — Import SSE final buffer not flushed
+- **Description:** `parseImportStream` processes events as chunks arrive but does
+  not flush the trailing `buffer` after the reader completes, so a final `complete`
+  event delivered in the last packet can be missed.
+- **Priority:** P2 · **Status:** open
+- **Notes:** Low-risk one-line fix (flush buffer after the loop) but only exercises
+  the Render-import path, which is itself gated on KI-06. Deferred until import is
+  live and can be re-tested end to end.
+
+### FA-07 — Long imports may hit the Vercel proxy timeout
+- **Description:** Companion import streams SSE through the Vercel `/api` rewrite to
+  Render. Very long analyses (800–2000 km) risk hitting a proxy timeout.
+- **Priority:** P1 · **Status:** open
+- **Notes:** Mitigation: import the race on Desktop and let it sync to the
+  companion (recommended flow anyway). Consider calling Render directly for import
+  via `VITE_API_BASE_URL` once the service is deployed (KI-06).
+
+### FA-08 — Post-import cloud-push warning is never shown
+- **Description:** When analysis succeeds but the cloud push fails, the import emits
+  a `sync_warning`; the flow then unmounts on completion before the warning paints,
+  so the rider isn't told the race is local-only. There is also no companion action
+  to re-push a failed local import.
+- **Priority:** P2 · **Status:** open
+- **Notes:** Surface the warning via the Home sync toast and add a "Sync to cloud"
+  action for `source: "local-import"` races not present in the cloud. Deferred;
+  local offline use is unaffected.
+
+### FA-09 — Verification sync uses a non-refreshed token and fails silently
+- **Description:** `useVerificationSync` submits with the raw `session.access_token`
+  (not `getFreshAccessToken`) and, on failure, only writes a debug log. The pending
+  queue is retained (no data loss) but the rider gets no "will sync when online"
+  feedback and there's no proactive retry on token refresh.
+- **Priority:** P2 · **Status:** open
+- **Notes:** Data is safe (queue persists; API path already retries 401). UX-only
+  gap. Deferred to avoid touching the sync path pre-race.
+
+### FA-10 — Cloud verification updates use last-write-wins with no CAS
+- **Description:** `submitCompanionVerificationsDirect` reads the race row, patches
+  preparation, and writes `companion_revision + 1` with no compare-and-set.
+  Concurrent updates from two devices / Desktop can overwrite each other.
+- **Priority:** P2 · **Status:** open
+- **Notes:** Real for multi-device, unlikely for a single rider. A compare-and-set
+  update (`WHERE companion_revision = ?` + merge/retry) is the fix. Deferred:
+  schema/flow change, needs testing.
 
 ### KI-07 — Haptics are a no-op on iOS Safari / installed PWA
 - **Description:** The companion haptics utility (`companion/src/lib/haptics.ts`)

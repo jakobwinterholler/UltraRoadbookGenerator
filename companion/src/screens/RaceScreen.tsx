@@ -89,6 +89,7 @@ export default function RaceScreen({ active = true }: RaceScreenProps) {
       <div className="relative min-h-0 flex-1">
         <RouteMapView
           ref={mapRef}
+          visible={active}
           showClimbs={showClimbs}
           focusStop={selectedStop}
           onClimbSelect={(climbId) => {

@@ -96,15 +96,28 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
     options?: { tab?: CompanionTab; autoExport?: "coros" | "garmin" | "wahoo" },
   ) {
     setActionError(null);
-    const needsDownload =
-      !race.offlineReady ||
-      (race.downloadedRevision !== null && race.companion_revision > race.downloadedRevision);
 
-    if (!needsDownload) {
+    const openLocal = async (): Promise<boolean> => {
+      if (!race.offlineReady) {
+        return false;
+      }
       const bundle = await loadCompanionBundle(race.id);
-      if (bundle) {
-        await setActiveRaceId(race.id);
-        onOpenRace(bundle, options);
+      if (!bundle) {
+        return false;
+      }
+      await setActiveRaceId(race.id);
+      onOpenRace(bundle, options);
+      return true;
+    };
+
+    const hasCloudUpdate =
+      race.downloadedRevision !== null && race.companion_revision > race.downloadedRevision;
+
+    // Prefer the working offline copy when it's current, OR when we can't fetch the
+    // update (offline / no session). A rider must never be locked out of a race they
+    // have already downloaded just because Desktop pushed a newer revision.
+    if (!hasCloudUpdate || !online || !accessToken) {
+      if (await openLocal()) {
         return;
       }
     }
@@ -136,6 +149,11 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       await setActiveRaceId(race.id);
       onOpenRace(bundle, options);
     } catch (err) {
+      // The update download failed — fall back to a working offline copy if we have
+      // one so the rider can still open the race with slightly older data.
+      if (await openLocal()) {
+        return;
+      }
       setActionError(err instanceof Error ? err.message : "Download failed.");
     } finally {
       window.clearInterval(progressTimer);

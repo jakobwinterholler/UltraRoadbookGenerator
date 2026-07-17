@@ -527,6 +527,23 @@ Still open before release: public-API multi-tenant isolation (KI-01), checksum
 fail-closed on download (KI-02), physical-device QA (KI-05), live Render API
 verification (KI-06). See `KNOWN_ISSUES.md`.
 
+### Final Release Audit (v0.7) — fixed
+
+- **Offline open lockout removed** — a downloaded race now opens offline even when
+  Desktop pushed a newer revision; falls back to the local bundle on download
+  failure (FA-01, was the one true race-day blocker in-app).
+- **Cross-race verification corruption fixed** — pending verifications are grouped
+  by race before the direct-Supabase write (FA-02).
+- **Hidden map no longer animates** — GPS-follow/focus camera work is gated on tab
+  visibility; no background moveend/bounds re-render cascade (FA-03).
+- **Dead `route-arrows` map source removed** (FA-04).
+
+The only remaining hard release gate is external: **deploy + verify the Render
+analysis API (KI-06)** for in-app Companion import — or avoid it entirely by
+importing on Desktop and downloading in the Companion. Full breakdown and scores in
+[`RELEASE_REPORT.md`](RELEASE_REPORT.md); manual gate in
+[`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md).
+
 | Bug | Cause (if known) | Priority | Status |
 |-----|------------------|----------|--------|
 | Branch 2 commits ahead of origin (`b7b9036`, `ab11ee3`) | Not pushed | Low | Open |

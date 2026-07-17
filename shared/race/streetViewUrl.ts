@@ -58,8 +58,11 @@ interface ApproachCamera {
 }
 
 /**
- * Places the Street View camera on the route at the stop km, facing the POI.
- * Off-route resupply stops otherwise snap to nearby landmarks or user photos.
+ * The Street View LOCATION is always the POI — byte-identical to the Google Maps
+ * link, so both open the exact same verified stop. The route approach point is
+ * used ONLY to orient the camera toward the POI (heading); it never moves the
+ * viewpoint. (Previously the viewpoint was snapped to the GPX route at the stop
+ * km, which made off-route stops open a different, unrelated location.)
  */
 export function computeStreetViewApproach(
   location: StreetViewLocation,
@@ -71,12 +74,12 @@ export function computeStreetViewApproach(
   if (coords?.length && location.routeKm != null) {
     const track = buildRouteTrack(coords, options?.totalDistanceKm);
     const routePoint = interpolateTrackAtKm(track, location.routeKm);
-    const viewpoint = { lat: routePoint.lat, lon: routePoint.lon };
 
-    if (haversineM(viewpoint.lat, viewpoint.lon, poi.lat, poi.lon) >= 5) {
+    // Heading only — face from the road toward the POI. Location stays the POI.
+    if (haversineM(routePoint.lat, routePoint.lon, poi.lat, poi.lon) >= 5) {
       return {
-        viewpoint,
-        heading: bearingBetween(viewpoint, poi),
+        viewpoint: poi,
+        heading: bearingBetween({ lat: routePoint.lat, lon: routePoint.lon }, poi),
       };
     }
   }
@@ -86,7 +89,7 @@ export function computeStreetViewApproach(
 
 function buildStreetViewPanoUrl(options: {
   viewpoint: { lat: number; lon: number };
-  heading: number;
+  heading?: number | null;
   panoId?: string | null;
   fov?: number;
   pitch?: number;
@@ -95,10 +98,17 @@ function buildStreetViewPanoUrl(options: {
     api: "1",
     map_action: "pano",
     viewpoint: `${options.viewpoint.lat.toFixed(6)},${options.viewpoint.lon.toFixed(6)}`,
-    heading: String(Math.round(options.heading)),
-    pitch: String(options.pitch ?? DEFAULT_PITCH),
-    fov: String(options.fov ?? DEFAULT_FOV),
   });
+
+  // Only force a heading when we know the REAL panorama location (metadata path).
+  // Otherwise omit it: per the Google Maps URLs API, when heading is absent Google
+  // auto-orients the camera toward the viewpoint (the POI) from whatever panorama
+  // it snaps to. A heading computed from the route point can face the wrong way.
+  if (options.heading != null && Number.isFinite(options.heading)) {
+    params.set("heading", String(Math.round(options.heading)));
+    params.set("pitch", String(options.pitch ?? DEFAULT_PITCH));
+    params.set("fov", String(options.fov ?? DEFAULT_FOV));
+  }
 
   const panoId = options.panoId?.trim();
   if (panoId) {
@@ -179,8 +189,11 @@ export function buildStreetViewUrlFromPanorama(
     panoId?: string | null;
   },
 ): string {
+  // Viewpoint is the POI (identical coordinates to the Google Maps link). The
+  // resolved panorama is pinned via panoId (so Google shows the official nearest
+  // pano, not a user photo-sphere) and only orients the heading toward the POI.
   return buildStreetViewPanoUrl({
-    viewpoint: panorama,
+    viewpoint: poi,
     heading: bearingBetween(panorama, poi),
     panoId: options?.panoId,
     fov: options?.fov,
@@ -189,19 +202,20 @@ export function buildStreetViewUrlFromPanorama(
 }
 
 /**
- * Best-effort Street View URL from the route approach (sync fallback before metadata resolves).
- * Never includes a place query — that opens Google Maps photo galleries on mobile.
+ * Best-effort Street View URL — opens the panorama nearest the POI, looking at it.
+ *
+ * The location is ALWAYS the POI (byte-identical to the Google Maps link) and we
+ * deliberately omit the heading so Google auto-faces the POI from the panorama it
+ * actually picks. We never include a place query — that opens Maps photo galleries
+ * on mobile. (`_options` is kept for signature compatibility with callers that pass
+ * route context used only by the metadata path.)
  */
 export function googleStreetViewUrl(
   location: StreetViewLocation,
-  options?: StreetViewUrlOptions,
+  _options?: StreetViewUrlOptions,
 ): string {
-  const approach = computeStreetViewApproach(location, options);
   return buildStreetViewPanoUrl({
-    viewpoint: approach.viewpoint,
-    heading: approach.heading,
-    fov: options?.fov,
-    pitch: options?.pitch,
+    viewpoint: { lat: location.lat, lon: location.lon },
   });
 }
 
@@ -304,37 +318,33 @@ async function fetchStreetViewMetadataAt(
   }
 }
 
-/** Fetch nearest official outdoor Street View panorama near the route approach / POI. */
+/**
+ * Fetch the nearest official Street View panorama to the POI itself — the exact
+ * coordinates the Google Maps link uses. We never search a route/approach point:
+ * that returns panoramas near the road that can be unrelated to the stop.
+ */
 export async function fetchStreetViewMetadata(
   location: StreetViewLocation,
   options?: StreetViewUrlOptions & { apiKey?: string; radiusM?: number },
 ): Promise<StreetViewMetadataResult> {
   const poi = { lat: location.lat, lon: location.lon };
-  const approach = computeStreetViewApproach(location, options);
-  const searchPoints = [approach.viewpoint, poi].filter(
-    (point, index, points) =>
-      index === 0 ||
-      haversineM(point.lat, point.lon, points[0]!.lat, points[0]!.lon) >= 8,
-  );
 
   let sawUnknown = false;
 
-  for (const point of searchPoints) {
-    for (const source of ["outdoor", "default"] as const) {
-      const result = await fetchStreetViewMetadataAt(point.lat, point.lon, {
-        apiKey: options?.apiKey,
-        radiusM: options?.radiusM,
-        source,
-      });
-      if (result.status === "UNKNOWN") {
-        sawUnknown = true;
-      }
-      if (result.status === "ZERO_RESULTS") {
-        continue;
-      }
-      if (result.panorama) {
-        return result;
-      }
+  for (const source of ["outdoor", "default"] as const) {
+    const result = await fetchStreetViewMetadataAt(poi.lat, poi.lon, {
+      apiKey: options?.apiKey,
+      radiusM: options?.radiusM,
+      source,
+    });
+    if (result.status === "UNKNOWN") {
+      sawUnknown = true;
+    }
+    if (result.status === "ZERO_RESULTS") {
+      continue;
+    }
+    if (result.panorama) {
+      return result;
     }
   }
 
