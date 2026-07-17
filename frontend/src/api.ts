@@ -188,6 +188,22 @@ export interface ResupplyZone {
   categories: ZoneCategoryGroup[];
 }
 
+export interface SuggestedStop {
+  zone_id: number;
+  osm_id: number;
+  osm_type: string;
+  name: string | null;
+  poi_category: string;
+  category_key: string;
+  category_label: string;
+  distance_along_km: number;
+  distance_off_route_m: number;
+  lat: number;
+  lon: number;
+  score: number;
+  reason: string | null;
+}
+
 export interface TrackPoint {
   lat: number;
   lon: number;
@@ -295,6 +311,7 @@ export interface RoadbookResult {
   climb_candidates: ClimbCandidateRow[];
   pois: PoiRow[];
   resupply_zones: ResupplyZone[];
+  suggested_stops?: SuggestedStop[];
   route: RouteVisualization;
   performance_report?: PerformanceStageRow[];
   performance_summary?: PerformanceSummaryRow | null;
@@ -311,6 +328,7 @@ export type AppTab =
   | "climbs"
   | "surface"
   | "resupply"
+  | "export"
   | "preview";
 
 export interface ClimbDetectionConfig {
@@ -615,6 +633,25 @@ export async function clearSession(): Promise<void> {
   await fetch("/api/session/clear", { method: "POST" });
 }
 
+export interface GpsGpxExportReport {
+  export_version: string;
+  device_profile: string;
+  route_integrity_passed: boolean;
+  track_point_count: number;
+  distance_km: number;
+  elevation_gain_m: number;
+  elevation_descent_m: number;
+  verified_poi_count: number;
+  exported_poi_count: number;
+  coros_icons_assigned: number | null;
+  coros_icons_total: number | null;
+  integrity_percent: number;
+  waypoint_count: number;
+  critical_count: number;
+  recommended_count: number;
+  optional_count: number;
+}
+
 export async function downloadExport(endpoint: string, filename: string): Promise<void> {
   const response = await fetch(endpoint);
   if (!response.ok) {
@@ -632,4 +669,30 @@ export async function downloadExport(endpoint: string, filename: string): Promis
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
+}
+
+export async function downloadGpsExport(
+  endpoint: string,
+  filename: string,
+): Promise<GpsGpxExportReport | null> {
+  const response = await fetch(endpoint);
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Export failed." }));
+    const detail = error.detail;
+    throw new Error(typeof detail === "string" ? detail : "Export failed.");
+  }
+
+  const summaryHeader = response.headers.get("X-Gps-Export-Summary");
+  const report = summaryHeader ? (JSON.parse(summaryHeader) as GpsGpxExportReport) : null;
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+  return report;
 }
