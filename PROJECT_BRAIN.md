@@ -600,6 +600,30 @@ verification (KI-06). See `KNOWN_ISSUES.md`.
 
 ### Long-term vision
 
+- **Active Race mode (proposed v1.0 north star — do NOT build yet)** — Today the
+  Companion is still a set of tabs (Map / Resupply / Verify / Share). During an
+  actual ultra the rider isn't thinking in tabs; they're thinking *"I'm riding this
+  race."* v1.0 should evolve toward a single **Active Race session** where
+  everything revolves around the current ride, and the tabs become *tools within*
+  that session rather than separate destinations. Sketch:
+
+  ```
+  THE CAPITALS · 823 km
+  ─────────────────────
+  Next verified stop   ↓
+  Next climb           ↓
+  Current unsupported gap
+  ─────────────────────
+  Quick actions: Map · Street View · Google Maps · Verify · Search stops · Export
+  ```
+
+  This makes Ultra Roadbook feel less like "an app with multiple pages" and more
+  like "a dedicated race companion," which aligns with this document's core vision
+  (a calm, trusted co-pilot for the ride). Deferred intentionally: the current
+  architecture is still being polished (persistent map, consistent sheets, haptics)
+  and that groundwork — a live map that survives navigation, one shared sheet
+  primitive, a single `CompanionContext` for the open race — is exactly what an
+  Active Race session would sit on top of.
 - **Stages** — balanced stage breaks using verified resupply anchors (`preferred_stage_length_km` in settings reserved)
 - **PDF roadbook** — printable export alongside Coros
 - **Route flythrough** — cinematic pre-race briefing film (VISION.md backlog); POC in `tools/route-preview-poc/`, linked from Dashboard, not a main tab

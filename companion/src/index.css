@@ -140,30 +140,6 @@ body {
     }
   }
 
-  .stop-detail-sheet {
-    @apply fixed inset-0 z-50 flex flex-col;
-  }
-
-  .stop-detail-sheet__backdrop {
-    @apply absolute inset-0 bg-black/80;
-  }
-
-  .stop-detail-sheet__panel {
-    @apply relative mt-auto flex max-h-[100dvh] min-h-[92dvh] flex-col rounded-t-3xl border border-white/10 bg-[#0f0f0f];
-  }
-
-  .stop-detail-sheet__handle {
-    @apply mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-white/20;
-  }
-
-  .stop-detail-sheet__content {
-    @apply min-h-0 flex-1 overflow-y-auto px-5 pb-4 pt-10;
-  }
-
-  .stop-detail-sheet__footer {
-    @apply shrink-0 border-t border-white/10 px-5 py-4 pb-[max(1rem,env(safe-area-inset-bottom))];
-  }
-
   .verification-flow-overlay {
     @apply fixed inset-0 z-50 flex flex-col bg-[#0a0a0a] pt-safe-top;
     padding-bottom: env(safe-area-inset-bottom);

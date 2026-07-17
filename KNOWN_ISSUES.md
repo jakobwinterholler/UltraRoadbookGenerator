@@ -103,11 +103,13 @@ Status: `open` · `in-progress` · `fixed` · `deferred` · `wontfix`.
   and confirm the map keeps position/tiles and returns instantly.
 
 ### KI-09 — StopDetailSheet lacks visible-state enter/exit + drag-to-dismiss
-- **Description:** The verification `StopDetailSheet` is mounted conditionally
+- **Description:** The verification `StopDetailSheet` was mounted conditionally
   (no exit animation, no drag-to-dismiss) unlike the shared `BottomSheet`.
-- **Priority:** P3 · **Status:** open
-- **Notes:** Bring it onto the shared `BottomSheet` (or add visible-state) for a
-  consistent native feel. Deferred to avoid churn on a secondary surface.
+- **Priority:** P3 · **Status:** fixed (v0.7)
+- **Fix:** Migrated `StopDetailSheet` onto the shared `BottomSheet`. It self-manages
+  an `open` flag and defers the parent `onClose` until after the exit animation, so
+  it now has the same iOS spring enter/exit, drag-to-dismiss, backdrop and grab
+  handle as every other sheet. Removed the bespoke `.stop-detail-sheet*` CSS.
 
 
 
