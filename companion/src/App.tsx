@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@shared/auth/AuthProvider";
+import { cloudSyncUnavailableUserMessage } from "@shared/companion/userFacingErrors";
 import { getAvatarUrl, getDisplayName } from "@shared/auth/profile";
 import type { CompanionBundle, CompanionStop } from "@shared/types/sync";
 import { Avatar, SessionRestoreScreen, SigningInScreen } from "@shared/ui/AuthScreens";
@@ -26,6 +27,7 @@ import {
   registerLaunchQueueConsumer,
 } from "./lib/incomingGpx";
 import { useRaceGps } from "./lib/useRaceGps";
+import { useWakeLock } from "./lib/useWakeLock";
 import { useVerificationSync } from "./sync/useVerificationSync";
 
 type AppView = "welcome" | "home" | "race";
@@ -70,6 +72,8 @@ export default function App() {
     enabled: view === "race" && bundle !== null,
     bundle,
   });
+
+  useWakeLock(view === "race" && bundle !== null);
 
   const updateBundle = useCallback((next: CompanionBundle) => {
     setBundle(next);
@@ -220,7 +224,7 @@ export default function App() {
   if (!configured) {
     return (
       <div className="flex h-full items-center justify-center px-4 text-center text-sm text-red-300">
-        Cloud sync is not configured for this build.
+        {cloudSyncUnavailableUserMessage()}
       </div>
     );
   }
@@ -275,7 +279,7 @@ export default function App() {
     );
   }
 
-  const showExecutionHeader = tab === "resupply";
+  const showExecutionHeader = tab === "map" || tab === "resupply";
   const showRaceDataBanner = tab === "map" || tab === "resupply" || tab === "share";
 
   return (

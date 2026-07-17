@@ -7,6 +7,12 @@ import {
   type ImportGpxEvent,
 } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
+import {
+  importOfflineUserMessage,
+  importSignInUserMessage,
+  importUnavailableUserMessage,
+  toUserFacingError,
+} from "@shared/companion/userFacingErrors";
 import type { CompanionBundle } from "@shared/types/sync";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { saveCompanionBundle, saveOriginalGpx, saveRaceList, loadRaceList, deleteCompanionRace } from "../db";
@@ -115,19 +121,17 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
   const runImport = useCallback(
     async (sourceFile: File, conflictAction: ConflictAction, replaceRaceId?: string) => {
       if (!accessToken) {
-        setError("Sign in to import and analyze a GPX route.");
+        setError(importSignInUserMessage());
         setPhase("error");
         return;
       }
       if (!online) {
-        setError("An internet connection is required for full route analysis.");
+        setError(importOfflineUserMessage());
         setPhase("error");
         return;
       }
       if (!importApiAvailable()) {
-        setError(
-          "Route analysis server is not configured for this build. Contact support or use desktop Ultra Roadbook.",
-        );
+        setError(importUnavailableUserMessage());
         setPhase("error");
         return;
       }
@@ -158,7 +162,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         setRunning(false);
         onComplete(result.bundle);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Import failed.");
+        setError(toUserFacingError(err, "Couldn't import this GPX. Try again or use desktop Ultra Roadbook."));
         setPhase("error");
         setRunning(false);
       }
@@ -175,11 +179,11 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
     void (async () => {
       if (!accessToken || !online || !importApiAvailable()) {
         if (!online) {
-          setError("An internet connection is required for full route analysis.");
+          setError(importOfflineUserMessage());
         } else if (!importApiAvailable()) {
-          setError("Route analysis server is not configured for this build.");
+          setError(importUnavailableUserMessage());
         } else {
-          setError("Sign in to import and analyze a GPX route.");
+          setError(importSignInUserMessage());
         }
         setPhase("error");
         return;
@@ -193,7 +197,7 @@ export default function GpxImportFlow({ file, onClose, onComplete, online }: Gpx
         }
         await runImport(pendingFile, "create");
       } catch (err) {
-        setError(err instanceof Error ? err.message : "Could not start import.");
+        setError(toUserFacingError(err, "Couldn't start the import. Try again."));
         setPhase("error");
       }
     })();

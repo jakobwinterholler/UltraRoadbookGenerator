@@ -488,6 +488,26 @@ Decisions distilled from product conversations and iteration — preserve these 
 
 ## Current Known Bugs
 
+> **Live bug tracker: [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md).** As of v0.7 that file
+> is the source of truth for open/fixed issues (with priority, status, fixed
+> version, deferred reason). The table below is retained for historical context.
+
+### Release Hardening (v0.7) — reliability batch fixed
+
+- **Offline bundle no longer wiped by a newer cloud revision** — race-list refresh
+  keeps the working offline copy and only surfaces the update (RH-01).
+- **Background sync skips the active race** — never swaps a bundle out from under a
+  rider mid-execution (RH-02).
+- **Screen Wake Lock** during race execution (RH-03).
+- **Windowed map matching** — no backward snap on loops / out-and-backs (RH-04).
+- **GPS status visible on Map tab** (RH-05).
+- **Destructive dev "Reset cache" gated** behind a hidden reveal (RH-06).
+- **Server GPX upload size cap** (60 MB, chunked read) (RH-07).
+
+Still open before release: public-API multi-tenant isolation (KI-01), checksum
+fail-closed on download (KI-02), physical-device QA (KI-05), live Render API
+verification (KI-06). See `KNOWN_ISSUES.md`.
+
 | Bug | Cause (if known) | Priority | Status |
 |-----|------------------|----------|--------|
 | Branch 2 commits ahead of origin (`b7b9036`, `ab11ee3`) | Not pushed | Low | Open |

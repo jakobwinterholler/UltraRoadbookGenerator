@@ -337,6 +337,31 @@ def progress_steps() -> dict:
     return {"steps": pipeline_step_catalog()}
 
 
+# Generous cap for very long ultra routes; still bounds memory per request and
+# blocks oversized/malicious uploads. Matches the 50 MB companion asset bucket
+# with headroom for uncompressed GPX text.
+MAX_GPX_UPLOAD_BYTES = 60 * 1024 * 1024
+
+
+async def _read_gpx_upload(file: UploadFile) -> bytes:
+    """Read an uploaded GPX with a hard size cap so a single request can't
+    exhaust server memory. Reads in 1 MB chunks and aborts once the cap is hit."""
+    size_hint = getattr(file, "size", None)
+    if isinstance(size_hint, int) and size_hint > MAX_GPX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="GPX file is too large (max 60 MB).")
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_GPX_UPLOAD_BYTES:
+            raise HTTPException(status_code=413, detail="GPX file is too large (max 60 MB).")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _validate_gpx_upload(file: UploadFile, file_bytes: bytes) -> None:
     if not file.filename or not file.filename.lower().endswith(".gpx"):
         raise HTTPException(status_code=400, detail="Please upload a .gpx file.")
@@ -401,7 +426,7 @@ async def create_race(
     user: AuthUser | None = Depends(get_optional_user),
     access_token: str | None = Depends(get_bearer_token),
 ) -> dict:
-    file_bytes = await file.read()
+    file_bytes = await _read_gpx_upload(file)
     _validate_gpx_upload(file, file_bytes)
     race = race_store.create_race(filename=file.filename, gpx_bytes=file_bytes, name=name)
     _schedule_cloud_sync(background_tasks, user, race.id, access_token)
@@ -997,7 +1022,7 @@ async def generate_roadbook(
     poi_profile: str | None = Form(default=None),
 ) -> dict:
     """Analyze an uploaded GPX file and return roadbook data as JSON."""
-    file_bytes = await file.read()
+    file_bytes = await _read_gpx_upload(file)
     _validate_gpx_upload(file, file_bytes)
     profile = _parse_poi_profile(poi_profile)
 
@@ -1019,7 +1044,7 @@ async def generate_roadbook_stream(
     poi_profile: str | None = Form(default=None),
 ) -> StreamingResponse:
     """Analyze a GPX upload and stream real pipeline progress events."""
-    file_bytes = await file.read()
+    file_bytes = await _read_gpx_upload(file)
     _validate_gpx_upload(file, file_bytes)
     profile = _parse_poi_profile(poi_profile)
 
@@ -1259,7 +1284,7 @@ async def sync_import_gpx(
     user: AuthUser = Depends(require_user),
     access_token: str | None = Depends(get_bearer_token),
 ) -> StreamingResponse:
-    file_bytes = await file.read()
+    file_bytes = await _read_gpx_upload(file)
     _validate_gpx_upload(file, file_bytes)
     if conflict_action not in {"create", "replace"}:
         raise HTTPException(status_code=400, detail="conflict_action must be create or replace.")

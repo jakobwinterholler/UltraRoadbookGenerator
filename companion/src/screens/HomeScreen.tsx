@@ -3,6 +3,11 @@ import { deleteCloudRace } from "@shared/api/sync";
 import { importApiAvailable } from "@shared/api/importGpx";
 import { useAuth } from "@shared/auth/AuthProvider";
 import { getDisplayName, getAvatarUrl } from "@shared/auth/profile";
+import {
+  importOfflineUserMessage,
+  importUnavailableUserMessage,
+  toUserFacingError,
+} from "@shared/companion/userFacingErrors";
 import { Avatar } from "@shared/ui/AuthScreens";
 import { Button } from "@shared/ui/Button";
 import { EmptyState } from "@shared/ui/EmptyState";
@@ -45,6 +50,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<StoredRaceListItem | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
+  const [dismissingRaceId, setDismissingRaceId] = useState<string | null>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [online, setOnline] = useState(typeof navigator !== "undefined" ? navigator.onLine : true);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -164,6 +170,9 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
     setDeleteBusy(true);
     setActionError(null);
     setDeleteTarget(null);
+    setDismissingRaceId(raceId);
+    await new Promise((resolve) => window.setTimeout(resolve, 280));
+
     removeRace(raceId);
 
     try {
@@ -173,20 +182,21 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
       await deleteCompanionRace(raceId);
       await refresh();
     } catch (err) {
-      setActionError(err instanceof Error ? err.message : "Failed to delete race.");
+      setActionError(toUserFacingError(err, "Couldn't delete this race. Try again."));
       await refresh();
     } finally {
+      setDismissingRaceId(null);
       setDeleteBusy(false);
     }
   }
 
   function openImportPicker() {
     if (!online) {
-      setActionError("Connect to the internet to import and analyze a GPX route.");
+      setActionError(importOfflineUserMessage());
       return;
     }
     if (!canImport) {
-      setActionError("Route analysis server is not configured for this build.");
+      setActionError(importUnavailableUserMessage());
       return;
     }
     fileInputRef.current?.click();
@@ -273,7 +283,7 @@ export default function HomeScreen({ onOpenRace, onOpenAccount, deepLink }: Home
               <section key={section.id}>
                 <ul className="space-y-5">
                   {section.races.map((race, index) => (
-                    <li key={race.id}>
+                    <li key={race.id} className={dismissingRaceId === race.id ? "race-card-dismiss" : undefined}>
                       <CompanionRaceCard
                         race={race}
                         busy={busyRaceId === race.id}

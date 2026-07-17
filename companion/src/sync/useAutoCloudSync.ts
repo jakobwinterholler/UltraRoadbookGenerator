@@ -5,6 +5,7 @@ import { formatUpdateSummary, needsCompanionDownload } from "@shared/sync/raceVe
 import { logSyncDebug } from "@shared/sync/syncDebugLog";
 import { setLastCheckAt, setLastSyncAt } from "@shared/sync/syncMeta";
 import { downloadRaceAssets } from "../lib/downloadRaceAssets";
+import { liveBundleRef } from "../lib/liveBundleRef";
 import { loadCompanionBundle, loadRaceList } from "../db";
 import { useCloudRaceList } from "./useCloudRaceList";
 import type { SyncToastVariant } from "../components/CompanionSyncToast";
@@ -49,8 +50,16 @@ export function useAutoCloudSync(): AutoCloudSyncState {
       const localById = new Map(localRaces.map((race) => [race.id, race]));
       const toDownload: Array<{ id: string; name: string; kind: "new" | "updated" }> = [];
 
+      const activeRaceId = liveBundleRef.current?.race.id ?? null;
+
       for (const cloudRace of cloudRaces) {
         if (!cloudRace.has_bundle) {
+          continue;
+        }
+        if (cloudRace.id === activeRaceId) {
+          // Never swap the bundle out from under a rider who has this race open.
+          // The in-race update banner lets them apply it deliberately.
+          logSyncDebug("auto-sync", `Skipping active race ${cloudRace.name} (open in workspace)`);
           continue;
         }
         const local = localById.get(cloudRace.id);

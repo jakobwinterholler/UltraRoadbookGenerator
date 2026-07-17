@@ -1,11 +1,12 @@
 import type { CompanionBundle } from "../types/sync";
-import { fetchWithAuth, getApiBaseUrl, parseApiError } from "./client";
+import { fetchWithAuth, isImportApiAvailable, parseApiError } from "./client";
 import {
   formatBundlePrepareFailure,
   prepareCompanionBundle,
 } from "../sync/bundleMigration";
 import { fetchCompanionBundle } from "./sync";
 import { logSyncDebug } from "../sync/syncDebugLog";
+import { logCompanionDiagnostic, importUnavailableUserMessage } from "../companion/userFacingErrors";
 
 export interface ImportStageEvent {
   type: "import_stage";
@@ -62,7 +63,7 @@ export interface ImportGpxResult {
 }
 
 export function importApiAvailable(): boolean {
-  return Boolean(getApiBaseUrl());
+  return isImportApiAvailable();
 }
 
 export async function computeGpxFingerprint(bytes: ArrayBuffer): Promise<string> {
@@ -77,7 +78,7 @@ export async function fetchImportDuplicates(
   accessToken: string,
   fingerprint: string,
 ): Promise<ImportDuplicateMatch[]> {
-  if (!getApiBaseUrl()) {
+  if (!isImportApiAvailable()) {
     return [];
   }
   const response = await fetchWithAuth(
@@ -112,10 +113,9 @@ export async function importGpxStream(
   options: ImportGpxOptions,
   onEvent: (event: ImportGpxEvent) => void,
 ): Promise<ImportGpxResult> {
-  if (!getApiBaseUrl()) {
-    throw new Error(
-      "Route analysis server is not configured. Set VITE_API_BASE_URL for mobile GPX import.",
-    );
+  if (!isImportApiAvailable()) {
+    logCompanionDiagnostic("import", "Analysis API unavailable (no VITE_API_BASE_URL or same-origin /api proxy).");
+    throw new Error(importUnavailableUserMessage());
   }
 
   const form = new FormData();

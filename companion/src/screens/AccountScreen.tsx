@@ -163,7 +163,16 @@ export default function AccountScreen() {
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
   const [resettingCache, setResettingCache] = useState(false);
   const [resetMessage, setResetMessage] = useState<string | null>(null);
+  const [devToolsVisible, setDevToolsVisible] = useState(false);
+  const devTapCountRef = useRef(0);
   const deviceRecorded = useRef(false);
+
+  function revealDevTools() {
+    devTapCountRef.current += 1;
+    if (devTapCountRef.current >= 7) {
+      setDevToolsVisible(true);
+    }
+  }
 
   const displayName = getDisplayName(user);
   const avatarUrl = getAvatarUrl(user);
@@ -266,7 +275,14 @@ export default function AccountScreen() {
         <div className="mt-4 space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="text-white/50">Version</span>
-            <span className="font-medium tabular-nums text-white">{versionLabel}</span>
+            <button
+              type="button"
+              onClick={revealDevTools}
+              className="font-medium tabular-nums text-white"
+              aria-label="App version"
+            >
+              {versionLabel}
+            </button>
           </div>
           {updateAvailable && pendingVersionLabel ? (
             <div className="flex items-center justify-between text-sm">
@@ -381,6 +397,7 @@ export default function AccountScreen() {
         </button>
       </section>
 
+      {devToolsVisible ? (
       <section className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
         <h2 className="text-sm font-semibold uppercase tracking-[0.14em] text-white/40">Developer</h2>
         <p className="mt-2 text-xs leading-relaxed text-white/45">
@@ -401,6 +418,7 @@ export default function AccountScreen() {
           {resettingCache ? "Resetting…" : "Reset Local Race Cache"}
         </button>
       </section>
+      ) : null}
 
       <section className="mt-4 rounded-2xl border border-red-500/20 bg-white/[0.02] p-5">
         <h2 className="text-sm font-semibold text-white">Account actions</h2>

@@ -57,6 +57,21 @@ body {
     touch-action: pan-y;
   }
 
+  .race-card-dismiss {
+    animation: race-card-dismiss 0.28s ease-in forwards;
+    overflow: hidden;
+  }
+
+  @keyframes race-card-dismiss {
+    to {
+      opacity: 0;
+      transform: translateX(-24px);
+      max-height: 0;
+      margin-top: 0;
+      margin-bottom: 0;
+    }
+  }
+
   .animate-fade-in {
     animation: fade-in 0.35s ease-out both;
   }

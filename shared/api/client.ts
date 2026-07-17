@@ -9,6 +9,14 @@ export function getApiBaseUrl(): string {
   return "";
 }
 
+/** True when mobile GPX import can reach the analysis API (env URL or same-origin proxy). */
+export function isImportApiAvailable(): boolean {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return true;
+  }
+  return typeof window !== "undefined";
+}
+
 async function authFetch(
   path: string,
   accessToken: string | null,

@@ -69,13 +69,13 @@ cd companion && npm run dev  # companion → http://127.0.0.1:5175
 
 ## 5. iPhone / production Companion
 
-The Companion reads **directly from Supabase** (race list + bundle download) by default. Set `VITE_API_BASE_URL` to enable **mobile GPX import** — full server-side analysis via `POST /api/sync/import-gpx`. See [MOBILE_GPX_IMPORT.md](./MOBILE_GPX_IMPORT.md).
+The Companion reads **directly from Supabase** (race list + bundle download) by default. **Mobile GPX import** uses `POST /api/sync/import-gpx` on the analysis server. See [MOBILE_GPX_IMPORT.md](./MOBILE_GPX_IMPORT.md).
 
 Set these Vercel environment variables for the `companion` project:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
-- `VITE_API_BASE_URL` — **required for on-phone GPX import** (FastAPI deployment URL)
+- `VITE_API_BASE_URL` — optional; production uses same-origin `/api/*` rewrites in `companion/vercel.json` when unset
 
 ### 5.1 Deploy the API (mobile import)
 
@@ -83,12 +83,13 @@ The Companion PWA is static on Vercel; **GPX import requires a running FastAPI s
 
 **Option A — Render (recommended)**
 
-1. Push this repo to GitHub.
+1. Push this repo to GitHub (include `render.yaml` on the branch Render tracks, usually `main`).
 2. [Render Dashboard](https://dashboard.render.com) → **New** → **Blueprint** → connect the repo (`render.yaml` is included).
 3. Set env vars: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_JWT_SECRET`.
-4. After deploy, copy the service URL (e.g. `https://ultra-roadbook-api.onrender.com`).
-5. Vercel → companion project → **Environment Variables** → `VITE_API_BASE_URL` = that URL (no trailing slash).
-6. Redeploy Companion (`vercel --prod --yes`).
+4. After deploy, verify: `curl https://ultra-roadbook-api.onrender.com/api/health` → `{"status":"ok",...}`
+5. Redeploy Companion if you changed `companion/vercel.json` (`vercel --prod --yes` from repo root). No `VITE_API_BASE_URL` needed when the rewrite target matches your Render URL.
+
+Or run `./scripts/verify_production_api.sh` to check API + print next steps.
 
 **Option B — Local + tunnel (quick phone test)**
 

@@ -6,7 +6,7 @@ Companion can import and fully analyze GPX routes on iPhone without the desktop 
 
 **Server-side analysis (preferred path):** `POST /api/sync/import-gpx` runs the same Python pipeline as desktop (`pipeline.py` → `companion_bundle.py`), streams staged progress via SSE, pushes to Supabase, and returns the schema v5 bundle for IndexedDB offline storage.
 
-The companion **requires** `VITE_API_BASE_URL` pointing at a running Ultra Roadbook FastAPI server for import. Cloud race list/download can still use direct Supabase when that variable is unset.
+The companion calls **`/api/sync/import-gpx`** on the same origin in production (Vercel rewrites to the Render FastAPI service) or via the Vite dev proxy to `localhost:8000`. Optionally set `VITE_API_BASE_URL` to hit the API directly instead of the rewrite.
 
 ## Import methods
 
@@ -57,7 +57,7 @@ Compares two full pipeline runs on the Collserola sample GPX — checksums and s
 ## Known limitations
 
 - **Requires online analysis** — full pipeline cannot run offline on device.
-- **Requires deployed FastAPI** — set `VITE_API_BASE_URL` on Vercel for production import.
+- **Requires deployed FastAPI** — deploy `render.yaml` to Render; Companion proxies `/api/*` via `companion/vercel.json` (or set `VITE_API_BASE_URL` explicitly).
 - **iOS Share Sheet → Companion** — not reliably supported for PWAs; use Files picker instead.
 - **Share Target POST** — needs service-worker handling for full Android support; file picker works today.
 - **Large races (800–2000 km)** — server-side background thread; keep app foreground for best results.

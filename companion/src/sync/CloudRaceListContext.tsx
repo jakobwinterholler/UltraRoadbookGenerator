@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { normalizeSyncListError } from "@shared/api/supabaseErrors";
+import { cloudSyncUnavailableUserMessage } from "@shared/companion/userFacingErrors";
 import { fetchSyncRaces } from "@shared/api/sync";
 import type { SyncRaceSummary } from "@shared/types/sync";
 import { needsCompanionDownload, localBundleIsCurrent } from "@shared/sync/raceVersion";
@@ -84,7 +85,12 @@ async function resolveOfflineReady(
     localSchemaVersion,
   );
   if (needsUpdate) {
-    logSyncDebug("stale-cache", `${race.name} — cloud revision/climbs newer than local`, {
+    // A newer cloud revision exists, but we must NEVER delete a working offline
+    // bundle just because an update is available — that could leave a rider with
+    // no route mid-race. Keep the downloaded copy openable offline; the UI still
+    // surfaces the update via the revision mismatch, and the rider (or background
+    // sync, when this isn't the active race) refreshes it when it's safe.
+    logSyncDebug("stale-cache", `${race.name} — cloud update available; keeping offline copy`, {
       raceId: race.id,
       cloudRevision: race.companion_revision,
       localRevision: downloadedRevision,
@@ -93,8 +99,7 @@ async function resolveOfflineReady(
       cloudClimbCount: race.significant_climb_count ?? null,
       localClimbCount: downloadedClimbCount,
     });
-    await invalidateStaleBundle(race.id);
-    return { downloadedRevision: null, downloadedChecksum: null, offlineReady: false };
+    return { downloadedRevision, downloadedChecksum, offlineReady: true };
   }
 
   return { downloadedRevision, downloadedChecksum, offlineReady: true };
@@ -188,7 +193,7 @@ export function CloudRaceListProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!configured) {
       setLoading(false);
-      setError("Cloud sync is not configured.");
+      setError(cloudSyncUnavailableUserMessage());
       return;
     }
     void refresh();
